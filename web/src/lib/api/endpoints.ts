@@ -459,7 +459,7 @@ export const api = {
      * receive: forwarding (the default) connects to send only; sync also receives over
      * IMAP, which is 422 imap_off on an instance with IMAP receiving off.
      */
-    oauthStart: (provider: "google" | "microsoft", b: { mailbox_id?: string; name: string; email?: string; receive?: MailboxReceive }) =>
+    oauthStart: (provider: "google" | "microsoft", b: { mailbox_id?: string; name: string; email?: string; receive?: MailboxReceive; sync_start?: T.SyncStart }) =>
       http.post<{ url: string }>(`/v1/mailboxes/oauth/${provider}/start`, b),
     connectOptions: () => http.get<T.MailboxConnectOptions>("/v1/mailboxes/connect-options"),
     detect: (email: string) => http.get<T.MailDetection>("/v1/mailboxes/detect", { query: { email } }),

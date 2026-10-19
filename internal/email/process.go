@@ -321,8 +321,10 @@ func (s *service) processInbound(ctx context.Context, wid, inboundID uuid.UUID) 
 }
 
 // seenBefore reports whether an inbound message was already taken in: the same message
-// (Message-ID and content) at any of the workspace's addresses, or mail we sent. taken
-// is set when a different message already holds its Message-ID.
+// (Message-ID and content) at any of the workspace's addresses, mail we sent, or a
+// message with its Message-ID that no inbound email recorded (imported history: the first
+// sync after an import reads it again). taken is set when a different message already
+// holds its Message-ID.
 func (s *service) seenBefore(ctx context.Context, wid, inboundID uuid.UUID, msgID, msgIDHdr, hash string) (dup, taken bool, err error) {
 	var direction string
 	var existingHash *string
@@ -331,7 +333,8 @@ func (s *service) seenBefore(ctx context.Context, wid, inboundID uuid.UUID, msgI
 		WHERE ms.workspace_id = $1 AND ms.email_message_id = $2`, wid, msgID).Scan(&direction, &existingHash)
 	switch {
 	case err == nil:
-		// Mail we sent, or the same message recorded before its content was fingerprinted.
+		// Mail we sent, an imported message, or the same message recorded before its content
+		// was fingerprinted.
 		if direction == "outbound" || existingHash == nil || *existingHash == "" || *existingHash == hash {
 			return true, true, nil
 		}

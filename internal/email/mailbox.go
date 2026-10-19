@@ -45,6 +45,14 @@ const (
 	SendingSystemOff = "system_off"
 )
 
+// Where the first sync of a mailbox read over IMAP starts (MailboxConfig.SyncStart): the
+// last 7 days of the inbox (the default), or only mail that arrives from then on, for a
+// team whose history came over by import.
+const (
+	SyncStartRecent = "recent"
+	SyncStartNew    = "new"
+)
+
 // TLS modes for IMAP and SMTP.
 const (
 	TLSImplicit = "tls"
@@ -70,6 +78,10 @@ type MailboxConfig struct {
 	// MailHost is who hosts the mailbox's mail (mailhost.Host values, e.g. gmail,
 	// google_workspace, yahoo, other), for labels and connection fixes.
 	MailHost string `json:"mail_host,omitempty" maxLength:"32"`
+	// SyncStart is where the first sync reads from: recent (the last 7 days, the default)
+	// or new (only mail that arrives from then on). It applies when the mailbox starts
+	// reading its inbox: on connecting, and again when it moves to another account or server.
+	SyncStart string `json:"sync_start,omitempty" enum:"recent,new"`
 }
 
 // Mailbox is the API shape. Credentials are never part of it.

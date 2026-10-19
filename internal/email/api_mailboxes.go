@@ -66,6 +66,7 @@ type mailboxConfigPatch struct {
 	SMTPPort     *int    `json:"smtp_port,omitempty" minimum:"1" maximum:"65535"`
 	SMTPUsername *string `json:"smtp_username,omitempty"`
 	SMTPTLS      *string `json:"smtp_tls,omitempty" enum:"tls,starttls,none"`
+	SyncStart    *string `json:"sync_start,omitempty" enum:"recent,new" doc:"Where the first sync reads from when the mailbox starts reading its inbox: the last 7 days (recent) or only new mail"`
 }
 
 type updateMailboxInput struct {
@@ -795,6 +796,7 @@ func applyPatch(m *mailboxRow, creds *credentials, in *updateMailboxInput) (chan
 		setI(&cfg.SMTPPort, c.SMTPPort)
 		setS(&cfg.SMTPUsername, c.SMTPUsername)
 		setS(&cfg.SMTPTLS, c.SMTPTLS)
+		setS(&cfg.SyncStart, c.SyncStart)
 		if *cfg != before {
 			changes = append(changes, "config")
 			if !strings.EqualFold(cfg.IMAPHost, before.IMAPHost) || !strings.EqualFold(cfg.IMAPUsername, before.IMAPUsername) {

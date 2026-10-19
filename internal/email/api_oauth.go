@@ -42,6 +42,7 @@ type oauthStartInput struct {
 		Name      string `json:"name,omitempty" maxLength:"64"`
 		Email     string `json:"email,omitempty" maxLength:"254" doc:"Login hint for the provider"`
 		Receive   string `json:"receive,omitempty" enum:"forwarding,sync" doc:"How a new mailbox receives: forwarding (default; the connection only sends) or sync (read the inbox over IMAP, while this instance has IMAP on). A reconnect keeps the mailbox's own."`
+		SyncStart string `json:"sync_start,omitempty" enum:"recent,new" doc:"Where the first sync reads from: the last 7 days (recent, default) or only new mail. A reconnect without it keeps the mailbox's own."`
 	}
 }
 
@@ -119,6 +120,9 @@ func (s *service) registerOAuthRoutes(api huma.API, r chi.Router) {
 				data["name"] = name
 			}
 			data["grant"] = grant
+			if b.SyncStart != "" {
+				data["sync_start"] = b.SyncStart
+			}
 			verifier := oauth2.GenerateVerifier()
 			if data["verifier"], err = s.sealVerifier(verifier); err != nil {
 				return nil, httpx.Wrap(err)
@@ -244,7 +248,7 @@ func (s *service) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		mailboxID = &id
 	}
-	id, err := s.saveOAuthMailbox(ctx, p, provider, grant, mailboxID, claims.Data["name"], email, username, creds)
+	id, err := s.saveOAuthMailbox(ctx, p, provider, grant, mailboxID, claims.Data["name"], claims.Data["sync_start"], email, username, creds)
 	if err != nil {
 		switch {
 		case db.IsUniqueViolation(err, "mailboxes_workspace_id_email_key"):
@@ -303,10 +307,10 @@ func (s *service) completeOAuth(ctx context.Context, p *oauthProvider, grant, co
 // while this instance has it on; otherwise the mailbox receives by forwarding and
 // sends through the provider.
 func (s *service) saveOAuthMailbox(ctx context.Context, p *auth.Principal, provider, grant string, mailboxID *uuid.UUID,
-	name, email, username string, creds credentials) (uuid.UUID, error) {
+	name, syncStart, email, username string, creds credentials) (uuid.UUID, error) {
 	prov := s.providers[provider]
 	inbound := InboundForwarding
-	cfg := MailboxConfig{OAuthEmail: email, OAuthGrant: grant, MailHost: string(mailhost.ForMailbox("", provider, "", email))}
+	cfg := MailboxConfig{OAuthEmail: email, OAuthGrant: grant, MailHost: string(mailhost.ForMailbox("", provider, "", email)), SyncStart: syncStart}
 	if grant == GrantSync && s.mailboxIMAP {
 		inbound = provider
 		cfg.IMAPHost, cfg.IMAPPort, cfg.IMAPTLS, cfg.IMAPUsername = prov.imapHost, 993, TLSImplicit, username
@@ -341,6 +345,9 @@ func (s *service) saveOAuthMailbox(ctx context.Context, p *auth.Principal, provi
 			legacy := existing.Config.OAuthEmail == "" && existing.InboundKind == provider
 			if legacy || (existing.Config.OAuthEmail != "" && strings.EqualFold(existing.Config.OAuthEmail, existing.Email)) {
 				addr = email
+			}
+			if cfg.SyncStart == "" {
+				cfg.SyncStart = existing.Config.SyncStart
 			}
 			resetCursor := !strings.EqualFold(existing.Config.IMAPUsername, cfg.IMAPUsername) || existing.InboundKind != inbound
 			_, err = tx.Exec(ctx, `UPDATE mailboxes SET email = $3, inbound_kind = $4, outbound_kind = $5, config = $6,
