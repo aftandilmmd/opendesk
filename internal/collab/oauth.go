@@ -298,6 +298,7 @@ func (s *service) oauthIdentity(ctx context.Context, c *oauthClient, accessToken
 	var body struct {
 		Email         string `json:"email"`
 		EmailVerified *bool  `json:"email_verified"`
+		Name          string `json:"name"`
 		Mail          string `json:"mail"`
 		UPN           string `json:"userPrincipalName"`
 		DisplayName   string `json:"displayName"`
@@ -315,15 +316,15 @@ func (s *service) oauthIdentity(ctx context.Context, c *oauthClient, accessToken
 		if body.EmailVerified != nil && !*body.EmailVerified {
 			return identity{}, &providerError{msg: "The Google account's address is not verified."}
 		}
-		out.Email = body.Email
+		out.Email, out.Name = body.Email, body.Name
 	}
 	out.Email = strings.ToLower(strings.TrimSpace(out.Email))
 	if !email.ValidAddress(out.Email) {
 		return identity{}, &providerError{msg: "The provider did not return an email address."}
 	}
-	// Google gives a name only with the profile scope, which Collab does not ask for: the
-	// From name is the address's send-as name in Gmail, which gmail.modify reads.
-	if c.name == ProviderGoogle {
+	// Google's profile name (the profile scope); without one, the address's send-as name in
+	// Gmail, which gmail.modify reads.
+	if c.name == ProviderGoogle && strings.TrimSpace(out.Name) == "" {
 		out.Name = s.gmailSendAsName(ctx, accessToken, out.Email)
 	}
 	// A name from the identity provider is untrusted.

@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// fakeGoogleOAuth answers the token and userinfo endpoints for one Google account, and
-// Gmail's send-as list. Like Google without the profile scope, userinfo has no name.
-func fakeGoogleOAuth(t *testing.T, w *world, address string) {
+// fakeGoogleOAuth answers the token and userinfo endpoints for one Google account (its
+// profile name with the profile scope, none when profileName is ""), and Gmail's send-as list.
+func fakeGoogleOAuth(t *testing.T, w *world, address, profileName string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "application/json")
@@ -32,7 +32,11 @@ func fakeGoogleOAuth(t *testing.T, w *world, address string) {
 				rw.WriteHeader(401)
 				return
 			}
-			_ = json.NewEncoder(rw).Encode(map[string]any{"email": address, "email_verified": true})
+			info := map[string]any{"email": address, "email_verified": true}
+			if profileName != "" {
+				info["name"] = profileName
+			}
+			_ = json.NewEncoder(rw).Encode(info)
 		case "/gmail/v1/users/me/settings/sendAs":
 			if r.Header.Get("Authorization") != "Bearer at-1" {
 				rw.WriteHeader(401)
@@ -40,7 +44,7 @@ func fakeGoogleOAuth(t *testing.T, w *world, address string) {
 			}
 			_ = json.NewEncoder(rw).Encode(map[string]any{"sendAs": []map[string]any{
 				{"sendAsEmail": "alias@other.test", "displayName": "Not this one"},
-				{"sendAsEmail": address, "displayName": "Adam Agent", "isPrimary": true}}})
+				{"sendAsEmail": address, "displayName": "Adam from Gmail", "isPrimary": true}}})
 		default:
 			rw.WriteHeader(404)
 		}
@@ -102,7 +106,7 @@ func connectGoogle(t *testing.T, w *world, srvURL string, body map[string]any, c
 func TestOAuthConnect(t *testing.T) {
 	w := newWorld(t)
 	address := "adam-" + uuid.NewString()[:6] + "@gmail.test"
-	fakeGoogleOAuth(t, w, address)
+	fakeGoogleOAuth(t, w, address, "Adam Agent")
 	team := w.team("Support", w.agent2)
 	srv := w.api(w.agent)
 
@@ -198,5 +202,22 @@ func TestIMAPConnectRoute(t *testing.T) {
 	defer func() { w.d.Cfg.CollabIMAP = true }()
 	if st := doJSON(t, "POST", srv.URL+"/v1/collab/accounts/imap", body, &e); st != 422 || e.Code != "imap_unavailable" {
 		t.Fatalf("imap off: %d %+v", st, e)
+	}
+}
+
+// TestOAuthConnectNameFromGmail: a Google account without a profile name takes its From
+// name from its Gmail send-as address.
+func TestOAuthConnectNameFromGmail(t *testing.T) {
+	w := newWorld(t)
+	address := "adam-" + uuid.NewString()[:6] + "@gmail.test"
+	fakeGoogleOAuth(t, w, address, "")
+	srv := w.api(w.agent)
+	loc := connectGoogle(t, w, srv.URL, map[string]any{"visibility": "private"}, "good-code")
+	id, err := uuid.Parse(loc.Query().Get("connected"))
+	if err != nil {
+		t.Fatalf("redirect: %s", loc)
+	}
+	if a := w.reload(&accountRow{ID: id}); a.DisplayName != "Adam from Gmail" {
+		t.Fatalf("display name %q", a.DisplayName)
 	}
 }

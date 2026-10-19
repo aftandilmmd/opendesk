@@ -38,6 +38,8 @@ are and stop syncing; nothing is deleted. Turning it back on resumes them.
 
 - `gmail.modify` reads, labels, archives, trashes and sends; it cannot delete mail for good, and
   Collab never does on any provider (trash is emptied by the provider's own rules).
+- `profile` gives the Google account's name, the From name a new account starts with; when Google
+  has none, the address's Gmail send-as name is used. Microsoft's comes from `/me` (`User.Read`).
 - The settings scopes are the account's own settings ("Account settings"): `gmail.settings.basic`
   changes the Gmail signature, From name and vacation responder (`gmail.modify` only reads them);
   `MailboxSettings.ReadWrite` reads and changes Outlook's automatic replies and categories. A person
