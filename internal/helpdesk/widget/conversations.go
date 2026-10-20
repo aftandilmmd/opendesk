@@ -37,7 +37,7 @@ type WidgetConversation struct {
 }
 
 type widgetMessageBody struct {
-	Body          string   `json:"body" maxLength:"40000" doc:"Plain text, 1 to 10000 characters"`
+	Body          string   `json:"body,omitempty" required:"false" maxLength:"40000" doc:"Plain text, up to 10000 characters; may be empty when files are attached"`
 	AttachmentIDs []string `json:"attachment_ids,omitempty" maxItems:"20"`
 	PageURL       string   `json:"page_url,omitempty" maxLength:"2000" doc:"The host page (https), given to the AI agent"`
 }
@@ -59,16 +59,17 @@ func cleanPageURL(raw string) string {
 type widgetCreateInput struct {
 	Origin string `header:"Origin"`
 	Body   struct {
-		Body          string   `json:"body" maxLength:"40000" doc:"Plain text, 1 to 10000 characters"`
+		Body          string   `json:"body,omitempty" required:"false" maxLength:"40000" doc:"Plain text, up to 10000 characters; may be empty when files are attached"`
 		AttachmentIDs []string `json:"attachment_ids,omitempty" maxItems:"20"`
 		PageURL       string   `json:"page_url,omitempty" maxLength:"2000" doc:"The host page (https): stored on the ticket, used by routing rules and given to the AI agent"`
 		TopicID       string   `json:"topic_id,omitempty" maxLength:"40" doc:"The topic the visitor picked (WidgetConfig.topics)"`
 	}
 }
 
-func cleanBody(s string) (string, error) {
+// cleanBody trims a visitor's text; it may be empty only when files come with it.
+func cleanBody(s string, files int) (string, error) {
 	s = strings.TrimSpace(strings.ToValidUTF8(s, ""))
-	if s == "" {
+	if s == "" && files == 0 {
 		return "", httpx.Validation("body is required")
 	}
 	if utf8.RuneCountInString(s) > maxBodyRunes {
@@ -171,11 +172,11 @@ func (h *handler) registerConversations(api huma.API) {
 			if err := h.allowWrite(p, "write", visitorWrites); err != nil {
 				return nil, err
 			}
-			body, err := cleanBody(in.Body.Body)
+			attIDs, err := hd.ParseAttachmentIDs(in.Body.AttachmentIDs)
 			if err != nil {
 				return nil, err
 			}
-			attIDs, err := hd.ParseAttachmentIDs(in.Body.AttachmentIDs)
+			body, err := cleanBody(in.Body.Body, len(attIDs))
 			if err != nil {
 				return nil, err
 			}
@@ -205,6 +206,14 @@ func (h *handler) registerConversations(api huma.API) {
 					fromEmail = *contact.Email
 				}
 				subject := hd.Excerpt(body, 80)
+				if subject == "" {
+					// Only files: the first one names the conversation.
+					if err := tx.QueryRow(ctx, `SELECT filename FROM attachments WHERE workspace_id = $1 AND id = $2`,
+						p.WorkspaceID, attIDs[0]).Scan(&subject); err != nil {
+						return err
+					}
+					subject = hd.Excerpt(subject, 80)
+				}
 				widgetID := g.ID
 				res, err := routing.Resolve(ctx, tx, routing.Input{WorkspaceID: p.WorkspaceID, Channel: domain.ChannelChat,
 					BrandID: g.BrandID, WidgetID: &widgetID, Topic: topic, FromEmail: fromEmail, Subject: subject, Body: body,
@@ -308,11 +317,11 @@ func (h *handler) registerConversations(api huma.API) {
 			if err := h.allowWrite(p, "write", visitorWrites); err != nil {
 				return nil, err
 			}
-			body, err := cleanBody(in.Body.Body)
+			attIDs, err := hd.ParseAttachmentIDs(in.Body.AttachmentIDs)
 			if err != nil {
 				return nil, err
 			}
-			attIDs, err := hd.ParseAttachmentIDs(in.Body.AttachmentIDs)
+			body, err := cleanBody(in.Body.Body, len(attIDs))
 			if err != nil {
 				return nil, err
 			}
