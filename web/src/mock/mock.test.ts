@@ -24,6 +24,15 @@ describe("mock backend", () => {
     expect(off.attachments).toBe(false);
   });
 
+  it("takes voice messages of up to the picked length", async () => {
+    expect((await call("GET", "/v1/widget/settings")).body).toMatchObject({ voice_messages: false, voice_max_seconds: 60 });
+    for (const bad of [4, 301, 30.5, "60"]) {
+      expect((await call("PATCH", "/v1/widget/settings", { voice_max_seconds: bad })).status, JSON.stringify(bad)).toBe(422);
+    }
+    const w = (await call("PATCH", "/v1/widget/settings", { voice_messages: true, voice_max_seconds: 120 })).body;
+    expect(w).toMatchObject({ voice_messages: true, voice_max_seconds: 120 });
+  });
+
   it("limits the widget's files to the picked types", async () => {
     expect((await call("GET", "/v1/widget/settings")).body.attachment_types).toEqual([]);
     for (const bad of [["svg"], ["png", "exe"], "png"]) {
