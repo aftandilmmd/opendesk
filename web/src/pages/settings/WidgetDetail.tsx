@@ -99,6 +99,7 @@ function withDefaults(s: WS): WS {
     topics: (s.topics ?? []).map((x) => ({ ...x })),
     offline_message: s.offline_message ?? "",
     email_follow_up: s.email_follow_up ?? true,
+    attachments: s.attachments ?? true,
   };
 }
 
@@ -498,6 +499,9 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
             </Row>
             <Row label={t("widget.requireEmail")} description={t("widget.requireEmailHint")}>
               <Switch checked={s.require_email} onCheckedChange={(require_email) => set({ require_email })} aria-label={t("widget.requireEmail")} />
+            </Row>
+            <Row label={t("widget.attachments")} description={t("widget.attachmentsHint")}>
+              <Switch checked={s.attachments} onCheckedChange={(attachments) => set({ attachments })} aria-label={t("widget.attachments")} />
             </Row>
             <Row label={t("widget.sound")} description={t("widget.soundHint")}>
               <Switch checked={s.sound} onCheckedChange={(sound) => set({ sound })} aria-label={t("widget.sound")} />

@@ -41,6 +41,7 @@ const CHECKS: Partial<Record<keyof WidgetSettings, Check>> = {
   require_email: bool("require_email"),
   show_team: bool("show_team"),
   sound: bool("sound"),
+  attachments: bool("attachments"),
   greeting: (v) => {
     if (typeof v !== "string") throw invalid("greeting must be text");
     const s = v.replace(/\r\n/g, "\n").trim();
@@ -147,6 +148,7 @@ export function widgetConfig(ws: WsData, widget?: Widget): WidgetConfig {
     subtitle: w.subtitle,
     suggestions: [...w.suggestions],
     sound: w.sound,
+    attachments: w.attachments ?? true,
     team,
     ai_answers: !aiOff() && ws.ai.enabled && ws.ai.widget_answers,
     bot: widgetBot(ws, row?.id),

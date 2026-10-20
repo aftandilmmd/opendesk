@@ -306,6 +306,8 @@
     "suggestion_long": "Up to 60 characters",
     "suggestion_markup": "Plain text only, without < or >",
     "add": "Add",
+    "attachments": "Let visitors send files",
+    "attachmentsHint": "Visitors can attach, drop or paste files of up to 25 MB.",
     "sound": "Sound for new replies",
     "soundHint": "A soft chime when a reply arrives while the visitor's tab is in the background.",
     "tooLong": "Up to {{max}} characters",

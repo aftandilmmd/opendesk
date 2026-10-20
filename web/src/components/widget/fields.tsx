@@ -241,6 +241,7 @@ export function toWidgetConfig(d: WidgetSettings, ws: Workspace | null, members:
     subtitle: tidy(d.subtitle),
     suggestions: d.suggestions.map(tidy).filter((s) => s.length >= 2),
     sound: d.sound,
+    attachments: d.attachments,
     team,
     ai_answers: aiAnswers,
     bot: bot ?? OLLIE_BOT,
