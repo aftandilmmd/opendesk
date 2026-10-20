@@ -82,9 +82,6 @@ function normalizeOrigin(v: string): string | null {
 }
 
 /** Defaults for keys an older server leaves out (contracts/api.md, contracts/teams.md). */
-// The lengths offered for a voice message, in seconds (the server takes 5 to 300).
-const VOICE_LENGTHS = [15, 30, 60, 120, 300];
-
 function withDefaults(s: WS): WS {
   return {
     ...s,
@@ -571,11 +568,15 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
             </Row>
             {s.voice_messages && (
               <Row label={t("widget.voiceLength")} description={t("widget.voiceLengthHint")}>
-                <Segmented
-                  size="xs"
-                  value={String(s.voice_max_seconds)}
-                  onChange={(v) => set({ voice_max_seconds: Number(v) })}
-                  options={VOICE_LENGTHS.map((n) => ({ value: String(n), label: n < 60 ? t("widget.seconds", { count: n }) : t("widget.minutes", { count: n / 60 }) }))}
+                <Stepper
+                  value={s.voice_max_seconds}
+                  onChange={(voice_max_seconds) => set({ voice_max_seconds })}
+                  min={5}
+                  max={300}
+                  step={5}
+                  suffix={t("widget.secondsSuffix")}
+                  aria-label={t("widget.voiceLength")}
+                  className="w-[124px]"
                 />
               </Row>
             )}
