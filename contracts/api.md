@@ -641,7 +641,7 @@ checklist is complete (`GET /v1/ai/agent/setup`, `contracts/agent.md` "Setup"). 
 | POST | `/v1/widget/conversations/{id}/handoff` | → 204; ask for a person while the AI agent handles the conversation (contracts/agent.md) |
 | POST | `/v1/widget/conversations/{id}/actions/{action_id}` | `{decision: "confirm" \| "decline"}` → 204 (contracts/agent.md "Visitor actions") |
 | POST | `/v1/widget/conversations/{id}/messages/{message_id}/rating` | `{rating: "up" \| "down" \| null}` → 204 (contracts/agent.md "Ratings") |
-| POST | `/v1/widget/attachments` | multipart |
+| POST | `/v1/widget/attachments` | multipart. `403 attachments_off` while the session's widget has `attachments` off, and so is a message or new conversation with `attachment_ids` |
 | GET/PATCH | `/v1/widget/settings` | admin, agent-side: `WidgetSettings` below of the default brand's first widget (`widgets.settings`, mirrored to workspace `settings.widget`); PATCH merges the given keys, audit `widget.settings_updated` with the changed keys, publishes `widget.updated`. Every widget: `/v1/widgets` (contracts/teams.md) |
 
 ```ts
@@ -667,6 +667,7 @@ interface WidgetSettings {
   topics: { id: string /* kept when sent, else generated; 1..40 of A-Z a-z 0-9 _ - */; label: string /* 2..40 */; team_id: string | null /* a team of the workspace */ }[]  // at most 8
   offline_message: string               // up to 300 chars, plain text with newlines; "" = the translated default
   email_follow_up: boolean              // default true: agents' chat replies also go by email to a visitor with an email who is not on the page (contracts/teams.md "Chat follow-up")
+  attachments: boolean                  // default true: visitors may send files
 }
 
 // GET /v1/widget/config. Public; Origin checked against the widget's allowed_origins.
@@ -682,6 +683,7 @@ interface WidgetConfig {
   launcher: "icon" | "label"; launcher_label: string; radius: "square" | "soft" | "round"
   title: string                         // the widget's title, else the brand name
   subtitle: string; suggestions: string[]; sound: boolean
+  attachments: boolean                  // visitors may send files; the widget hides attaching while false
   team: { name: string /* first name */; avatar_url: string | null }[]  // up to 3 non-viewer members of the widget's team (else of the workspace), available first; [] when show_team is off
   ai_answers: boolean                   // the AI agent handles new conversations (contracts/agent.md)
   bot: { id: string | null; name: string; role: string; avatar_url: string /* a PNG of the look, or the picture */; look: BotLook; greeting: string /* "" = greeting */ }
