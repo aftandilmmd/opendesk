@@ -17,6 +17,24 @@ export const Up = () => svg(<path d="M12 19V5M5 12l7-7 7 7" />, 16, 2);
 export const Down = () => svg(<path d="M12 5v14M19 12l-7 7-7-7" />, 14, 2);
 export const Ext = () => svg(<path d="M7 17 17 7M8 7h9v9" />, 14);
 export const Arrow = () => svg(<path d="M5 12h14M13 6l6 6-6 6" />, 15);
+export const Mic = () => svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
+export const StopIc = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor" />
+  </svg>
+);
+export const Play = (s = 14) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z" fill="currentColor" />
+  </svg>
+);
+export const Pause = (s = 14) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="5.5" y="4" width="4.5" height="16" rx="1.2" fill="currentColor" />
+    <rect x="14" y="4" width="4.5" height="16" rx="1.2" fill="currentColor" />
+  </svg>
+);
+export const Trash = () => svg(<path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-12M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7" />, 15);
 export const FileIc = () => svg(<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5" />, 14);
 export const LinkIc = () => svg(<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />, 12, 2);
 export const Person = (s = 14) => svg(<><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></>, s);
