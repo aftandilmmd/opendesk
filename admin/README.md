@@ -12,6 +12,7 @@ every time), sessions and audit log. `web/` stays customer-facing; operator scre
 ```sh
 pnpm install
 pnpm dev          # http://localhost:5174, against the API on :8080 (VITE_API_URL)
+pnpm dev:mock     # the same on an in-memory admin API with sample data (src/mock), no backend
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 

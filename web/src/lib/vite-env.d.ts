@@ -11,4 +11,5 @@ interface ImportMetaEnv {
   readonly VITE_MAILBOX_IMAP?: string;
   readonly VITE_HELP_DOMAIN?: string;
   readonly VITE_MOCK?: string;
+  readonly VITE_MOCK_QUIET?: string;
 }

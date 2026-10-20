@@ -3,7 +3,7 @@
 
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { join, resolve } from "node:path";
-import { APP_ID, devArg, devInstanceUrl, isDev, PROTOCOL } from "./env";
+import { APP_ID, devArg, devInstanceUrl, isDev, PROTOCOL, sandboxDir } from "./env";
 import { buildMenu } from "./menu";
 import { cancelOAuth, finishOAuth, startOAuth } from "./oauth";
 import { appPath, externalUrl, normalizeAddress, resolveInstance } from "./origins";
@@ -16,7 +16,8 @@ import { applyTheme, createInstanceWindow, type InstanceWindow, openOutside, rev
 
 app.setName("opendesk");
 if (process.platform === "win32") app.setAppUserModelId(APP_ID);
-if (isDev) app.setPath("userData", join(app.getPath("appData"), "opendesk-dev"));
+if (isDev) app.setPath("userData", sandboxDir ?? join(app.getPath("appData"), "opendesk-dev"));
+if (sandboxDir) app.dock?.hide();
 
 // One running copy: a second launch (or an opendesk:// link on Windows and
 // Linux) hands its arguments to this one.
@@ -25,7 +26,9 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0);
 }
 
-if (isDev && process.platform !== "darwin") {
+if (sandboxDir) {
+  // A recording never takes opendesk:// links from the copy people use.
+} else if (isDev && process.platform !== "darwin") {
   app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [resolve(process.argv[1] ?? ".")]);
 } else {
   app.setAsDefaultProtocolClient(PROTOCOL);

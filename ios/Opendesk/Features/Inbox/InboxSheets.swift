@@ -251,7 +251,7 @@ struct FlowLayout: Layout {
 struct SnoozeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let onPick: (Date) -> Void
-    @State private var custom = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
+    @State private var custom = Calendar.current.date(byAdding: .day, value: 1, to: AppClock.now) ?? AppClock.now
     @State private var showCustom = false
 
     var body: some View {
@@ -277,7 +277,7 @@ struct SnoozeSheet: View {
                         }
                     }
                     Panel(padding: 14) {
-                        DatePicker("Pick a date", selection: $custom, in: Date.now..., displayedComponents: [.date, .hourAndMinute])
+                        DatePicker("Pick a date", selection: $custom, in: AppClock.now..., displayedComponents: [.date, .hourAndMinute])
                             .font(ODFont.sans(15))
                         Button("Snooze until then") { pick(custom) }
                             .buttonStyle(InkButtonStyle(height: 40))

@@ -17,16 +17,19 @@ export async function run(t) {
     ticketId = owner.url().split("/").pop();
   });
 
-  await t.step("triage: suggest and apply all", async () => {
-    await owner.getByRole("button", { name: /Suggest triage/ }).click();
-    const section = owner.getByRole("region", { name: "Triage" }).or(owner.locator('section[aria-label="Triage"]')).first();
-    await section.getByRole("button", { name: "Apply all" }).click();
-    await owner.getByText("Applied the triage suggestion").first().waitFor();
-    const tk = await until(async () => {
+  await t.step("triage: suggest changes and apply all", async () => {
+    // Jev (fake-typesafe.mjs) proposes high priority and sev2 for "no puedo" and reads
+    // the language; applying the untouched proposal writes all of it.
+    const panel = owner.getByRole("region", { name: "Ollie", exact: true });
+    await panel.getByRole("button", { name: /^Suggest changes/ }).click();
+    await panel.getByRole("button", { name: /^Apply Priority: / }).waitFor();
+    await panel.getByRole("button", { name: /^Apply Severity: / }).waitFor();
+    await panel.getByRole("button", { name: "Apply all" }).click();
+    await panel.getByText("Done. The ticket is updated.").waitFor();
+    await until(async () => {
       const x = (await api("GET", `/v1/tickets/${ticketId}`, opts())).json;
-      return x.priority === "high" && x.custom?.language === "es" ? x : null;
+      return x.priority === "high" && x.severity === "sev2" && x.custom?.language === "es" ? x : null;
     }, "triage applied");
-    assert(tk.tags.some((g) => g.name === "login"), "suggested tag created and applied");
   });
 
   await t.step("summary", async () => {
@@ -70,8 +73,9 @@ export async function run(t) {
   });
 
   await t.step("ask about the ticket", async () => {
-    await owner.getByLabel("Ask about this ticket").fill("What has the customer tried?");
-    await owner.getByRole("button", { name: "Ask", exact: true }).click();
+    const ask = owner.getByRole("textbox", { name: "Ask Ollie" });
+    await ask.fill("What has the customer tried?");
+    await ask.press("Enter");
     await owner.getByText("Suggest clearing cookies").first().waitFor({ timeout: 15_000 });
   });
 

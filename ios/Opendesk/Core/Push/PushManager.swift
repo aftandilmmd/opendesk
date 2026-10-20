@@ -37,7 +37,10 @@ final class PushManager: NSObject {
 
     /// The app should offer to turn notifications on (once, at a calm moment).
     var shouldOfferPermission: Bool {
-        authorization == .notDetermined && mode != .off && !Preferences.askedForPush && AppInfo.debugValue("OPENDESK_DEBUG_NO_PUSH_PROMPT") == nil
+        #if DEBUG
+        if DemoMode.isOn { return false }
+        #endif
+        return authorization == .notDetermined && mode != .off && !Preferences.askedForPush && AppInfo.debugValue("OPENDESK_DEBUG_NO_PUSH_PROMPT") == nil
     }
 
     // MARK: Launch
@@ -65,6 +68,13 @@ final class PushManager: NSObject {
 
     /// Signed in and in a workspace: register again if allowed (the server upserts by token).
     func sessionReady() {
+        #if DEBUG
+        // Demo mode never registers with APNs; the device record comes from the demo backend.
+        if DemoMode.isOn {
+            Task { await loadDevice() }
+            return
+        }
+        #endif
         Task {
             await refreshAuthorization()
             if isEnabledOnDevice, mode != .off {
@@ -78,6 +88,9 @@ final class PushManager: NSObject {
     @discardableResult
     func requestPermission() async -> Bool {
         Preferences.askedForPush = true
+        #if DEBUG
+        if DemoMode.isOn { return false }
+        #endif
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .badge, .sound])) ?? false
         await refreshAuthorization()
@@ -115,6 +128,9 @@ final class PushManager: NSObject {
     }
 
     private func registerDevice(token: String) async {
+        #if DEBUG
+        if DemoMode.isOn { return }
+        #endif
         guard let session, session.phase == .ready else { return }
         let api = session.api
         let instance = session.instance

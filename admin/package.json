@@ -6,6 +6,7 @@
   "packageManager": "pnpm@12.10.1",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "VITE_MOCK=1 vite",
     "build": "tsc -b && vite build",
     "build:embed": "tsc -b && ADMIN_BASE=/admin/ vite build",
     "build:pages": "pnpm build && cp ../deploy/cloudflare/pages/admin/_headers ../deploy/cloudflare/pages/admin/_routes.json ../deploy/cloudflare/pages/admin/_worker.js dist/ && node ../deploy/cloudflare/pages/admin/write-config.mjs dist",

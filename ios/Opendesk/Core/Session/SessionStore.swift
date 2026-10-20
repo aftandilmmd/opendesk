@@ -45,6 +45,7 @@ final class SessionStore {
 
     private static func launchInstance() -> Instance {
         #if DEBUG
+        if DemoMode.isOn { return DemoMode.instance }
         if let raw = AppInfo.debugValue("OPENDESK_DEBUG_SERVER") {
             if raw == "local" { return .localDev }
             if let origin = try? InstanceResolver.normalize(raw) {
@@ -277,7 +278,11 @@ final class SessionStore {
     }
 
     private func enterWorkspace(preferred: String?) {
-        if let preferred = AppInfo.debugValue("OPENDESK_DEBUG_WORKSPACE") ?? preferred,
+        var preferred = AppInfo.debugValue("OPENDESK_DEBUG_WORKSPACE") ?? preferred
+        #if DEBUG
+        if DemoMode.isOn, preferred == nil { preferred = DemoSeed.marginID }
+        #endif
+        if let preferred,
            let match = memberships.first(where: { $0.id == preferred || $0.workspace.slug == preferred }) {
             select(match)
         } else if memberships.count == 1, let only = memberships.first {

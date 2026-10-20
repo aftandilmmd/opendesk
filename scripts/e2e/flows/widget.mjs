@@ -23,9 +23,13 @@ export async function run(t) {
   const hostUrl = (extra = {}) => `${HOST}/?${new URLSearchParams({ key, api: cfg.api, ...extra })}`;
 
   await t.step("widget settings: allow the customer site", async () => {
+    // Every workspace starts with a default brand and its first widget: the old
+    // single widget page redirects to that widget's page.
     await owner.goto(cfg.app + "/settings/widget");
-    await owner.locator("#widget-origin").fill(HOST);
-    await owner.getByRole("button", { name: "Add", exact: true }).click();
+    await owner.waitForURL(/\/settings\/brands\/[^/]+\/widgets\/[^/?#]+/);
+    const origins = owner.getByRole("textbox", { name: "Allowed sites" });
+    await origins.fill(HOST);
+    await origins.press("Enter");
     await owner.getByRole("button", { name: "Save changes" }).click();
     await until(async () => (await api("GET", "/v1/widget/settings", opts())).json?.allowed_origins?.includes(HOST), "origin saved");
     const snippet = await owner.locator("textarea, pre, code").filter({ hasText: "widget/v1.js" }).first().innerText().catch(() => "");
@@ -41,7 +45,7 @@ export async function run(t) {
 
   await t.step("Settings > AI: turn on chat answers", async () => {
     await owner.goto(cfg.app + "/settings/ai");
-    const sw = owner.getByRole("switch", { name: "Answer chats from the knowledge base" });
+    const sw = owner.getByRole("switch", { name: "Let Ollie answer chats" });
     if ((await sw.getAttribute("aria-checked")) !== "true") await sw.click();
     await owner.getByRole("button", { name: "Save changes" }).click();
     await owner.getByText("AI settings saved").first().waitFor();
@@ -87,7 +91,7 @@ export async function run(t) {
 
   await t.step("visitor asks for a person: handoff notifies the team", async () => {
     await visitor.getByRole("button", { name: "Talk to a person" }).click();
-    await visitor.locator(".handoff-note").filter({ hasText: "We've let the team know" }).waitFor();
+    await visitor.locator(".handed").filter({ hasText: "A person will reply here" }).waitFor();
     const n = await until(async () => {
       const r = await api("GET", "/v1/notifications", opts());
       return r.json?.data?.find((x) => x.type === "ai_handoff" && x.ticket?.id === ticket.id);

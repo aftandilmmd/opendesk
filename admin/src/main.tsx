@@ -10,6 +10,13 @@ import { router } from "./router";
 configureClient({ baseUrl: config.apiUrl });
 initTheme();
 
+// Mock mode is a build-time constant, written inline so the bundler drops this
+// branch, and the mock chunk with it, from production builds.
+if (import.meta.env.VITE_MOCK === "1") {
+  const { installMock } = await import("./mock");
+  installMock();
+}
+
 // The session is kept alive while the operator works; an idle panel lets it lapse.
 noteActivity();
 for (const ev of ["pointerdown", "keydown"] as const) window.addEventListener(ev, () => noteActivity(), { passive: true, capture: true });

@@ -1,0 +1,3 @@
+node_modules/
+# QA runs, recordings, stills, dev server logs and publish state. Never committed.
+.artifacts/

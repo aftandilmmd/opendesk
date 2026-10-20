@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { CLOUD_ORIGIN, isDev } from "./env";
 import { normalizeAddress, resolveInstance } from "./origins";
 import type { Instance } from "./store";
+import { present } from "./window";
 
 let picker: BrowserWindow | null = null;
 let onChosen: ((i: Instance) => void) | null = null;
@@ -94,7 +95,7 @@ export function showPicker(opts: { current?: Instance; parent?: BrowserWindow | 
   const wc = picker.webContents;
   wc.on("will-navigate", (e) => e.preventDefault());
   wc.setWindowOpenHandler(() => ({ action: "deny" }));
-  picker.once("ready-to-show", () => picker?.show());
+  picker.once("ready-to-show", () => picker && present(picker));
   picker.on("closed", () => {
     picker = null;
     const cb = onCancelled;

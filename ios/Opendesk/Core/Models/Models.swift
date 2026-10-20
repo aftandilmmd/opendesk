@@ -436,7 +436,7 @@ struct Ticket: Codable, Hashable, Sendable, Identifiable {
 
     var isSnoozed: Bool {
         guard let snoozedUntil else { return false }
-        return snoozedUntil > .now
+        return snoozedUntil > AppClock.now
     }
 }
 
@@ -779,7 +779,7 @@ struct Message: Codable, Hashable, Sendable, Identifiable {
         deliveryStatus = "pending"
         deliveryError = ""
         ai = false
-        createdAt = .now
+        createdAt = AppClock.now
     }
 
     var isNote: Bool { kind == .note }

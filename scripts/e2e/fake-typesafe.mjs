@@ -14,7 +14,7 @@ const has = (text, words) => words.some((w) => text.includes(w));
 // level picks a Score level from how alarming the text is (0..n-1).
 function alarm(text) {
   if (has(text, ["outage", "is down", "all users", "data loss", "breach", "everyone", "payments fail", "cannot log in at all"])) return 3;
-  if (has(text, ["cannot", "can't", "broken", "error", "failed", "fails", "charged twice", "refund", "blocked", "urgent"])) return 2;
+  if (has(text, ["cannot", "can't", "broken", "error", "failed", "fails", "charged twice", "refund", "blocked", "urgent", "no puedo", "kann nicht"])) return 2;
   if (has(text, ["how do i", "question", "wondering", "feature", "would be nice", "thanks", "thank you"])) return 0;
   return 1;
 }

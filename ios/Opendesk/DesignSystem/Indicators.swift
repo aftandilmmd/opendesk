@@ -138,7 +138,7 @@ struct PriorityPill: View {
 /// SLA only when it matters: due soon or breached, with the time left (or over).
 struct SLAPill: View {
     let state: SLAState
-    var now: Date = .now
+    var now: Date = AppClock.now
 
     var body: some View {
         let left = state.due.timeIntervalSince(now) / 60
@@ -243,7 +243,7 @@ struct WaitPill: View {
                 .frame(height: 20)
                 .background(Tone.violet.soft, in: Capsule())
             case .urgent:
-                let elapsed = ChatWait.format(context.date.timeIntervalSince(wait.since))
+                let elapsed = ChatWait.format(AppClock.now(at: context.date).timeIntervalSince(wait.since))
                 HStack(spacing: 5) {
                     PingDot(color: .white)
                     Text(compact ? elapsed : "Waiting \(elapsed)")
@@ -265,7 +265,7 @@ struct TicketNumber: View {
     let number: Int
 
     var body: some View {
-        Text("#\(number)")
+        Text(verbatim: "#\(number)")
             .font(ODFont.mono(11.5))
             .monospacedDigit()
             .foregroundStyle(Theme.fg3)

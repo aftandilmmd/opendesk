@@ -3,7 +3,7 @@
 
 import { app, BrowserWindow, clipboard, Menu, nativeTheme, screen, shell, type WebContents } from "electron";
 import { join } from "node:path";
-import { devArg, isDev } from "./env";
+import { devArg, isDev, sandboxDir } from "./env";
 import { appPath, externalUrl } from "./origins";
 import { type Bounds, type Instance, store, type ThemePref } from "./store";
 
@@ -133,6 +133,8 @@ export function createInstanceWindow(instance: Instance, opts: { onClosed: () =>
       navigateOnDragDrop: false,
       spellcheck: true,
       safeDialogs: true,
+      // An invisible sandbox window still paints every frame for the recorder.
+      backgroundThrottling: !sandboxDir,
     },
   });
   if (saved.maximized) win.maximize();
@@ -192,7 +194,7 @@ export function createInstanceWindow(instance: Instance, opts: { onClosed: () =>
     retry = setTimeout(() => !win.isDestroyed() && void win.loadURL(`${instance.appOrigin}/`), 8000);
   });
 
-  win.once("ready-to-show", () => win.show());
+  win.once("ready-to-show", () => present(win));
 
   let saveTimer: NodeJS.Timeout | null = null;
   const saveBounds = () => {
@@ -225,9 +227,18 @@ export function createInstanceWindow(instance: Instance, opts: { onClosed: () =>
   return { win, instance, navigate };
 }
 
+/** Shows a new window; in a sandbox run, without the person at the machine seeing or reaching it. */
+export function present(win: BrowserWindow) {
+  if (!sandboxDir) return win.show();
+  win.setOpacity(0);
+  win.setIgnoreMouseEvents(true);
+  win.showInactive();
+}
+
 /** Focuses a window, restoring it first. */
 export function reveal(win: BrowserWindow | null | undefined) {
   if (!win || win.isDestroyed()) return;
+  if (sandboxDir) return present(win);
   if (win.isMinimized()) win.restore();
   if (!win.isVisible()) win.show();
   win.focus();

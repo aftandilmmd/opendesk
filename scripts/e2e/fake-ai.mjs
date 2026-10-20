@@ -164,10 +164,32 @@ function answerFrom(results) {
   return "Here is what I found. Anything you want me to do with it?";
 }
 
+// --- The widget agent (contracts/agent.md) ------------------------------------------
+// Offered handoff_to_human, it answers from the <knowledge> passages it was given or
+// found with search_knowledge, citing the first, and hands off when asked to.
+
+const KB_ANSWER = "You can reset your password from the sign-in page. Follow the link in the email and choose a new password.";
+
+function widgetTurn(last) {
+  const text = textOf(last);
+  const cite = text.match(/<passage n="(\d+)"/)?.[1];
+  if (last?.role === "tool") {
+    return { text: cite ? `${KB_ANSWER} [${cite}]` : "I could not find that in our help articles. Want me to connect you with someone from the team?" };
+  }
+  if (/call handoff_to_human/.test(text)) {
+    return { text: "A person from the team will reply here.", call: { id: `call_${Math.random().toString(36).slice(2, 10)}`, name: "handoff_to_human", args: { reason: "needs a person" } } };
+  }
+  if (cite) return { text: `${KB_ANSWER} [${cite}]` };
+  const asked = text.match(/<ticket_thread>([\s\S]*?)<\/ticket_thread>/)?.[1] ?? text;
+  const query = asked.toLowerCase().replace(/<[^>]*>/g, " ").replace(/[^a-z ]/g, " ").split(/\s+/).filter((w) => w.length > 3).slice(-4).join(" ") || "password";
+  return { text: "", call: { id: `call_${Math.random().toString(36).slice(2, 10)}`, name: "search_knowledge", args: { query } } };
+}
+
 function agentTurn(j) {
   const msgs = j.messages ?? [];
   const tools = (j.tools ?? []).map((t) => t.function?.name);
   const last = msgs[msgs.length - 1];
+  if (tools.includes("handoff_to_human")) return widgetTurn(last);
   if (last?.role === "tool") {
     const results = [];
     for (let i = msgs.length - 1; i >= 0 && msgs[i].role === "tool"; i--) results.unshift(textOf(msgs[i]));

@@ -89,7 +89,10 @@ export function installMock(): void {
   setTransport((input, init) => dispatch(input, init));
   setSocketFactory(socketFactory);
 
-  if (params.get("mock_quiet") !== "1") startLive();
+  // The simulated activity stays off with ?mock_quiet=1, or for a whole dev server with
+  // VITE_MOCK_QUIET=1 (the QA harness, so stills hold still); ?mock_live=1 turns it back on.
+  const quiet = params.get("mock_quiet") === "1" || import.meta.env.VITE_MOCK_QUIET === "1";
+  if (!quiet || params.get("mock_live") === "1") startLive();
 
   window.__odMock = {
     db,

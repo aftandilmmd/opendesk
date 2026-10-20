@@ -202,6 +202,9 @@ actor APIClient {
         request.accept = "text/event-stream"
         request.timeout = 300
         var urlRequest = try await build(request)
+        #if DEBUG
+        if DemoMode.isOn { return try await DemoBackend.shared.stream(urlRequest) }
+        #endif
         var (bytes, response) = try await session.bytes(for: urlRequest)
         if let http = response as? HTTPURLResponse, http.statusCode == 401 {
             try await refresh()
@@ -296,6 +299,10 @@ actor APIClient {
     }
 
     private func transport(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        #if DEBUG
+        // The demo answers here, so every store and screen runs its real code path.
+        if DemoMode.isOn { return try await DemoBackend.shared.respond(to: request) }
+        #endif
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw APIError.decoding }

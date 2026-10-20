@@ -54,6 +54,9 @@ final class AppEnvironment {
             Task { await self.session.membershipChanged() }
         }
         notifications.onBadge = { count in PushManager.shared.setBadge(count) }
+        #if DEBUG
+        if DemoMode.isOn { router.startDemoLinks() }
+        #endif
     }
 
     // MARK: Workspace lifecycle

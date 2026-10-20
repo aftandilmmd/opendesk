@@ -2,7 +2,12 @@ import Foundation
 
 /// Small, non-secret settings in `UserDefaults`. Tokens never go here (Keychain only).
 enum Preferences {
-    private static var defaults: UserDefaults { .standard }
+    private static var defaults: UserDefaults {
+        #if DEBUG
+        if DemoMode.isOn { return DemoMode.defaults }
+        #endif
+        return .standard
+    }
 
     private enum Key {
         static let instance = "instance"

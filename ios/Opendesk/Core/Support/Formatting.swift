@@ -3,7 +3,7 @@ import Foundation
 /// Display formatting, matching the web's `lib/format.ts`.
 enum Format {
     /// Compact age for dense lists: "now", "5m", "2h", "3d", then a short date.
-    static func relShort(_ date: Date?, now: Date = .now) -> String {
+    static func relShort(_ date: Date?, now: Date = AppClock.now) -> String {
         guard let date else { return "" }
         let seconds = now.timeIntervalSince(date)
         let minutes = Int((seconds / 60).rounded())
@@ -19,7 +19,7 @@ enum Format {
     }
 
     /// "just now", "5 minutes ago".
-    static func relLong(_ date: Date?, now: Date = .now) -> String {
+    static func relLong(_ date: Date?, now: Date = AppClock.now) -> String {
         guard let date else { return "" }
         if now.timeIntervalSince(date) < 45 { return "just now" }
         let formatter = RelativeDateTimeFormatter()
@@ -28,7 +28,7 @@ enum Format {
     }
 
     /// "Oct 6", or "Oct 6, 2024" outside the current year.
-    static func shortDate(_ date: Date, now: Date = .now) -> String {
+    static func shortDate(_ date: Date, now: Date = AppClock.now) -> String {
         let calendar = Calendar.current
         if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
             return date.formatted(.dateTime.month(.abbreviated).day())
@@ -48,7 +48,7 @@ enum Format {
     }
 
     /// "Today", "Yesterday", "Monday, Oct 6", or "Oct 6, 2024".
-    static func dayLabel(_ date: Date, now: Date = .now) -> String {
+    static func dayLabel(_ date: Date, now: Date = AppClock.now) -> String {
         let calendar = Calendar.current
         if calendar.isDate(date, inSameDayAs: now) { return "Today" }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
@@ -95,7 +95,7 @@ struct SLAState: Equatable, Sendable {
     var due: Date
     var isFirstResponse: Bool
 
-    static func of(_ ticket: Ticket, now: Date = .now) -> SLAState? {
+    static func of(_ ticket: Ticket, now: Date = AppClock.now) -> SLAState? {
         guard let sla = ticket.sla, !ticket.status.isDone else { return nil }
         let firstResponse = ticket.firstRespondedAt == nil && sla.firstResponseDueAt != nil
         guard let due = firstResponse ? sla.firstResponseDueAt : sla.resolutionDueAt else { return nil }
@@ -104,7 +104,7 @@ struct SLAState: Equatable, Sendable {
         return SLAState(kind: kind, due: due, isFirstResponse: firstResponse)
     }
 
-    func label(now: Date = .now) -> String {
+    func label(now: Date = AppClock.now) -> String {
         let left = due.timeIntervalSince(now) / 60
         switch kind {
         case .breached: return left < 0 ? "Overdue \(Format.minutes(left))" : "Breached"
@@ -128,7 +128,7 @@ enum SnoozePreset: CaseIterable, Identifiable {
         }
     }
 
-    func date(from now: Date = .now, calendar: Calendar = .current) -> Date {
+    func date(from now: Date = AppClock.now, calendar: Calendar = .current) -> Date {
         let startOfHour = calendar.dateInterval(of: .hour, for: now)?.start ?? now
         switch self {
         case .oneHour:
@@ -147,7 +147,7 @@ enum SnoozePreset: CaseIterable, Identifiable {
         }
     }
 
-    func subtitle(from now: Date = .now) -> String {
+    func subtitle(from now: Date = AppClock.now) -> String {
         let date = date(from: now)
         let calendar = Calendar.current
         if calendar.isDate(date, inSameDayAs: now) { return Format.clock(date) }
@@ -167,7 +167,7 @@ struct ChatWait: Equatable, Sendable {
     /// How long Ollie may take before a waiting visitor needs a person.
     static let ollieGrace: TimeInterval = 60
 
-    static func of(_ ticket: Ticket, agentOn: Bool, now: Date = .now) -> ChatWait? {
+    static func of(_ ticket: Ticket, agentOn: Bool, now: Date = AppClock.now) -> ChatWait? {
         guard ticket.channel == .chat, !ticket.spam, ticket.status == .open || ticket.status == .pending else { return nil }
         let handedOff = ticket.aiHandedOff
         let handoffAt = ticket.custom["ai_handoff_at"]?.string.flatMap(parseDate)

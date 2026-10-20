@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/qa/hooks/pretool.ts\"; [ -f \"$f\" ] || exit 0; exec node \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/qa/hooks/stop.ts\"; [ -f \"$f\" ] || exit 0; exec node \"$f\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

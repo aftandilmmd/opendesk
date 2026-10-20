@@ -134,7 +134,7 @@ final class NotificationsStore {
     }
 
     func markAllRead() async {
-        let now = Date.now
+        let now = AppClock.now
         for index in items.indices where items[index].isUnread { items[index].readAt = now }
         if filter == .unread { items = [] }
         unread = 0
@@ -144,7 +144,7 @@ final class NotificationsStore {
     }
 
     private func setRead(ids: [String]) {
-        let now = Date.now
+        let now = AppClock.now
         var changed = 0
         for index in items.indices where ids.contains(items[index].id) && items[index].isUnread {
             items[index].readAt = now

@@ -13,7 +13,7 @@ struct TicketRow: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(now: context.date)
+            content(now: AppClock.now(at: context.date))
         }
     }
 

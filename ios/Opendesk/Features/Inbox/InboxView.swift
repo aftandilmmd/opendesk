@@ -292,7 +292,7 @@ struct WaitingBanner: View {
     let open: (Ticket) -> Void
 
     var body: some View {
-        let longest = tickets.min { ($0.waitingSince ?? .now) < ($1.waitingSince ?? .now) }
+        let longest = tickets.min { ($0.waitingSince ?? AppClock.now) < ($1.waitingSince ?? AppClock.now) }
         Button {
             if let longest { open(longest) }
         } label: {

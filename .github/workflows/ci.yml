@@ -43,6 +43,7 @@ jobs:
       docs: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.docs }}
       realtime: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.realtime }}
       e2e: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.e2e }}
+      qa: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.qa }}
       images: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.images }}
       installer: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.installer }}
       terraform: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.terraform }}
@@ -133,6 +134,9 @@ jobs:
               - 'scripts/e2e/**'
               - 'brand/**'
               - 'contracts/**'
+            qa:
+              - *shared
+              - 'qa/**'
 
   go:
     name: Go
@@ -363,6 +367,34 @@ jobs:
       - name: test
         run: mix test
 
+  # The QA harness and the gate the Proof workflow runs (qa/README.md). Recording is local; CI
+  # checks the code, the gate's rules, and that every flow still loads.
+  qa:
+    name: QA harness
+    needs: changes
+    if: needs.changes.outputs.qa == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qa
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: qa/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Every flow loads
+        run: pnpm exec playwright test --list
+
   e2e:
     name: End-to-end
     needs: changes
@@ -441,10 +473,7 @@ jobs:
           curl -sf http://localhost:5173/ || { echo "--- web log ---"; cat /tmp/opendesk-web.log; exit 1; }
       - name: Run the e2e suite
         env:
-          # widget (the brand/multi-widget redesign) and ai (the Ollie panel
-          # rename) need their flows updated to match; add each back to
-          # E2E_ONLY as it's fixed.
-          E2E_ONLY: account,inbox,tickets,kb,settings,danger
+          E2E_ONLY: account,inbox,tickets,kb,widget,ai,settings,danger
         run: cd scripts/e2e && bash run.sh
       - name: Logs on failure
         if: failure()
@@ -642,7 +671,7 @@ jobs:
   ci-status:
     name: CI status
     runs-on: ubuntu-latest
-    needs: [changes, secrets, go, migrations, web, admin, site, docs, realtime, e2e, images, installer, terraform, cloudflare, help-worker]
+    needs: [changes, secrets, go, migrations, web, admin, site, docs, realtime, e2e, qa, images, installer, terraform, cloudflare, help-worker]
     if: always()
     steps:
       # The one check to require in branch protection. Skipped jobs pass;

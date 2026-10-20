@@ -135,8 +135,11 @@ final class RealtimeService {
         self.api = api
         self.workspaceID = workspaceID
         self.userID = userID
-        status = .connecting
         lastSeq = nil
+        #if DEBUG
+        if DemoMode.isOn { return startDemo() }
+        #endif
+        status = .connecting
         let instance = api.instance
         let socket = PhoenixSocket { [api] in
             let token: RealtimeToken = try await api.post("v1/realtime/token")
@@ -178,6 +181,27 @@ final class RealtimeService {
         catching = false
         status = .idle
     }
+
+    #if DEBUG
+    /// Demo mode has no socket: the demo backend hands over the events its own
+    /// changes publish, and teammates sit on a few tickets as on a live server.
+    private func startDemo() {
+        status = .live
+        let workspace = workspaceID
+        let deliver: @Sendable (Envelope) -> Void = { [weak self] envelope in
+            Task { @MainActor in
+                guard let self, self.workspaceID == workspace, envelope.workspaceID == workspace else { return }
+                self.applyOne(envelope)
+            }
+        }
+        Task { [weak self] in
+            await DemoBackend.shared.listen(deliver)
+            let viewers = await DemoBackend.shared.presence(workspace: workspace)
+            guard let self, self.workspaceID == workspace, self.status == .live else { return }
+            self.presence = viewers
+        }
+    }
+    #endif
 
     /// The app came back to the foreground: sockets die while suspended.
     func resume() {

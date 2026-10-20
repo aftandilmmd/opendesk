@@ -1,6 +1,7 @@
 // OS notifications and the dock/taskbar badge.
 
 import { app, type BrowserWindow, nativeImage, Notification } from "electron";
+import { sandboxDir } from "./env";
 
 // Shown notifications are kept referenced until clicked or closed, or Windows
 // may collect them before the click arrives.
@@ -9,6 +10,7 @@ const live = new Map<string, Notification>();
 export type NotifyInput = { id: string; title: string; body?: string; path?: string };
 
 export function showNotification(n: NotifyInput, onClick: (path: string | undefined) => void) {
+  if (sandboxDir) return console.log(`notification: ${n.title}${n.body ? `: ${n.body}` : ""}`);
   if (!Notification.isSupported()) return;
   live.get(n.id)?.close();
   // Silent: the app plays its own sounds, each on a switch the person controls.
@@ -59,7 +61,7 @@ function overlayDot(): Electron.NativeImage {
 let lastCount = -1;
 
 export function setBadge(count: number, win: BrowserWindow | null) {
-  if (count === lastCount) return;
+  if (sandboxDir || count === lastCount) return;
   lastCount = count;
   if (process.platform === "win32") {
     win?.setOverlayIcon(count > 0 ? overlayDot() : null, count > 0 ? `${count} unread` : "");

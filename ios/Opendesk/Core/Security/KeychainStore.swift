@@ -8,6 +8,9 @@ enum KeychainStore {
     private static let service = "sh.opendesk.app"
 
     static func set(_ value: String, for account: String) {
+        #if DEBUG
+        if DemoMode.isOn { return DemoMode.setKeychainValue(value, for: account) }
+        #endif
         let data = Data(value.utf8)
         let query = baseQuery(account)
         let attributes: [String: Any] = [
@@ -24,6 +27,9 @@ enum KeychainStore {
     }
 
     static func get(_ account: String) -> String? {
+        #if DEBUG
+        if DemoMode.isOn { return DemoMode.keychainValue(account) }
+        #endif
         var query = baseQuery(account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -35,6 +41,9 @@ enum KeychainStore {
     }
 
     static func remove(_ account: String) {
+        #if DEBUG
+        if DemoMode.isOn { return DemoMode.setKeychainValue(nil, for: account) }
+        #endif
         SecItemDelete(baseQuery(account) as CFDictionary)
     }
 

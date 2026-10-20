@@ -139,6 +139,10 @@ struct InstanceResolver: Sendable {
     /// (API on the same origin, gateway at `/socket`). Returns the instance and its sign-in options.
     func resolve(_ raw: String) async throws -> (Instance, AuthConfig) {
         let origin = try Self.normalize(raw)
+        #if DEBUG
+        // Any address is the demo server: nothing leaves the device.
+        if DemoMode.isOn { return (DemoMode.instance, DemoMode.authConfig) }
+        #endif
         if origin == Instance.cloudAppOrigin {
             return (Instance.cloud, try await authConfig(for: Instance.cloud.apiURL))
         }
@@ -158,6 +162,9 @@ struct InstanceResolver: Sendable {
     }
 
     func runtimeConfig(at origin: URL) async throws -> RuntimeConfig {
+        #if DEBUG
+        if DemoMode.isOn { return RuntimeConfig(apiUrl: DemoMode.instance.apiURL.absoluteString, gatewayUrl: nil, selfHosted: false, turnstileSiteKey: nil) }
+        #endif
         var request = URLRequest(url: origin.appending(path: "config.json"))
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -167,6 +174,9 @@ struct InstanceResolver: Sendable {
     }
 
     func authConfig(for apiURL: URL) async throws -> AuthConfig {
+        #if DEBUG
+        if DemoMode.isOn { return DemoMode.authConfig }
+        #endif
         var request = URLRequest(url: apiURL.appending(path: "v1/auth/config"))
         request.timeoutInterval = 12
         request.setValue("application/json", forHTTPHeaderField: "Accept")
