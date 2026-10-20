@@ -46,13 +46,15 @@ type WidgetSettings struct {
 	Topics         []WidgetTopic `json:"topics"`
 	OfflineMessage string        `json:"offline_message"`
 	EmailFollowUp  bool          `json:"email_follow_up"`
+	// Attachments lets visitors send files.
+	Attachments bool `json:"attachments"`
 }
 
 // DefaultWidgetSettings are the settings of a workspace that never changed them.
 func DefaultWidgetSettings() WidgetSettings {
 	return WidgetSettings{Greeting: "Hi! How can we help?", Enabled: true, AllowedOrigins: []string{},
 		Theme: "auto", Position: "right", OffsetX: 20, OffsetY: 20, Launcher: "icon", Radius: "soft",
-		ShowTeam: true, Suggestions: []string{}, Topics: []WidgetTopic{}, EmailFollowUp: true}
+		ShowTeam: true, Suggestions: []string{}, Topics: []WidgetTopic{}, EmailFollowUp: true, Attachments: true}
 }
 
 // UnmarshalJSON fills keys missing from a stored document with their defaults.

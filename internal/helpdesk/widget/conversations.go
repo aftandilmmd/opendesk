@@ -164,7 +164,7 @@ func (h *handler) registerConversations(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "widget-create-conversation", Method: http.MethodPost, Path: "/v1/widget/conversations",
 		Summary: "Start a conversation", Tags: []string{"Widget"}, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *widgetCreateInput) (*struct{ Body created }, error) {
-			p, err := h.visitor(ctx, in.Origin)
+			p, g, err := h.visitorWidget(ctx, in.Origin)
 			if err != nil {
 				return nil, httpx.Wrap(err)
 			}
@@ -178,6 +178,9 @@ func (h *handler) registerConversations(api huma.API) {
 			attIDs, err := hd.ParseAttachmentIDs(in.Body.AttachmentIDs)
 			if err != nil {
 				return nil, err
+			}
+			if len(attIDs) > 0 && !g.Settings.Attachments {
+				return nil, errAttachmentsOff
 			}
 			pageURL := cleanPageURL(in.Body.PageURL)
 			out := &struct{ Body created }{}
@@ -298,7 +301,7 @@ func (h *handler) registerConversations(api huma.API) {
 			Origin string `header:"Origin"`
 			Body   widgetMessageBody
 		}) (*struct{ Body domain.Message }, error) {
-			p, err := h.visitor(ctx, in.Origin)
+			p, g, err := h.visitorWidget(ctx, in.Origin)
 			if err != nil {
 				return nil, httpx.Wrap(err)
 			}
@@ -312,6 +315,9 @@ func (h *handler) registerConversations(api huma.API) {
 			attIDs, err := hd.ParseAttachmentIDs(in.Body.AttachmentIDs)
 			if err != nil {
 				return nil, err
+			}
+			if len(attIDs) > 0 && !g.Settings.Attachments {
+				return nil, errAttachmentsOff
 			}
 			var msg domain.Message
 			err = h.d.DB.Tx(ctx, func(tx pgx.Tx) error {

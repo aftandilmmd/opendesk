@@ -44,6 +44,7 @@ type widgetSettingsPatch struct {
 	Topics         *[]topicIn `json:"topics,omitempty" maxItems:"20" doc:"At most 8; asked before the first message, the pick routes the conversation"`
 	OfflineMessage *string    `json:"offline_message,omitempty" maxLength:"1000" doc:"Up to 300 characters; \"\" = the translated default"`
 	EmailFollowUp  *bool      `json:"email_follow_up,omitempty"`
+	Attachments    *bool      `json:"attachments,omitempty"`
 }
 
 type topicIn struct {
@@ -183,6 +184,10 @@ func applyPatch(ctx context.Context, q db.Querier, wid uuid.UUID, w hd.WidgetSet
 	if b.EmailFollowUp != nil {
 		w.EmailFollowUp = *b.EmailFollowUp
 		fields = append(fields, "email_follow_up")
+	}
+	if b.Attachments != nil {
+		w.Attachments = *b.Attachments
+		fields = append(fields, "attachments")
 	}
 	if b.OfflineMessage != nil {
 		m, err := cleanText("offline_message", *b.OfflineMessage, 300)

@@ -58,21 +58,27 @@ func checkOrigin(w hd.WidgetSettings, origin string) error {
 // visitor resolves the visitor, checks their session's widget is enabled and the
 // request origin is one it allows.
 func (h *handler) visitor(ctx context.Context, origin string) (*auth.Principal, error) {
+	p, _, err := h.visitorWidget(ctx, origin)
+	return p, err
+}
+
+// visitorWidget is visitor that also returns the session's widget.
+func (h *handler) visitorWidget(ctx context.Context, origin string) (*auth.Principal, widgetRow, error) {
 	p, err := auth.RequireVisitor(ctx)
 	if err != nil {
-		return nil, err
+		return nil, widgetRow{}, err
 	}
 	g, err := loadVisitorWidget(ctx, h.d.DB.Pool, p)
 	if err != nil {
-		return nil, err
+		return nil, g, err
 	}
 	if !g.Settings.Enabled {
-		return nil, errWidgetDisabled
+		return nil, g, errWidgetDisabled
 	}
 	if err := checkOrigin(g.Settings, origin); err != nil {
-		return nil, err
+		return nil, g, err
 	}
-	return p, nil
+	return p, g, nil
 }
 
 func (h *handler) allowWrite(p *auth.Principal, bucket string, limit int) error {
