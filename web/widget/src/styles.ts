@@ -388,6 +388,29 @@ a.chip:hover { border-color: var(--line-2); }
 .pending-files .chip { height: 26px; animation: rise .16s var(--ease) both; }
 .pending-files .chip button { color: var(--fg-3); display: grid; place-items: center; border-radius: 3px; }
 .pending-files .chip button:hover { color: var(--fg); }
+/* Voice: the recording bar inside the field, a pending recording above it, and the player. */
+.pending-voice { display: flex; animation: rise .16s var(--ease) both; }
+.pending-voice .voice { flex: 1; width: auto; padding-inline-end: 4px; }
+.rec-bar { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; gap: 8px; font-size: 12.5px; animation: fade .12s ease-out; }
+.rec-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--danger); animation: rec-pulse 1.2s ease-in-out infinite; }
+@keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.rec-time, .rec-max { font-family: var(--mono); font-variant-numeric: tabular-nums; flex: none; }
+.rec-time { color: var(--fg); }
+.rec-max { color: var(--fg-4); }
+.rec-track, .voice-track { flex: 1; min-width: 24px; height: 4px; border-radius: 2px; background: var(--bg-2); overflow: hidden; }
+.rec-track span, .voice-track span { display: block; height: 100%; border-radius: inherit; background: var(--danger); transition: width .1s linear; }
+.rec-stop { width: 30px; height: 30px; flex: none; border-radius: var(--r-ctl, 8px); display: grid; place-items: center; background: var(--danger); color: #fff; transition: transform .12s, filter .12s; }
+.rec-stop:hover { filter: brightness(1.08); }
+.rec-stop:active { transform: scale(.92); }
+.voice { display: flex; align-items: center; gap: 8px; width: 220px; max-width: 100%; height: 36px; padding-inline: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); }
+.voice-del { width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--fg-3); transition: background .12s, color .12s; }
+.voice-del:hover { background: var(--danger-soft); color: var(--danger); }
+.voice-play { width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-fg); transition: transform .12s; }
+.voice-play:active { transform: scale(.92); }
+.voice-track { cursor: pointer; }
+.voice-track span { background: var(--accent); }
+.voice-time { font-family: var(--mono); font-size: 11px; color: var(--fg-3); font-variant-numeric: tabular-nums; flex: none; }
+.voice audio { display: none; }
 .cbar {
   display: flex; align-items: flex-end; gap: 4px; padding: 5px; padding-inline-start: 12px;
   border: 1px solid var(--line); border-radius: var(--r-bar, 10px); background: var(--bg);
@@ -397,6 +420,8 @@ a.chip:hover { border-color: var(--line-2); }
 .cbar:focus-within { border-color: var(--fg-4); box-shadow: 0 0 0 3px var(--ring); }
 .cbar.off { background: var(--bg-3); }
 .cbar .icon-btn { width: 30px; height: 30px; }
+.cbar.lead { padding-inline-start: 5px; }
+.cbar.lead .input-wrap { margin-inline-start: 2px; }
 .input-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 textarea.input {
   flex: 1; width: 100%; resize: none; border: 0; background: transparent; font-size: 14px; line-height: 20px; padding: 5px 0;

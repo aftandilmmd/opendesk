@@ -6,8 +6,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { aiHandling, isAiAnswer, latestAiAnswer, teamReplied } from "./ai";
 import { canAttach, fileProblem, readBot } from "./config";
 import { NEW, type Controller } from "./controller";
+import { canRecord, clock, useRecorder, VoicePlayer, type Recording } from "./voice";
 import { current, dayLabel, isRtl, relTime, t } from "./i18n";
-import { Arrow, Back, ChatIc, Clip, Clock, Down, Ext, FileIc, OdMark, Up, X } from "./icons";
+import { Arrow, Back, ChatIc, Clip, Clock, Down, Ext, FileIc, Mic, OdMark, StopIc, Trash, Up, X } from "./icons";
 import { repliesFor, type LiveReply } from "./live";
 import { AiMessage, AvatarStack, BotGreeting, Bubble, Dots, HandedOff, LiveReplyView, reducedMotion, type Offer } from "./messages";
 import { primeSound } from "./sound";
@@ -726,7 +727,15 @@ function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const cfg = useStore(c.store).config;
   const attachments = canAttach(cfg);
-  const ready = !disabled && (!!text.trim() || files.length > 0);
+  const maxVoice = cfg?.voice_max_seconds ?? 60;
+  const [voice, setVoice] = useState<Recording | null>(null);
+  const recorder = useRecorder(maxVoice, setVoice);
+  const recording = recorder.phase === "recording";
+  const mic = cfg?.voice_messages === true && canRecord();
+  const ready = !disabled && !recording && (!!text.trim() || files.length > 0 || !!voice);
+
+  // A recording let go of (deleted, sent, or the thread left) frees its audio.
+  useEffect(() => () => voice && URL.revokeObjectURL(voice.url), [voice]);
 
   useEffect(() => {
     if (focusOn && !disabled) ta.current?.focus({ preventScroll: true });
@@ -742,18 +751,32 @@ function Composer({
 
   const send = () => {
     if (!ready) return;
-    void c.send(text, files);
+    void c.send(text, voice ? [...files, voice.file] : files);
     setText("");
     setFiles([]);
+    setVoice(null);
     setFileNote("");
     ta.current?.focus();
   };
 
   return (
     <div class="composer">
-      {fileNote && (
+      {(fileNote || recorder.error) && (
         <div class="err" role="alert">
-          {fileNote}
+          {recorder.error || fileNote}
+        </div>
+      )}
+      {voice && (
+        <div class="pending-voice">
+          <VoicePlayer
+            src={voice.url}
+            seconds={voice.seconds}
+            action={
+              <button class="voice-del" aria-label={t("deleteRecording")} onClick={() => setVoice(null)}>
+                <Trash />
+              </button>
+            }
+          />
         </div>
       )}
       {files.length > 0 && (
@@ -769,40 +792,8 @@ function Composer({
           ))}
         </div>
       )}
-      <div class={`cbar${disabled ? " off" : ""}`}>
-        <div class="input-wrap">
-          <textarea
-            ref={ta}
-            class="input"
-            rows={1}
-            value={text}
-            style={{ height: `${height}px`, overflowY: height >= MAX_INPUT ? "auto" : "hidden" }}
-            disabled={disabled}
-            placeholder={disabled ? (hint ?? t("placeholder")) : t("placeholder")}
-            aria-label={t("message")}
-            dir="auto"
-            onInput={(e) => {
-              setText(e.currentTarget.value);
-              c.typing();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            onPaste={(e) => {
-              const f = e.clipboardData?.files;
-              if (attachments && f && f.length) {
-                e.preventDefault();
-                addFiles(f);
-              }
-            }}
-          />
-          {/* After the field, and disabled, so focus and selectors never land on it. */}
-          <textarea ref={mirror} class="input mirror" rows={1} tabIndex={-1} aria-hidden="true" disabled />
-        </div>
-        {attachments && (
+      <div class={`cbar${disabled ? " off" : ""}${attachments && !recording ? " lead" : ""}`}>
+        {attachments && !recording && (
           <>
             <input
               ref={picker}
@@ -820,9 +811,71 @@ function Composer({
             </button>
           </>
         )}
-        <button class={`send${ready ? " ready" : ""}`} aria-label={t("send")} disabled={!ready} onClick={send}>
-          <Up />
-        </button>
+        {recording ? (
+          <div class="rec-bar" role="timer" aria-label={t("recording")}>
+            <span class="rec-dot" aria-hidden="true" />
+            <span class="rec-time">{clock(recorder.elapsed)}</span>
+            <div class="rec-track" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, (recorder.elapsed / maxVoice) * 100)}%` }} />
+            </div>
+            <span class="rec-max">{clock(maxVoice)}</span>
+          </div>
+        ) : (
+          <div class="input-wrap">
+            <textarea
+              ref={ta}
+              class="input"
+              rows={1}
+              value={text}
+              style={{ height: `${height}px`, overflowY: height >= MAX_INPUT ? "auto" : "hidden" }}
+              disabled={disabled}
+              placeholder={disabled ? (hint ?? t("placeholder")) : t("placeholder")}
+              aria-label={t("message")}
+              dir="auto"
+              onInput={(e) => {
+                setText(e.currentTarget.value);
+                c.typing();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              onPaste={(e) => {
+                const f = e.clipboardData?.files;
+                if (attachments && f && f.length) {
+                  e.preventDefault();
+                  addFiles(f);
+                }
+              }}
+            />
+            {/* After the field, and disabled, so focus and selectors never land on it. */}
+            <textarea ref={mirror} class="input mirror" rows={1} tabIndex={-1} aria-hidden="true" disabled />
+          </div>
+        )}
+        {recording ? (
+          <>
+            <button class="rec-stop" aria-label={t("stopRecording")} onClick={recorder.stop}>
+              <StopIc />
+            </button>
+            <button class="icon-btn" aria-label={t("cancelRecording")} onClick={recorder.cancel}>
+              {X(16)}
+            </button>
+          </>
+        ) : (
+          mic &&
+          !voice && (
+            <button class="icon-btn" aria-label={t("recordVoice")} disabled={disabled || recorder.phase === "asking"} onClick={() => void recorder.start()}>
+              <Mic />
+            </button>
+          )
+        )}
+        {!recording && (
+          <button class={`send${ready ? " ready" : ""}`} aria-label={t("send")} disabled={!ready} onClick={send}>
+            <Up />
+          </button>
+        )}
       </div>
     </div>
   );
