@@ -92,7 +92,7 @@ func TestWidgetsCRUD(t *testing.T) {
 		t.Fatal(w.Install.Snippet)
 	}
 	st := w.settings(t)
-	if st.Greeting != "Docs help" || !st.EmailFollowUp || !st.Attachments || len(st.FileTypes) < 10 || len(st.Topics) != 2 || !strings.HasPrefix(st.Topics[0].ID, "tp_") ||
+	if st.Greeting != "Docs help" || !st.EmailFollowUp || !st.Attachments || st.FileTypes == nil || len(st.FileTypes) != 0 || len(st.Topics) != 2 || !strings.HasPrefix(st.Topics[0].ID, "tp_") ||
 		st.Topics[1].ID != "bugs" || st.Topics[0].TeamID == nil || st.Topics[1].TeamID != nil {
 		t.Fatalf("settings %s", w.Settings)
 	}
@@ -115,7 +115,6 @@ func TestWidgetsCRUD(t *testing.T) {
 		{"settings": map[string]any{"topics": []map[string]any{{"label": "1a"}, {"label": "2a"}, {"label": "3a"}, {"label": "4a"},
 			{"label": "5a"}, {"label": "6a"}, {"label": "7a"}, {"label": "8a"}, {"label": "9a"}}}},
 		{"settings": map[string]any{"offline_message": strings.Repeat("a", 301)}},
-		{"settings": map[string]any{"attachment_types": []string{}}},
 		{"settings": map[string]any{"attachment_types": []string{"png", "svg"}}},
 		{"settings": map[string]any{"attachment_types": []string{"exe"}}},
 		{"brand_id": other.BrandID.String()},

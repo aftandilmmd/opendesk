@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/useopendesk/opendesk/internal/db"
 	"github.com/useopendesk/opendesk/internal/domain"
@@ -123,7 +124,7 @@ type Upload struct {
 	Filename          string
 	Size              int64
 	Body              io.Reader
-	// Types limits the upload to these FileTypes ids; nil takes any file but a program.
+	// Types limits the upload to these FileTypes ids; empty takes any file but a program.
 	Types []string
 }
 
@@ -146,8 +147,8 @@ func SaveUpload(ctx context.Context, st storage.Storage, q db.Querier, up Upload
 	if IsExecutable(head, filename) {
 		return domain.Attachment{}, httpx.E(422, "file_type_refused", "Executable files and scripts cannot be attached.")
 	}
-	if up.Types != nil && !FileTypeAllowed(head, filename, up.Types) {
-		return domain.Attachment{}, httpx.E(422, "file_type_not_allowed", "This type of file can't be sent here.")
+	if len(up.Types) > 0 && !FileTypeAllowed(head, filename, up.Types) {
+		return domain.Attachment{}, errFileTypeNotAllowed
 	}
 	ct := DetectType(head, filename)
 	id := ids.New()
@@ -168,6 +169,45 @@ func SaveUpload(ctx context.Context, st storage.Storage, q db.Querier, up Upload
 		return domain.Attachment{}, fmt.Errorf("insert attachment: %w", err)
 	}
 	return domain.Attachment{ID: id, Filename: filename, ContentType: ct, SizeBytes: counter.n, URL: domain.AttachmentURL(id)}, nil
+}
+
+var errFileTypeNotAllowed = httpx.E(422, "file_type_not_allowed", "This type of file can't be sent here.")
+
+// CheckAttachmentTypes checks uploads about to be attached against types (FileTypes ids),
+// by their names and stored bytes, so a file uploaded under other rules is held to these;
+// empty types take any.
+func CheckAttachmentTypes(ctx context.Context, st storage.Storage, q db.Querier, wid uuid.UUID, attIDs []uuid.UUID, types []string) error {
+	if len(types) == 0 || len(attIDs) == 0 {
+		return nil
+	}
+	rows, err := q.Query(ctx, `SELECT filename, storage_key FROM attachments WHERE workspace_id = $1 AND id = ANY($2)`, wid, attIDs)
+	if err != nil {
+		return err
+	}
+	type file struct{ name, key string }
+	files, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (file, error) {
+		var f file
+		return f, r.Scan(&f.name, &f.key)
+	})
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		body, err := st.Get(ctx, f.key)
+		if err != nil {
+			return fmt.Errorf("read attachment: %w", err)
+		}
+		head := make([]byte, 512)
+		n, err := io.ReadFull(body, head)
+		_ = body.Close()
+		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+			return fmt.Errorf("read attachment: %w", err)
+		}
+		if !FileTypeAllowed(head[:n], f.name, types) {
+			return errFileTypeNotAllowed
+		}
+	}
+	return nil
 }
 
 type countingReader struct {

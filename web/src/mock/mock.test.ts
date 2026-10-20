@@ -25,12 +25,13 @@ describe("mock backend", () => {
   });
 
   it("limits the widget's files to the picked types", async () => {
-    expect((await call("GET", "/v1/widget/settings")).body.attachment_types).toContain("pdf");
-    for (const bad of [[], ["svg"], ["png", "exe"], "png"]) {
+    expect((await call("GET", "/v1/widget/settings")).body.attachment_types).toEqual([]);
+    for (const bad of [["svg"], ["png", "exe"], "png"]) {
       expect((await call("PATCH", "/v1/widget/settings", { attachment_types: bad })).status, JSON.stringify(bad)).toBe(422);
     }
     const w = (await call("PATCH", "/v1/widget/settings", { attachments: true, attachment_types: ["pdf", "jpg", "pdf"] })).body;
     expect(w.attachment_types).toEqual(["jpg", "pdf"]);
+    expect((await call("PATCH", "/v1/widget/settings", { attachment_types: [] })).body.attachment_types).toEqual([]);
   });
 
   it("breaks reports down by team and brand, and narrows them", async () => {

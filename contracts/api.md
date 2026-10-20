@@ -689,7 +689,7 @@ interface WidgetSettings {
   offline_message: string               // up to 300 chars, plain text with newlines; "" = the translated default
   email_follow_up: boolean              // default true: agents' chat replies also go by email to a visitor with an email who is not on the page (contracts/teams.md "Chat follow-up")
   attachments: boolean                  // default true: visitors may send files
-  attachment_types: string[]            // ids of the file type catalog below visitors may send; default every one; at least one (422 otherwise)
+  attachment_types: string[]            // ids of the file type catalog below visitors may send; default [] = any file but programs and scripts
 }
 
 // GET /v1/widget/config. Public; Origin checked against the widget's allowed_origins.
@@ -706,7 +706,7 @@ interface WidgetConfig {
   title: string                         // the widget's title, else the brand name
   subtitle: string; suggestions: string[]; sound: boolean
   attachments: boolean                  // visitors may send files; the widget hides attaching while false
-  attachment_extensions: string[]       // extensions of the widget's attachment_types ([] while attachments is false), for the file picker
+  attachment_extensions: string[] | null // extensions of the widget's attachment_types, for the file picker; null = any file but programs and scripts; [] while attachments is false
   team: { name: string /* first name */; avatar_url: string | null }[]  // up to 3 non-viewer members of the widget's team (else of the workspace), available first; [] when show_team is off
   ai_answers: boolean                   // the AI agent handles new conversations (contracts/agent.md)
   bot: { id: string | null; name: string; role: string; avatar_url: string /* a PNG of the look, or the picture */; look: BotLook; greeting: string /* "" = greeting */ }
@@ -720,14 +720,16 @@ interface WidgetConfig {
 
 File types a widget may take (`attachment_types`; `internal/helpdesk/hd/filetypes.go`, mirrored in
 `web/src/components/widget/fileTypes.ts`). A visitor's upload is taken only when its extension is one of a
-picked type's and its first bytes are that type's; anything else is `422 file_type_not_allowed`. Programs
-and scripts are refused whatever they are named (`422 file_type_refused`), and agents' uploads are not
-limited by a widget.
+picked type's and its first bytes are that type's; anything else is `422 file_type_not_allowed`, at upload
+and again, by the stored bytes, when a message or new conversation attaches it. With no types picked any
+file is taken. Programs and scripts are refused whatever they are named (`422 file_type_refused`), and
+agents' uploads are not limited by a widget. Stored ids this version does not know are dropped; a list of
+only those takes no file.
 
 | group | id: extensions, leading bytes |
 | --- | --- |
 | image | `png`: .png, PNG signature; `jpg`: .jpg .jpeg, `FF D8 FF`; `gif`: .gif, `GIF87a`/`GIF89a`; `webp`: .webp, RIFF `WEBP`; `heic`: .heic .heif, `ftyp` with a HEIF brand |
-| document | `pdf`: .pdf, `%PDF-`; `txt`: .txt and `csv`: .csv, UTF-8 without NUL; `rtf`: .rtf, `{\rtf`; `doc`: .doc, OLE; `docx`: .docx and `odt`: .odt, ZIP |
+| document | `pdf`: .pdf, `%PDF-`; `txt`: .txt and `csv`: .csv, text without control characters (any 8-bit encoding, or UTF-16 with a byte order mark); `rtf`: .rtf, `{\rtf`; `doc`: .doc, OLE; `docx`: .docx and `odt`: .odt, ZIP |
 | spreadsheet | `xls`: .xls, OLE; `xlsx`: .xlsx and `ods`: .ods, ZIP |
 | presentation | `ppt`: .ppt, OLE; `pptx`: .pptx and `odp`: .odp, ZIP |
 | media | `mp4`: .mp4 .m4v, `mov`: .mov and `m4a`: .m4a, `ftyp`; `mp3`: .mp3, `ID3` or an MPEG frame; `wav`: .wav, RIFF `WAVE` |

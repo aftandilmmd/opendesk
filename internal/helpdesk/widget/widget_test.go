@@ -370,17 +370,16 @@ func TestVisitorFileTypes(t *testing.T) {
 	s := start(t, e, map[string]any{"key": ws.WidgetKey})
 	va := hdtest.Auth{Visitor: s.VisitorToken}
 
-	// By default every type of the catalog, each checked against its bytes.
+	// By default any file but a program or a script.
 	m := e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t)
-	if ext, _ := m["attachment_extensions"].([]any); len(ext) < 10 || ext[0] != ".png" {
+	if ext, ok := m["attachment_extensions"]; !ok || ext != nil {
 		t.Fatal(m["attachment_extensions"])
 	}
-	e.Upload("/v1/widget/attachments", va, "invoice.pdf", []byte("%PDF-1.7\n")).Want(t, 201)
+	var early domain.Attachment
+	e.Upload("/v1/widget/attachments", va, "invoice.pdf", []byte("%PDF-1.7\n")).Want(t, 201).JSON(t, &early)
 	e.Upload("/v1/widget/attachments", va, "notes.txt", []byte("hello")).Want(t, 201)
-	e.Upload("/v1/widget/attachments", va, "shell.png", []byte("#!/bin/sh\nid")).Want(t, 422)
-	e.Upload("/v1/widget/attachments", va, "page.png", []byte("<html><script>alert(1)</script></html>")).Want(t, 422)
-	e.Upload("/v1/widget/attachments", va, "x.svg", []byte("<svg onload=alert(1)>")).Want(t, 422)
-	e.Upload("/v1/widget/attachments", va, "x.html", []byte("<p>hi</p>")).Want(t, 422)
+	e.Upload("/v1/widget/attachments", va, "export.json", []byte(`{"a":1}`)).Want(t, 201)
+	e.Upload("/v1/widget/attachments", va, "tool.exe", []byte("MZ\x90\x00")).Want(t, 422)
 
 	// Images only.
 	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"attachment_types": []string{"png", "jpg"}})
@@ -390,6 +389,13 @@ func TestVisitorFileTypes(t *testing.T) {
 	}
 	e.Upload("/v1/widget/attachments", va, "shot.png", pngBytes()).Want(t, 201)
 	r := e.Upload("/v1/widget/attachments", va, "invoice.pdf", []byte("%PDF-1.7\n")).Want(t, 422).Map(t)
+	if r["code"] != "file_type_not_allowed" {
+		t.Fatal(r)
+	}
+	e.Upload("/v1/widget/attachments", va, "shell.png", []byte("#!/bin/sh\nid")).Want(t, 422)
+	e.Upload("/v1/widget/attachments", va, "page.png", []byte("<html><script>alert(1)</script></html>")).Want(t, 422)
+	// A file uploaded before the types narrowed is held to them when it is sent.
+	r = e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "x", "attachment_ids": []string{early.ID.String()}}).Want(t, 422).Map(t)
 	if r["code"] != "file_type_not_allowed" {
 		t.Fatal(r)
 	}

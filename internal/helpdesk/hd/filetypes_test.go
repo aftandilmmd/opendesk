@@ -2,13 +2,22 @@ package hd_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/useopendesk/opendesk/internal/helpdesk/hd"
 )
 
+func catalog() []string {
+	var ids []string
+	for _, f := range hd.FileTypes() {
+		ids = append(ids, f.ID)
+	}
+	return ids
+}
+
 func TestFileTypeAllowed(t *testing.T) {
-	all := hd.DefaultFileTypes()
+	all := catalog()
 	ok := []struct {
 		name string
 		head string
@@ -22,6 +31,8 @@ func TestFileTypeAllowed(t *testing.T) {
 		{"invoice.pdf", "%PDF-1.7\n"},
 		{"notes.txt", "Hello, this is plain text.\nŞükrü çalışıyor"},
 		{"data.csv", "id,name\n1,Ada\n"},
+		{"excel.csv", "name;city\r\nJos\xe9;M\xe1laga\r\n"}, // Windows-1252
+		{"unicode.txt", "\xff\xfeH\x00i\x00\r\x00\n\x00"},   // UTF-16 with its byte order mark
 		{"letter.rtf", "{\\rtf1\\ansi"},
 		{"old.doc", "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"},
 		{"new.docx", "PK\x03\x04\x14\x00"},
@@ -50,7 +61,7 @@ func TestFileTypeAllowed(t *testing.T) {
 		{"run.jpg", "\x7fELF\x02\x01"},                  // ELF named as an image
 		{"notes.txt", "MZ\x90\x00\x03\x00\x00\x00"},     // binary named as text
 		{"notes.txt", "hello\x00world"},                 // NUL in text
-		{"notes.txt", "\xff\xfe\xfdnot utf-8"},          // not UTF-8
+		{"notes.txt", "\x01\x02\x03binary"},             // control bytes in text
 		{"pic.webp", "RIFF\x24\x00\x00\x00WAVEfmt "},    // wrong RIFF kind
 		{"phone.heic", "\x00\x00\x00\x20ftypisom\x00\x00"},
 		{"payload.svg", "<svg onload=alert(1)>"}, // not in the catalog
@@ -80,8 +91,7 @@ func TestFileTypeAllowed(t *testing.T) {
 }
 
 func TestFileTypeCatalog(t *testing.T) {
-	ids := hd.DefaultFileTypes()
-	if len(ids) != len(hd.FileTypes()) || !slices.Contains(ids, "pdf") || slices.Contains(ids, "svg") {
+	if ids := catalog(); !slices.Contains(ids, "pdf") || slices.Contains(ids, "svg") {
 		t.Fatal(ids)
 	}
 	got := hd.FileTypeExtensions([]string{"jpg", "pdf", "nope"})
@@ -91,9 +101,27 @@ func TestFileTypeCatalog(t *testing.T) {
 	if v, err := hd.CleanFileTypes([]string{"pdf", "png", "pdf"}); err != nil || !slices.Equal(v, []string{"png", "pdf"}) {
 		t.Fatal(v, err)
 	}
-	for _, bad := range [][]string{{}, {"exe"}, {"png", "svg"}} {
+	if v, err := hd.CleanFileTypes([]string{}); err != nil || len(v) != 0 { // any file
+		t.Fatal(v, err)
+	}
+	for _, bad := range [][]string{{"exe"}, {"png", "svg"}} {
 		if _, err := hd.CleanFileTypes(bad); err == nil {
 			t.Fatalf("%v accepted", bad)
+		}
+	}
+}
+
+func TestWidgetFileTypesStored(t *testing.T) {
+	for raw, want := range map[string]string{
+		`{}`:                                   "",
+		`{"attachment_types":null}`:            "",
+		`{"attachment_types":["pdf","png"]}`:   "png,pdf",
+		`{"attachment_types":["png","later"]}`: "png",
+		`{"attachment_types":["later"]}`:       "later", // takes nothing rather than any file
+	} {
+		w := hd.ParseWidgetSettings([]byte(raw))
+		if got := strings.Join(w.AttachmentTypes, ","); got != want || w.AttachmentTypes == nil || !w.Attachments {
+			t.Errorf("%s: %q %v", raw, got, w.Attachments)
 		}
 	}
 }

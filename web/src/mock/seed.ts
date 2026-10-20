@@ -49,7 +49,6 @@ import { labelName, seedMarginFields, seedMarginLabels, seedTicketTypes } from "
 import { addActivity, addMessage, computeSla, ensureTags, newTicket } from "./tickets";
 import { DAY, HOUR, MIN, ago, chance, int, iso, NOW, pick, preview, reseed, shuffle, slugify, textToHtml, uuid } from "./util";
 import { defaultPersonality, newBot } from "./bots";
-import { ALL_FILE_TYPES } from "@/components/widget/fileTypes";
 
 const svgData = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 
@@ -158,7 +157,7 @@ export function defaultWidget(): WidgetSettings {
     offline_message: "",
     email_follow_up: true,
     attachments: true,
-    attachment_types: [...ALL_FILE_TYPES],
+    attachment_types: [],
   };
 }
 

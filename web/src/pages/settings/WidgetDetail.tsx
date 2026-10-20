@@ -102,12 +102,16 @@ function withDefaults(s: WS): WS {
     offline_message: s.offline_message ?? "",
     email_follow_up: s.email_follow_up ?? true,
     attachments: s.attachments ?? true,
-    attachment_types: s.attachment_types ?? [...ALL_FILE_TYPES],
+    attachment_types: s.attachment_types ?? [],
   };
 }
 
-type Draft = { name: string; team_id: string | null; bot_id: string | null; settings: WS };
-const toDraft = (w: Widget): Draft => ({ name: w.name, team_id: w.team_id, bot_id: w.bot_id ?? null, settings: withDefaults(w.settings) });
+// limitTypes: files are held to settings.attachment_types; off, any file but a program is taken.
+type Draft = { name: string; team_id: string | null; bot_id: string | null; limitTypes: boolean; settings: WS };
+const toDraft = (w: Widget): Draft => {
+  const settings = withDefaults(w.settings);
+  return { name: w.name, team_id: w.team_id, bot_id: w.bot_id ?? null, limitTypes: settings.attachment_types.length > 0, settings };
+};
 
 type TextKey = "greeting" | "launcher_label" | "title" | "subtitle";
 
@@ -227,7 +231,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
     s.suggestions.some((x) => suggestionProblem(x)) ||
     s.topics.some((x) => topicProblem(x, s.topics)) ||
     !!offlineError ||
-    (s.attachments && s.attachment_types.length === 0) ||
+    (s.attachments && draft.limitTypes && s.attachment_types.length === 0) ||
     (s.color !== "" && !HEX.test(s.color));
 
   const save = useMutation({
@@ -238,8 +242,6 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
         if (JSON.stringify(d.settings[k]) !== JSON.stringify(base.settings[k])) (patch as Record<string, unknown>)[k] = d.settings[k];
       }
       if (patch.suggestions) patch.suggestions = patch.suggestions.map(tidy);
-      // With files off an emptied list is not saved: the server needs at least one type.
-      if (patch.attachment_types?.length === 0) delete patch.attachment_types;
       if (patch.topics) patch.topics = topicsForSave(patch.topics);
       for (const k of ["launcher_label", "title", "subtitle", "offline_message"] as const) if (patch[k] !== undefined) patch[k] = tidy(patch[k]!);
       return api.widgets.update(widget.id, {
@@ -511,34 +513,47 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
             </Row>
             {s.attachments && (
               <Row label={t("widget.fileTypes")} description={t("widget.fileTypesHint")} stack>
-                <div className="flex flex-col gap-2">
-                  <Picker
-                    multi
-                    values={s.attachment_types}
-                    onChange={(ids) => set({ attachment_types: ALL_FILE_TYPES.filter((id) => ids.includes(id)) })}
-                    items={FILE_TYPES.map((f) => ({ value: f.id, label: f.extensions.join(" "), group: t(`widget.fileGroups.${f.group}`), keywords: [f.id] }))}
-                    placeholder={t("widget.searchFileTypes")}
-                    width={280}
-                    trigger={
-                      <button
-                        type="button"
-                        aria-label={t("widget.fileTypes")}
-                        className="group inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-surface px-2.5 text-left text-sm text-fg shadow-[0_1px_1px_rgb(0_0_0/0.02)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-line-strong focus-visible:border-fg-3 focus-visible:shadow-[0_0_0_3px_var(--focus)] [&_svg]:size-3.5"
-                      >
-                        <span className={cn("min-w-0 truncate", s.attachment_types.length === 0 && "text-fg-4")}>
-                          {s.attachment_types.length === ALL_FILE_TYPES.length
-                            ? t("widget.allFileTypes")
-                            : s.attachment_types.length === 0
-                              ? t("widget.pickFileTypes")
-                              : FILE_TYPES.filter((f) => s.attachment_types.includes(f.id))
-                                  .map((f) => f.extensions[0])
-                                  .join(" ")}
-                        </span>
-                        <ChevronDown className="shrink-0 text-fg-3" />
-                      </button>
+                <div className="flex flex-col items-start gap-2">
+                  <Segmented
+                    size="xs"
+                    value={draft.limitTypes ? "some" : "any"}
+                    onChange={(v) =>
+                      setDraft((d) => ({ ...d, limitTypes: v === "some", settings: { ...d.settings, attachment_types: v === "some" ? d.settings.attachment_types : [] } }))
                     }
+                    options={[
+                      { value: "any", label: t("widget.anyFileType") },
+                      { value: "some", label: t("widget.someFileTypes") },
+                    ]}
                   />
-                  {s.attachment_types.length === 0 && (
+                  {draft.limitTypes && (
+                    <Picker
+                      multi
+                      values={s.attachment_types}
+                      onChange={(ids) => set({ attachment_types: ALL_FILE_TYPES.filter((id) => ids.includes(id)) })}
+                      items={FILE_TYPES.map((f) => ({ value: f.id, label: f.extensions.join(" "), group: t(`widget.fileGroups.${f.group}`), keywords: [f.id] }))}
+                      placeholder={t("widget.searchFileTypes")}
+                      width={280}
+                      trigger={
+                        <button
+                          type="button"
+                          aria-label={t("widget.pickFileTypes")}
+                          className="group inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-surface px-2.5 text-left text-sm text-fg shadow-[0_1px_1px_rgb(0_0_0/0.02)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-line-strong focus-visible:border-fg-3 focus-visible:shadow-[0_0_0_3px_var(--focus)] [&_svg]:size-3.5"
+                        >
+                          <span className={cn("min-w-0 truncate", s.attachment_types.length === 0 && "text-fg-4")}>
+                            {s.attachment_types.length === ALL_FILE_TYPES.length
+                              ? t("widget.allFileTypes")
+                              : s.attachment_types.length === 0
+                                ? t("widget.pickFileTypes")
+                                : FILE_TYPES.filter((f) => s.attachment_types.includes(f.id))
+                                    .map((f) => f.extensions[0])
+                                    .join(" ")}
+                          </span>
+                          <ChevronDown className="shrink-0 text-fg-3" />
+                        </button>
+                      }
+                    />
+                  )}
+                  {draft.limitTypes && s.attachment_types.length === 0 && (
                     <span role="alert" className="text-xs text-danger-fg">
                       {t("widget.noFileTypes")}
                     </span>

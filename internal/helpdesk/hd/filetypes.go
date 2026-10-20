@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/useopendesk/opendesk/internal/httpx"
 )
@@ -77,29 +76,26 @@ func mp3(head []byte) bool {
 	return bytes.HasPrefix(head, []byte("ID3")) || (len(head) >= 2 && head[0] == 0xff && head[1]&0xe0 == 0xe0)
 }
 
-// plainText is UTF-8 without NUL; a character cut at the end of the sniffed bytes is
-// allowed.
+// plainText is text in any 8-bit encoding (UTF-8, Windows-1252, Latin-1) without NUL or
+// other control characters but tab, line breaks, form feed and the DOS end of file, or
+// UTF-16 with its byte order mark.
 func plainText(head []byte) bool {
-	if len(head) == 0 || bytes.IndexByte(head, 0) >= 0 {
+	if bytes.HasPrefix(head, []byte("\xff\xfe")) || bytes.HasPrefix(head, []byte("\xfe\xff")) {
+		return len(head) > 2
+	}
+	if len(head) == 0 {
 		return false
 	}
-	for i := 0; i < 3 && len(head) > 0 && !utf8.Valid(head); i++ {
-		head = head[:len(head)-1]
+	for _, b := range head {
+		if b < 0x20 && b != '\t' && b != '\n' && b != '\r' && b != '\f' && b != 0x1a || b == 0x7f {
+			return false
+		}
 	}
-	return len(head) > 0 && utf8.Valid(head)
+	return true
 }
 
 // FileTypes is the catalog a widget picks from.
 func FileTypes() []FileType { return fileTypes }
-
-// DefaultFileTypes is every type of the catalog.
-func DefaultFileTypes() []string {
-	out := make([]string, len(fileTypes))
-	for i, f := range fileTypes {
-		out[i] = f.ID
-	}
-	return out
-}
 
 // FileTypeExtensions lists the extensions of the given types in catalog order;
 // unknown ids are skipped.
@@ -113,24 +109,26 @@ func FileTypeExtensions(ids []string) []string {
 	return out
 }
 
-// CleanFileTypes checks a picked list against the catalog: at least one, known ids,
-// deduplicated, in catalog order.
+// CleanFileTypes checks a picked list against the catalog: known ids, deduplicated, in
+// catalog order. An empty list takes any file but a program or a script.
 func CleanFileTypes(ids []string) ([]string, error) {
 	for _, id := range ids {
 		if !slices.ContainsFunc(fileTypes, func(f FileType) bool { return f.ID == id }) {
 			return nil, httpx.Validation("attachment_types has an unknown type: " + Truncate(id, 20))
 		}
 	}
+	return knownFileTypes(ids), nil
+}
+
+// knownFileTypes keeps the ids of the catalog, deduplicated, in catalog order.
+func knownFileTypes(ids []string) []string {
 	out := []string{}
 	for _, f := range fileTypes {
 		if slices.Contains(ids, f.ID) {
 			out = append(out, f.ID)
 		}
 	}
-	if len(out) == 0 {
-		return nil, httpx.Validation("pick at least one file type, or turn attachments off")
-	}
-	return out, nil
+	return out
 }
 
 // FileTypeAllowed reports whether a file is one of the given types: its extension is

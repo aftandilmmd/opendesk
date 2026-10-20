@@ -45,7 +45,7 @@ type widgetSettingsPatch struct {
 	OfflineMessage  *string    `json:"offline_message,omitempty" maxLength:"1000" doc:"Up to 300 characters; \"\" = the translated default"`
 	EmailFollowUp   *bool      `json:"email_follow_up,omitempty"`
 	Attachments     *bool      `json:"attachments,omitempty"`
-	AttachmentTypes *[]string  `json:"attachment_types,omitempty" maxItems:"50" doc:"Ids of the file type catalog (contracts/api.md); at least one"`
+	AttachmentTypes *[]string  `json:"attachment_types,omitempty" maxItems:"50" doc:"Ids of the file type catalog (contracts/api.md); [] takes any file but a program or a script"`
 }
 
 type topicIn struct {

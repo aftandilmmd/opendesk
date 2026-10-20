@@ -183,6 +183,9 @@ func (h *handler) registerConversations(api huma.API) {
 			if len(attIDs) > 0 && !g.Settings.Attachments {
 				return nil, errAttachmentsOff
 			}
+			if err := hd.CheckAttachmentTypes(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, g.Settings.AttachmentTypes); err != nil {
+				return nil, httpx.Wrap(err)
+			}
 			pageURL := cleanPageURL(in.Body.PageURL)
 			out := &struct{ Body created }{}
 			err = h.d.DB.Tx(ctx, func(tx pgx.Tx) error {
@@ -327,6 +330,9 @@ func (h *handler) registerConversations(api huma.API) {
 			}
 			if len(attIDs) > 0 && !g.Settings.Attachments {
 				return nil, errAttachmentsOff
+			}
+			if err := hd.CheckAttachmentTypes(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, g.Settings.AttachmentTypes); err != nil {
+				return nil, httpx.Wrap(err)
 			}
 			var msg domain.Message
 			err = h.d.DB.Tx(ctx, func(tx pgx.Tx) error {

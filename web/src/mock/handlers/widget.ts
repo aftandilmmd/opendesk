@@ -45,9 +45,7 @@ const CHECKS: Partial<Record<keyof WidgetSettings, Check>> = {
   attachments: bool("attachments"),
   attachment_types: (v) => {
     if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !ALL_FILE_TYPES.includes(x))) throw invalid("attachment_types must be file types of the catalog");
-    const list = ALL_FILE_TYPES.filter((id) => v.includes(id));
-    if (!list.length) throw invalid("Pick at least one file type, or turn attachments off");
-    return list;
+    return ALL_FILE_TYPES.filter((id) => v.includes(id));
   },
   greeting: (v) => {
     if (typeof v !== "string") throw invalid("greeting must be text");
@@ -156,7 +154,7 @@ export function widgetConfig(ws: WsData, widget?: Widget): WidgetConfig {
     suggestions: [...w.suggestions],
     sound: w.sound,
     attachments: w.attachments ?? true,
-    attachment_extensions: (w.attachments ?? true) ? fileTypeExtensions(w.attachment_types ?? ALL_FILE_TYPES) : [],
+    attachment_extensions: !(w.attachments ?? true) ? [] : w.attachment_types?.length ? fileTypeExtensions(w.attachment_types) : null,
     team,
     ai_answers: !aiOff() && ws.ai.enabled && ws.ai.widget_answers,
     bot: widgetBot(ws, row?.id),

@@ -243,7 +243,7 @@ export function toWidgetConfig(d: WidgetSettings, ws: Workspace | null, members:
     suggestions: d.suggestions.map(tidy).filter((s) => s.length >= 2),
     sound: d.sound,
     attachments: d.attachments,
-    attachment_extensions: d.attachments ? fileTypeExtensions(d.attachment_types) : [],
+    attachment_extensions: !d.attachments ? [] : d.attachment_types.length ? fileTypeExtensions(d.attachment_types) : null,
     team,
     ai_answers: aiAnswers,
     bot: bot ?? OLLIE_BOT,
