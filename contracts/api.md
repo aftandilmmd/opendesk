@@ -662,7 +662,7 @@ checklist is complete (`GET /v1/ai/agent/setup`, `contracts/agent.md` "Setup"). 
 | POST | `/v1/widget/conversations/{id}/handoff` | → 204; ask for a person while the AI agent handles the conversation (contracts/agent.md) |
 | POST | `/v1/widget/conversations/{id}/actions/{action_id}` | `{decision: "confirm" \| "decline"}` → 204 (contracts/agent.md "Visitor actions") |
 | POST | `/v1/widget/conversations/{id}/messages/{message_id}/rating` | `{rating: "up" \| "down" \| null}` → 204 (contracts/agent.md "Ratings") |
-| POST | `/v1/widget/attachments` | multipart. `403 attachments_off` while the session's widget has `attachments` off, and so is a message or new conversation with `attachment_ids` |
+| POST | `/v1/widget/attachments` | multipart. `403 attachments_off` while the session's widget has both `attachments` and `voice_messages` off, and so is a message or new conversation with `attachment_ids`. With `voice_messages` on, the types a browser records in (`webm`, `ogg`, `m4a`) are taken besides `attachment_types`; a recording is stored as `audio/webm`, `audio/ogg` or `audio/mp4` |
 | GET/PATCH | `/v1/widget/settings` | admin, agent-side: `WidgetSettings` below of the default brand's first widget (`widgets.settings`, mirrored to workspace `settings.widget`); PATCH merges the given keys, audit `widget.settings_updated` with the changed keys, publishes `widget.updated`. Every widget: `/v1/widgets` (contracts/teams.md) |
 
 ```ts
@@ -690,6 +690,8 @@ interface WidgetSettings {
   email_follow_up: boolean              // default true: agents' chat replies also go by email to a visitor with an email who is not on the page (contracts/teams.md "Chat follow-up")
   attachments: boolean                  // default true: visitors may send files
   attachment_types: string[]            // ids of the file type catalog below visitors may send; default [] = any file but programs and scripts
+  voice_messages: boolean               // visitors may record voice messages; default false
+  voice_max_seconds: number             // 5..300 (422 otherwise); default 60
 }
 
 // GET /v1/widget/config. Public; Origin checked against the widget's allowed_origins.
@@ -707,6 +709,8 @@ interface WidgetConfig {
   subtitle: string; suggestions: string[]; sound: boolean
   attachments: boolean                  // visitors may send files; the widget hides attaching while false
   attachment_extensions: string[] | null // extensions of the widget's attachment_types, for the file picker; null = any file but programs and scripts; [] while attachments is false
+  voice_messages: boolean               // visitors may record voice messages, whether or not attachments is on
+  voice_max_seconds: number             // the longest voice message; the widget stops recording there
   team: { name: string /* first name */; avatar_url: string | null }[]  // up to 3 non-viewer members of the widget's team (else of the workspace), available first; [] when show_team is off
   ai_answers: boolean                   // the AI agent handles new conversations (contracts/agent.md)
   bot: { id: string | null; name: string; role: string; avatar_url: string /* a PNG of the look, or the picture */; look: BotLook; greeting: string /* "" = greeting */ }
@@ -732,7 +736,7 @@ only those takes no file.
 | document | `pdf`: .pdf, `%PDF-`; `txt`: .txt and `csv`: .csv, text without control characters (any 8-bit encoding, or UTF-16 with a byte order mark); `rtf`: .rtf, `{\rtf`; `doc`: .doc, OLE; `docx`: .docx and `odt`: .odt, ZIP |
 | spreadsheet | `xls`: .xls, OLE; `xlsx`: .xlsx and `ods`: .ods, ZIP |
 | presentation | `ppt`: .ppt, OLE; `pptx`: .pptx and `odp`: .odp, ZIP |
-| media | `mp4`: .mp4 .m4v, `mov`: .mov and `m4a`: .m4a, `ftyp`; `mp3`: .mp3, `ID3` or an MPEG frame; `wav`: .wav, RIFF `WAVE` |
+| media | `mp4`: .mp4 .m4v, `mov`: .mov and `m4a`: .m4a, `ftyp`; `mp3`: .mp3, `ID3` or an MPEG frame; `wav`: .wav, RIFF `WAVE`; `webm`: .webm, EBML `1A 45 DF A3`; `ogg`: .ogg .oga .opus, `OggS` |
 | archive | `zip`: .zip, ZIP |
 
 Text settings (`launcher_label`, `title`, `subtitle`, `suggestions`) are trimmed, have
