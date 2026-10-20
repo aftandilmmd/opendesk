@@ -17,6 +17,13 @@ async function call(method: string, path: string, body?: unknown) {
 describe("mock backend", () => {
   installMock();
 
+  it("turns off files in the widget", async () => {
+    expect((await call("GET", "/v1/widget/settings")).body.attachments).toBe(true);
+    expect((await call("PATCH", "/v1/widget/settings", { attachments: "no" })).status).toBe(422);
+    const off = (await call("PATCH", "/v1/widget/settings", { attachments: false })).body;
+    expect(off.attachments).toBe(false);
+  });
+
   it("breaks reports down by team and brand, and narrows them", async () => {
     const range = "from=2026-09-12&to=2026-10-11";
     const all = (await call("GET", `/v1/reports/overview?${range}`)).body;
