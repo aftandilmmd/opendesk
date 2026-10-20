@@ -311,6 +311,9 @@
     "fileTypes": "Allowed file types",
     "fileTypesHint": "Only these are accepted. Each file is checked by its contents, not only its name; programs and scripts never are.",
     "noFileTypes": "Pick at least one file type, or turn files off.",
+    "allFileTypes": "All file types",
+    "pickFileTypes": "Pick file types",
+    "searchFileTypes": "Search file types",
     "fileGroups": {
       "image": "Images",
       "document": "Documents",

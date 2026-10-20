@@ -6,7 +6,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowRight, KeyRound, LayoutPanelLeft, MessageCircle, MessagesSquare, Monitor, Moon, PanelRight, Sun, Trash2 } from "lucide-react";
+import { ArrowRight, ChevronDown, KeyRound, LayoutPanelLeft, MessageCircle, MessagesSquare, Monitor, Moon, PanelRight, Sun, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StatePill } from "@/components/settings2/bits";
@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/ui/empty";
 import { Textarea, TextInput } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Picker } from "@/components/ui/picker";
 import { Segmented } from "@/components/ui/tabs";
 import { CopyField } from "@/components/ui/copy-button";
 import { useConfirm } from "@/components/ui/confirm";
@@ -35,7 +35,7 @@ import { LivePreview, type PreviewScene } from "@/components/widget/LivePreview"
 import { ColorField, hasMarkup, HEX, LIMITS, suggestionProblem, SuggestionsEditor, tidy, toWidgetConfig, widgetBotOf } from "@/components/widget/fields";
 import { BotSelect, resolveBot } from "@/components/bots/BotSelect";
 import { topicProblem, topicsForSave, TopicsEditor } from "@/components/widget/TopicsEditor";
-import { ALL_FILE_TYPES, FILE_TYPE_GROUPS, FILE_TYPES } from "@/components/widget/fileTypes";
+import { ALL_FILE_TYPES, FILE_TYPES } from "@/components/widget/fileTypes";
 import { api } from "@/lib/api/endpoints";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import type { Brand, Widget, WidgetSettings as WS } from "@/lib/api/types";
@@ -512,26 +512,32 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
             {s.attachments && (
               <Row label={t("widget.fileTypes")} description={t("widget.fileTypesHint")} stack>
                 <div className="flex flex-col gap-2">
-                  <div className="overflow-hidden rounded-md border border-line">
-                    {FILE_TYPE_GROUPS.map((g) => (
-                      <div key={g} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-line-soft px-3 py-2 last:border-0">
-                        <span className="w-28 shrink-0 text-[12.5px] text-fg">{t(`widget.fileGroups.${g}`)}</span>
-                        {FILE_TYPES.filter((f) => f.group === g).map((f) => {
-                          const on = s.attachment_types.includes(f.id);
-                          return (
-                            <label key={f.id} className={cn("flex items-center gap-1.5 font-mono text-[12px]", on ? "text-fg" : "text-fg-3")}>
-                              <Checkbox
-                                checked={on}
-                                onCheckedChange={(v) => set({ attachment_types: ALL_FILE_TYPES.filter((id) => (id === f.id ? v : s.attachment_types.includes(id))) })}
-                                aria-label={f.extensions.join(", ")}
-                              />
-                              {f.extensions.join(" ")}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
+                  <Picker
+                    multi
+                    values={s.attachment_types}
+                    onChange={(ids) => set({ attachment_types: ALL_FILE_TYPES.filter((id) => ids.includes(id)) })}
+                    items={FILE_TYPES.map((f) => ({ value: f.id, label: f.extensions.join(" "), group: t(`widget.fileGroups.${f.group}`), keywords: [f.id] }))}
+                    placeholder={t("widget.searchFileTypes")}
+                    width={280}
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label={t("widget.fileTypes")}
+                        className="group inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-line bg-surface px-2.5 text-left text-sm text-fg shadow-[0_1px_1px_rgb(0_0_0/0.02)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-line-strong focus-visible:border-fg-3 focus-visible:shadow-[0_0_0_3px_var(--focus)] [&_svg]:size-3.5"
+                      >
+                        <span className={cn("min-w-0 truncate", s.attachment_types.length === 0 && "text-fg-4")}>
+                          {s.attachment_types.length === ALL_FILE_TYPES.length
+                            ? t("widget.allFileTypes")
+                            : s.attachment_types.length === 0
+                              ? t("widget.pickFileTypes")
+                              : FILE_TYPES.filter((f) => s.attachment_types.includes(f.id))
+                                  .map((f) => f.extensions[0])
+                                  .join(" ")}
+                        </span>
+                        <ChevronDown className="shrink-0 text-fg-3" />
+                      </button>
+                    }
+                  />
                   {s.attachment_types.length === 0 && (
                     <span role="alert" className="text-xs text-danger-fg">
                       {t("widget.noFileTypes")}
