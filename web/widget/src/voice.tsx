@@ -160,7 +160,8 @@ export function useRecorder(max: number, onDone: (r: Recording) => void) {
     const type = pickType((x) => MediaRecorder.isTypeSupported(x));
     let r: MediaRecorder;
     try {
-      r = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      // Speech needs little: a small file, well under what the server takes per second.
+      r = new MediaRecorder(stream, { ...(type ? { mimeType: type } : {}), audioBitsPerSecond: 64_000 });
     } catch {
       release();
       setPhase("idle");
@@ -246,14 +247,30 @@ export function VoicePlayer({ src, seconds, action }: { src: string; seconds?: n
     else a.pause();
   };
 
-  const seek = (e: MouseEvent) => {
+  const jump = (to: number) => {
     const a = audio.current;
+    if (!a || !length) return;
+    a.currentTime = Math.min(length, Math.max(0, to));
+    setAt(a.currentTime);
+  };
+
+  const seek = (e: MouseEvent) => {
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    if (!a || !length || !box.width) return;
+    if (!box.width) return;
     const ratio = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
     const rtl = getComputedStyle(e.currentTarget as HTMLElement).direction === "rtl";
-    a.currentTime = (rtl ? 1 - ratio : ratio) * length;
-    setAt(a.currentTime);
+    jump((rtl ? 1 - ratio : ratio) * length);
+  };
+
+  // Arrows move 5 seconds (mirrored right to left), Home and End go to either end.
+  const onKey = (e: KeyboardEvent) => {
+    const rtl = getComputedStyle(e.currentTarget as HTMLElement).direction === "rtl";
+    const step = { ArrowRight: rtl ? -5 : 5, ArrowLeft: rtl ? 5 : -5, ArrowUp: 5, ArrowDown: -5 }[e.key];
+    if (step !== undefined) jump(at + step);
+    else if (e.key === "Home") jump(0);
+    else if (e.key === "End") jump(length);
+    else return;
+    e.preventDefault();
   };
 
   const pct = length ? Math.min(100, (at / length) * 100) : 0;
@@ -262,7 +279,18 @@ export function VoicePlayer({ src, seconds, action }: { src: string; seconds?: n
       <button type="button" class="voice-play" aria-label={t(playing ? "pauseVoice" : "playVoice")} onClick={toggle}>
         {playing ? Pause() : Play()}
       </button>
-      <div class="voice-track" aria-hidden="true" onClick={seek}>
+      <div
+        class="voice-track"
+        role="slider"
+        tabIndex={0}
+        aria-label={t("voiceFileName")}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(length)}
+        aria-valuenow={Math.round(at)}
+        aria-valuetext={`${clock(at)} / ${clock(length)}`}
+        onClick={seek}
+        onKeyDown={onKey}
+      >
         <span style={{ width: `${pct}%` }} />
       </div>
       <span class="voice-time">{clock(playing || at > 0 ? at : length)}</span>

@@ -107,6 +107,7 @@ func TestUploadChecks(t *testing.T) {
 		{"OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x13OpusHead\x01", "Voice message.ogg", "audio/ogg"},
 		{"\x00\x00\x00\x18ftypiso5\x00\x00\x02\x00iso5iso6mp41", "Voice message.m4a", "audio/mp4"},
 		{"\x00\x00\x00\x1cftypiso5\x00\x00\x02\x00iso5iso6mp41", "clip.mp4", "video/mp4"},
+		{"\x00\x00\x00\x18ftypiso5\x00\x00\x02\x00iso5iso6mp41\x00\x00\x00\x21hdlr\x00\x00\x00\x00\x00\x00\x00\x00vide", "renamed.m4a", "video/mp4"},
 	} {
 		if ct := hd.DetectType([]byte(c.head), c.name); ct != c.want {
 			t.Errorf("%s: %s, want %s", c.name, ct, c.want)

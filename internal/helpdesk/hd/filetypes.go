@@ -100,6 +100,17 @@ func plainText(head []byte) bool {
 // Edge), Ogg (Firefox) and MP4 audio (Safari).
 var VoiceFileTypes = []string{"webm", "ogg", "m4a"}
 
+// IsVoice reports whether a file is a voice recording: one of VoiceFileTypes by name and
+// bytes, holding sound and no picture.
+func IsVoice(head []byte, filename string) bool {
+	return FileTypeAllowed(head, filename, VoiceFileTypes) && strings.HasPrefix(DetectType(head, filename), "audio/")
+}
+
+// VoiceMaxBytes is the largest recording of seconds a widget takes: 256 kbit/s, twice
+// what browsers record speech at and four times what the widget asks for, plus 64 KB
+// for the container.
+func VoiceMaxBytes(seconds int) int64 { return int64(seconds)*32*1024 + 64*1024 }
+
 // FileTypes is the catalog a widget picks from.
 func FileTypes() []FileType { return fileTypes }
 

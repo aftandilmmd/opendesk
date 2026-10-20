@@ -410,7 +410,8 @@ a.chip:hover { border-color: var(--line-2); }
 .voice-del:hover { background: var(--danger-soft); color: var(--danger); }
 .voice-play { width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-fg); transition: transform .12s; }
 .voice-play:active { transform: scale(.92); }
-.voice-track { cursor: pointer; }
+.voice-track { cursor: pointer; outline: none; }
+.voice-track:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 .voice-track span { background: var(--accent); }
 .voice-time { font-family: var(--mono); font-size: 11px; color: var(--fg-3); font-variant-numeric: tabular-nums; flex: none; }
 .voice audio { display: none; }

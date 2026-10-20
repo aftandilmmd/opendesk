@@ -662,7 +662,7 @@ checklist is complete (`GET /v1/ai/agent/setup`, `contracts/agent.md` "Setup"). 
 | POST | `/v1/widget/conversations/{id}/handoff` | → 204; ask for a person while the AI agent handles the conversation (contracts/agent.md) |
 | POST | `/v1/widget/conversations/{id}/actions/{action_id}` | `{decision: "confirm" \| "decline"}` → 204 (contracts/agent.md "Visitor actions") |
 | POST | `/v1/widget/conversations/{id}/messages/{message_id}/rating` | `{rating: "up" \| "down" \| null}` → 204 (contracts/agent.md "Ratings") |
-| POST | `/v1/widget/attachments` | multipart. `403 attachments_off` while the session's widget has both `attachments` and `voice_messages` off, and so is a message or new conversation with `attachment_ids`. With `voice_messages` on, the types a browser records in (`webm`, `ogg`, `m4a`) are taken besides `attachment_types`; a recording is stored as `audio/webm`, `audio/ogg` or `audio/mp4` |
+| POST | `/v1/widget/attachments` | multipart. `403 attachments_off` while the session's widget has both `attachments` and `voice_messages` off, and so is a message or new conversation with `attachment_ids`. With `voice_messages` on, a recording is taken besides the widget's files: a `webm`, `ogg` or `m4a` (the types a browser records in) whose header declares sound and no picture, else `422 file_type_not_allowed`, of at most 32 KB per second of `voice_max_seconds` plus 64 KB, else `413 voice_too_long`. It is stored as `audio/webm`, `audio/ogg` or `audio/mp4`. A message or new conversation checks its `attachment_ids` again by the same rules |
 | GET/PATCH | `/v1/widget/settings` | admin, agent-side: `WidgetSettings` below of the default brand's first widget (`widgets.settings`, mirrored to workspace `settings.widget`); PATCH merges the given keys, audit `widget.settings_updated` with the changed keys, publishes `widget.updated`. Every widget: `/v1/widgets` (contracts/teams.md) |
 
 ```ts
@@ -710,7 +710,7 @@ interface WidgetConfig {
   attachments: boolean                  // visitors may send files; the widget hides attaching while false
   attachment_extensions: string[] | null // extensions of the widget's attachment_types, for the file picker; null = any file but programs and scripts; [] while attachments is false
   voice_messages: boolean               // visitors may record voice messages, whether or not attachments is on
-  voice_max_seconds: number             // the longest voice message; the widget stops recording there
+  voice_max_seconds: number             // the longest voice message; the widget stops recording there, and the server bounds a recording's size by it
   team: { name: string /* first name */; avatar_url: string | null }[]  // up to 3 non-viewer members of the widget's team (else of the workspace), available first; [] when show_team is off
   ai_answers: boolean                   // the AI agent handles new conversations (contracts/agent.md)
   bot: { id: string | null; name: string; role: string; avatar_url: string /* a PNG of the look, or the picture */; look: BotLook; greeting: string /* "" = greeting */ }

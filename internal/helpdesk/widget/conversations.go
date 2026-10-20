@@ -180,10 +180,10 @@ func (h *handler) registerConversations(api huma.API) {
 			if err != nil {
 				return nil, err
 			}
-			if len(attIDs) > 0 && len(visitorFileTypes(g.Settings)) == 0 {
+			if len(attIDs) > 0 && !takesUploads(g.Settings) {
 				return nil, errAttachmentsOff
 			}
-			if err := hd.CheckAttachmentTypes(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, g.Settings.AttachmentTypes); err != nil {
+			if err := hd.CheckAttachmentFiles(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, visitorAccept(g.Settings)); err != nil {
 				return nil, httpx.Wrap(err)
 			}
 			pageURL := cleanPageURL(in.Body.PageURL)
@@ -328,10 +328,10 @@ func (h *handler) registerConversations(api huma.API) {
 			if err != nil {
 				return nil, err
 			}
-			if len(attIDs) > 0 && len(visitorFileTypes(g.Settings)) == 0 {
+			if len(attIDs) > 0 && !takesUploads(g.Settings) {
 				return nil, errAttachmentsOff
 			}
-			if err := hd.CheckAttachmentTypes(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, g.Settings.AttachmentTypes); err != nil {
+			if err := hd.CheckAttachmentFiles(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, visitorAccept(g.Settings)); err != nil {
 				return nil, httpx.Wrap(err)
 			}
 			var msg domain.Message

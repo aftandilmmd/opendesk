@@ -115,22 +115,32 @@ var errWidgetDisabled = httpx.E(http.StatusForbidden, "widget_disabled", "The ch
 
 var errAttachmentsOff = httpx.E(http.StatusForbidden, "attachments_off", "This chat does not take files.")
 
-// visitorFileTypes lists the file types visitors may send: the widget's attachment
-// types, and with voice messages on, the types a recording comes in. Empty while they
-// may send none.
-func visitorFileTypes(w hd.WidgetSettings) []string {
-	out := []string{}
-	if w.Attachments {
-		out = append(out, w.AttachmentTypes...)
+var errVoiceTooLong = httpx.E(http.StatusRequestEntityTooLarge, "voice_too_long", "This voice message is longer than this chat takes.")
+
+// takesUploads reports whether visitors may send the widget anything: files or voice
+// messages.
+func takesUploads(w hd.WidgetSettings) bool { return w.Attachments || w.VoiceMessages }
+
+// visitorAccept decides whether a visitor's file is taken through a widget: as a file of
+// its attachment types (any but a program while it has none), or, with voice messages on,
+// as a recording of sound alone no larger than voice_max_seconds allows. Nil when the
+// widget takes any file, so nothing is checked again.
+func visitorAccept(w hd.WidgetSettings) hd.Accept {
+	if w.Attachments && len(w.AttachmentTypes) == 0 {
+		return nil
 	}
-	if w.VoiceMessages {
-		for _, t := range hd.VoiceFileTypes {
-			if !contains(out, t) {
-				out = append(out, t)
-			}
+	return func(head []byte, filename string, size int64) error {
+		if w.Attachments && hd.FileTypeAllowed(head, filename, w.AttachmentTypes) {
+			return nil
 		}
+		if w.VoiceMessages && hd.IsVoice(head, filename) {
+			if size > hd.VoiceMaxBytes(w.VoiceMaxSeconds) {
+				return errVoiceTooLong
+			}
+			return nil
+		}
+		return hd.ErrFileTypeNotAllowed
 	}
-	return out
 }
 
 type configTopic struct {
