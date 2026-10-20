@@ -98,6 +98,9 @@ func CleanFilename(name string) string {
 func DetectType(head []byte, filename string) string {
 	ct := http.DetectContentType(head)
 	base := strings.ToLower(strings.TrimSpace(strings.Split(ct, ";")[0]))
+	if a := audioType(head, base, strings.ToLower(filepath.Ext(filename))); a != "" {
+		return a
+	}
 	if base == "application/octet-stream" || base == "text/plain" || base == "application/zip" {
 		if byExt := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename))); byExt != "" {
 			b := strings.ToLower(strings.TrimSpace(strings.Split(byExt, ";")[0]))
@@ -113,6 +116,29 @@ func DetectType(head []byte, filename string) string {
 		return "application/octet-stream"
 	}
 	return ct
+}
+
+// audioType tells audio from video where the sniffed type says video, as browsers
+// record voice: an .m4a, or a WebM or Ogg whose header names only audio codecs.
+func audioType(head []byte, base, ext string) string {
+	has := func(s ...string) bool {
+		return slices.ContainsFunc(s, func(m string) bool { return bytes.Contains(head, []byte(m)) })
+	}
+	switch base {
+	case "video/mp4", "application/octet-stream":
+		if ext == ".m4a" && len(head) >= 8 && string(head[4:8]) == "ftyp" {
+			return "audio/mp4"
+		}
+	case "video/webm":
+		if has("A_OPUS", "A_VORBIS") && !has("V_VP8", "V_VP9", "V_AV1", "V_MPEG") {
+			return "audio/webm"
+		}
+	case "application/ogg":
+		if has("OpusHead", "\x01vorbis") && !has("\x80theora") {
+			return "audio/ogg"
+		}
+	}
+	return ""
 }
 
 // Upload is a file arriving from a client.
