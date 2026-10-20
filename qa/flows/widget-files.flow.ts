@@ -27,6 +27,15 @@ test("turn files off for a chat widget, or limit them to some types", async ({ p
 test.describe("widget", () => {
   test.use({ target: "widget" });
 
+  // Only the widget on screen: the demo page's own text is hidden.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      document.addEventListener("DOMContentLoaded", () => {
+        document.head.insertAdjacentHTML("beforeend", "<style>main { display: none; }</style>");
+      });
+    });
+  });
+
   test("refuse a file type the widget does not allow", async ({ page, proof }) => {
     await proof.open(undefined, { key: "wk_files" });
     await page.getByRole("button", { name: "Open chat" }).click();
