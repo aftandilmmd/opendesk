@@ -332,6 +332,39 @@ func TestVisitorAttachments(t *testing.T) {
 	e.Upload("/v1/attachments", ws.Agent.As(ws), "agent2.txt", []byte("agent file")).Want(t, 201)
 }
 
+func TestVisitorFileOnly(t *testing.T) {
+	e, ws := setup(t)
+	s := start(t, e, map[string]any{"key": ws.WidgetKey})
+	va := hdtest.Auth{Visitor: s.VisitorToken}
+
+	// Neither text nor a file: nothing to send.
+	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "  "}).Want(t, 422)
+
+	var first, second domain.Attachment
+	e.Upload("/v1/widget/attachments", va, "Peşə kitabı.pdf", []byte("%PDF-1.7\n")).Want(t, 201).JSON(t, &first)
+	e.Upload("/v1/widget/attachments", va, "shot.png", pngBytes()).Want(t, 201).JSON(t, &second)
+	var created struct {
+		Conversation struct {
+			ID      uuid.UUID `json:"id"`
+			Subject string    `json:"subject"`
+		} `json:"conversation"`
+		Message domain.Message `json:"message"`
+	}
+	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "", "attachment_ids": []string{first.ID.String()}}).
+		Want(t, 201).JSON(t, &created)
+	if created.Conversation.Subject != "Peşə kitabı.pdf" || len(created.Message.Attachments) != 1 || created.Message.BodyText != "" {
+		t.Fatalf("%+v %+v", created.Conversation, created.Message)
+	}
+	cid := created.Conversation.ID.String()
+	var m domain.Message
+	e.Do("POST", "/v1/widget/conversations/"+cid+"/messages", va, map[string]any{"attachment_ids": []string{second.ID.String()}}).
+		Want(t, 201).JSON(t, &m)
+	if len(m.Attachments) != 1 || m.Attachments[0].ID != second.ID {
+		t.Fatal(m.Attachments)
+	}
+	e.Do("POST", "/v1/widget/conversations/"+cid+"/messages", va, map[string]any{"body": ""}).Want(t, 422)
+}
+
 func TestVisitorFileTypes(t *testing.T) {
 	e, ws := setup(t)
 	s := start(t, e, map[string]any{"key": ws.WidgetKey})
