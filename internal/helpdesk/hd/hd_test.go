@@ -100,6 +100,18 @@ func TestUploadChecks(t *testing.T) {
 	if ct := hd.DetectType([]byte("\x89PNG\r\n\x1a\n"), "a.png"); ct != "image/png" {
 		t.Fatalf("png: %s", ct)
 	}
+	// Browser voice recordings are audio, though their bytes sniff as video.
+	for _, c := range []struct{ head, name, want string }{
+		{"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01webm\x18\x53\x80\x67\x86\x86A_OPUS\x63\xa2", "Voice message.webm", "audio/webm"},
+		{"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01webm\x86\x85V_VP8\x86\x86A_OPUS", "clip.webm", "video/webm"},
+		{"OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x13OpusHead\x01", "Voice message.ogg", "audio/ogg"},
+		{"\x00\x00\x00\x18ftypiso5\x00\x00\x02\x00iso5iso6mp41", "Voice message.m4a", "audio/mp4"},
+		{"\x00\x00\x00\x1cftypiso5\x00\x00\x02\x00iso5iso6mp41", "clip.mp4", "video/mp4"},
+	} {
+		if ct := hd.DetectType([]byte(c.head), c.name); ct != c.want {
+			t.Errorf("%s: %s, want %s", c.name, ct, c.want)
+		}
+	}
 	if hd.CleanFilename("../../etc/pa\x00ss\nwd") != "passwd" {
 		t.Fatal(hd.CleanFilename("../../etc/pa\x00ss\nwd"))
 	}
