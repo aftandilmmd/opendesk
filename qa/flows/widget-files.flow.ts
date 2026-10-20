@@ -27,11 +27,11 @@ test("turn files off for a chat widget, or limit them to some types", async ({ p
 test.describe("widget", () => {
   test.use({ target: "widget" });
 
-  // Only the widget on screen: the demo page's own text is hidden.
+  // Only the widget on screen. The text stays in the DOM: the recorder starts at the first text.
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       document.addEventListener("DOMContentLoaded", () => {
-        document.head.insertAdjacentHTML("beforeend", "<style>main { display: none; }</style>");
+        document.head.insertAdjacentHTML("beforeend", "<style>main { opacity: 0; }</style>");
       });
     });
   });
