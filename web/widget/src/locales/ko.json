@@ -31,6 +31,8 @@
   "continue": "계속",
   "dropFiles": "파일을 놓아 첨부하세요",
   "removeFile": "{name} 삭제",
+  "fileTypeRefused": "{name}은(는) 여기에서 보낼 수 없습니다. 다른 파일 형식을 사용해 보세요.",
+  "fileTooLarge": "{name}이(가) 25MB를 초과합니다.",
   "placeholder": "메시지를 입력하세요…",
   "placeholderEmail": "시작하려면 위에 이메일을 입력하세요",
   "message": "메시지",

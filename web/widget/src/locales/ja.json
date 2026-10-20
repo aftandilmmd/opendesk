@@ -31,6 +31,8 @@
   "continue": "続ける",
   "dropFiles": "ファイルをドロップして添付",
   "removeFile": "{name}を削除",
+  "fileTypeRefused": "{name} はここでは送信できません。別の種類のファイルをお試しください。",
+  "fileTooLarge": "{name} は 25 MB を超えています。",
   "placeholder": "メッセージを入力…",
   "placeholderEmail": "上でメールアドレスを入力すると始められます",
   "message": "メッセージ",

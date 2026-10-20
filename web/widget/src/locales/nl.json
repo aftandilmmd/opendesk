@@ -31,6 +31,8 @@
   "continue": "Doorgaan",
   "dropFiles": "Zet bestanden hier neer om ze toe te voegen",
   "removeFile": "{name} verwijderen",
+  "fileTypeRefused": "{name} kan hier niet worden verstuurd. Probeer een ander bestandstype.",
+  "fileTooLarge": "{name} is groter dan 25 MB.",
   "placeholder": "Schrijf een bericht…",
   "placeholderEmail": "Vul hierboven je e-mailadres in om te beginnen",
   "message": "Bericht",

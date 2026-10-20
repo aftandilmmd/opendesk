@@ -4,7 +4,7 @@
 import { Fragment, type ComponentChildren, type VNode } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { aiHandling, isAiAnswer, latestAiAnswer, teamReplied } from "./ai";
-import { readBot } from "./config";
+import { canAttach, fileProblem, readBot } from "./config";
 import { NEW, type Controller } from "./controller";
 import { current, dayLabel, isRtl, relTime, t } from "./i18n";
 import { Arrow, Back, ChatIc, Clip, Clock, Down, Ext, FileIc, OdMark, Up, X } from "./icons";
@@ -52,6 +52,8 @@ export function App({ c }: { c: Controller }) {
   const launcher = useRef<HTMLButtonElement>(null);
   const [live, setLive] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  // Why the last picked, dropped or pasted file was left out.
+  const [fileNote, setFileNote] = useState("");
   const [drag, setDrag] = useState(false);
   // The panel stays mounted for its exit, so closing eases out instead of vanishing.
   const [shown, setShown] = useState(s.open);
@@ -123,11 +125,15 @@ export function App({ c }: { c: Controller }) {
   };
 
   const addFiles = (list: FileList | File[] | null) => {
-    if (!list || cfg?.attachments === false) return;
-    const arr = Array.from(list).slice(0, 5);
-    if (!arr.length) return;
+    if (!list || !canAttach(cfg)) return;
+    const all = Array.from(list);
+    if (!all.length) return;
+    const exts = cfg?.attachment_extensions;
+    const bad = all.find((f) => fileProblem(f, exts));
+    setFileNote(bad ? t(fileProblem(bad, exts) === "size" ? "fileTooLarge" : "fileTypeRefused", { name: bad.name }) : "");
     if (s.view !== "thread") c.newConversation();
-    setFiles((f) => [...f, ...arr].slice(0, 5));
+    const arr = all.filter((f) => !fileProblem(f, exts)).slice(0, 5);
+    if (arr.length) setFiles((f) => [...f, ...arr].slice(0, 5));
   };
 
   const label = cfg?.launcher === "label";
@@ -155,7 +161,7 @@ export function App({ c }: { c: Controller }) {
           aria-label={t("chatWith", { name: titleOf(cfg) })}
           onKeyDown={onKey}
           onDragOver={(e) => {
-            if (cfg?.attachments !== false && e.dataTransfer?.types.includes("Files")) {
+            if (canAttach(cfg) && e.dataTransfer?.types.includes("Files")) {
               e.preventDefault();
               setDrag(true);
             }
@@ -169,7 +175,7 @@ export function App({ c }: { c: Controller }) {
             addFiles(e.dataTransfer?.files ?? null);
           }}
         >
-          {s.view === "home" ? <Home c={c} /> : <Thread c={c} files={files} setFiles={setFiles} addFiles={addFiles} />}
+          {s.view === "home" ? <Home c={c} /> : <Thread c={c} files={files} setFiles={setFiles} addFiles={addFiles} fileNote={fileNote} setFileNote={setFileNote} />}
           {drag && <div class="drop">{t("dropFiles")}</div>}
         </div>
       )}
@@ -326,7 +332,21 @@ function Home({ c }: { c: Controller }) {
 
 // ── Thread ───────────────────────────────────────────────────────────────────
 
-function Thread({ c, files, setFiles, addFiles }: { c: Controller; files: File[]; setFiles: (f: File[]) => void; addFiles: (f: FileList | null) => void }) {
+function Thread({
+  c,
+  files,
+  setFiles,
+  addFiles,
+  fileNote,
+  setFileNote,
+}: {
+  c: Controller;
+  files: File[];
+  setFiles: (f: File[]) => void;
+  addFiles: (f: FileList | null) => void;
+  fileNote: string;
+  setFileNote: (note: string) => void;
+}) {
   const s = useStore(c.store);
   const cfg = s.config;
   const bot = botOf(cfg);
@@ -476,7 +496,7 @@ function Thread({ c, files, setFiles, addFiles }: { c: Controller; files: File[]
         )}
       </Scroller>
       {cfg?.open === false && <Away cfg={cfg} bar />}
-      <Composer c={c} files={files} setFiles={setFiles} addFiles={addFiles} disabled={needsEmail || needsTopic || !s.session} hint={needsEmail ? t("placeholderEmail") : needsTopic ? t("placeholderTopic") : undefined} focusOn={s.preview || s.active ? null : s.topic} />
+      <Composer c={c} files={files} setFiles={setFiles} addFiles={addFiles} fileNote={fileNote} setFileNote={setFileNote} disabled={needsEmail || needsTopic || !s.session} hint={needsEmail ? t("placeholderEmail") : needsTopic ? t("placeholderTopic") : undefined} focusOn={s.preview || s.active ? null : s.topic} />
     </>
   );
 }
@@ -682,6 +702,8 @@ function Composer({
   files,
   setFiles,
   addFiles,
+  fileNote,
+  setFileNote,
   disabled,
   hint,
   focusOn,
@@ -690,6 +712,8 @@ function Composer({
   files: File[];
   setFiles: (f: File[]) => void;
   addFiles: (f: FileList | null) => void;
+  fileNote: string;
+  setFileNote: (note: string) => void;
   disabled: boolean;
   hint?: string;
   /** Focus the field when this becomes set (a topic was picked). */
@@ -700,7 +724,8 @@ function Composer({
   const ta = useRef<HTMLTextAreaElement>(null);
   const mirror = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const attachments = useStore(c.store).config?.attachments !== false;
+  const cfg = useStore(c.store).config;
+  const attachments = canAttach(cfg);
   const ready = !disabled && (!!text.trim() || files.length > 0);
 
   useEffect(() => {
@@ -720,11 +745,17 @@ function Composer({
     void c.send(text, files);
     setText("");
     setFiles([]);
+    setFileNote("");
     ta.current?.focus();
   };
 
   return (
     <div class="composer">
+      {fileNote && (
+        <div class="err" role="alert">
+          {fileNote}
+        </div>
+      )}
       {files.length > 0 && (
         <div class="pending-files">
           {files.map((f, i) => (
@@ -778,6 +809,7 @@ function Composer({
               type="file"
               multiple
               hidden
+              accept={cfg?.attachment_extensions?.join(",") || undefined}
               onChange={(e) => {
                 addFiles(e.currentTarget.files);
                 e.currentTarget.value = "";

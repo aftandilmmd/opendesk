@@ -31,6 +31,8 @@
   "continue": "Weiter",
   "dropFiles": "Dateien zum Anhängen hier ablegen",
   "removeFile": "{name} entfernen",
+  "fileTypeRefused": "{name} kann hier nicht gesendet werden. Versuche einen anderen Dateityp.",
+  "fileTooLarge": "{name} ist größer als 25 MB.",
   "placeholder": "Nachricht schreiben…",
   "placeholderEmail": "Geben Sie oben Ihre E-Mail-Adresse ein, um zu beginnen",
   "message": "Nachricht",

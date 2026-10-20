@@ -31,6 +31,8 @@
   "continue": "متابعة",
   "dropFiles": "أفلت الملفات لإرفاقها",
   "removeFile": "إزالة {name}",
+  "fileTypeRefused": "لا يمكن إرسال {name} هنا. جرّب نوع ملف آخر.",
+  "fileTooLarge": "حجم {name} أكبر من 25 ميغابايت.",
   "placeholder": "اكتب رسالة…",
   "placeholderEmail": "أضف بريدك الإلكتروني أعلاه للبدء",
   "message": "رسالة",

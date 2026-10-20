@@ -31,6 +31,8 @@
   "continue": "继续",
   "dropFiles": "拖放文件以添加附件",
   "removeFile": "移除 {name}",
+  "fileTypeRefused": "无法在此发送 {name}。请尝试其他文件类型。",
+  "fileTooLarge": "{name} 超过 25 MB。",
   "placeholder": "输入消息…",
   "placeholderEmail": "请先在上方填写邮箱",
   "message": "消息",

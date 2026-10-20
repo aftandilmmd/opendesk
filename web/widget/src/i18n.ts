@@ -37,6 +37,8 @@ export const en = {
   continue: "Continue",
   dropFiles: "Drop files to attach",
   removeFile: "Remove {name}",
+  fileTypeRefused: "{name} can't be sent here. Try another file type.",
+  fileTooLarge: "{name} is larger than 25 MB.",
   placeholder: "Write a message…",
   placeholderEmail: "Add your email above to start",
   message: "Message",

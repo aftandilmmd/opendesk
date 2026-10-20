@@ -31,6 +31,8 @@
   "continue": "Devam",
   "dropFiles": "Eklemek için dosyaları buraya bırakın",
   "removeFile": "{name} dosyasını kaldır",
+  "fileTypeRefused": "{name} buradan gönderilemez. Başka bir dosya türü deneyin.",
+  "fileTooLarge": "{name} 25 MB'tan büyük.",
   "placeholder": "Bir mesaj yazın…",
   "placeholderEmail": "Başlamak için yukarıya e-posta adresinizi ekleyin",
   "message": "Mesaj",

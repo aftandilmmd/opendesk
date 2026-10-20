@@ -104,6 +104,13 @@ export function resolveConfig(raw: Partial<WidgetConfig> | null | undefined): Wi
     suggestions,
     sound: r.sound === true,
     attachments: r.attachments !== false,
+    attachment_extensions: Array.isArray(r.attachment_extensions)
+      ? r.attachment_extensions
+          .filter((x): x is string => typeof x === "string")
+          .map((x) => x.trim().toLowerCase())
+          .filter((x) => /^\.[a-z0-9]{1,10}$/.test(x))
+          .slice(0, 60)
+      : null,
     team,
     ai_answers: r.ai_answers === true,
     bot: readBot(r.bot),
@@ -113,6 +120,26 @@ export function resolveConfig(raw: Partial<WidgetConfig> | null | undefined): Wi
     offline_message: typeof r.offline_message === "string" ? r.offline_message.trim().slice(0, 300) : "",
     brand,
   };
+}
+
+/** The server's upload limit per file. */
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+/** Whether the visitor may attach files at all. */
+export function canAttach(c: WidgetConfig | null | undefined): boolean {
+  return c?.attachments !== false && (c?.attachment_extensions == null || c.attachment_extensions.length > 0);
+}
+
+/**
+ * Why a file can't be sent, checked before uploading: its extension is not one the widget
+ * takes, or it is too large. The server checks the type again against the file's bytes.
+ */
+export function fileProblem(f: { name: string; size: number }, extensions: string[] | null | undefined): "type" | "size" | null {
+  if (extensions) {
+    const dot = f.name.lastIndexOf(".");
+    if (dot < 1 || !extensions.includes(f.name.slice(dot).toLowerCase())) return "type";
+  }
+  return f.size > MAX_FILE_BYTES ? "size" : null;
 }
 
 /** Corner radii per preset: panel, bubbles, launcher, controls (buttons, chips), cards, the composer bar, avatars. */
