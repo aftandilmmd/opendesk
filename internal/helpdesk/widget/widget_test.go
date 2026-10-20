@@ -410,6 +410,53 @@ func TestVisitorFileTypes(t *testing.T) {
 	}
 }
 
+func TestVisitorVoiceMessages(t *testing.T) {
+	e, ws := setup(t)
+	s := start(t, e, map[string]any{"key": ws.WidgetKey})
+	va := hdtest.Auth{Visitor: s.VisitorToken}
+	webm := []byte("\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01")
+
+	// Off by default, a minute long.
+	m := e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t)
+	if m["voice_messages"] != false || m["voice_max_seconds"] != float64(60) {
+		t.Fatal(m)
+	}
+	// Recordings are taken only as files of the widget's types: images only refuses them.
+	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"attachment_types": []string{"png"}})
+	e.Upload("/v1/widget/attachments", va, "voice.webm", webm).Want(t, 422)
+
+	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"voice_messages": true, "voice_max_seconds": 120})
+	m = e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t)
+	if m["voice_messages"] != true || m["voice_max_seconds"] != float64(120) {
+		t.Fatal(m)
+	}
+	e.Upload("/v1/widget/attachments", va, "voice.webm", webm).Want(t, 201)
+	e.Upload("/v1/widget/attachments", va, "voice.ogg", []byte("OggS\x00\x02\x00\x00")).Want(t, 201)
+	e.Upload("/v1/widget/attachments", va, "voice.webm", []byte("#!/bin/sh\nid")).Want(t, 422)
+	e.Upload("/v1/widget/attachments", va, "invoice.pdf", []byte("%PDF-1.7\n")).Want(t, 422)
+
+	// With files off, a voice message is still sent.
+	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"attachments": false})
+	var voice domain.Attachment
+	e.Upload("/v1/widget/attachments", va, "voice.webm", webm).Want(t, 201).JSON(t, &voice)
+	e.Upload("/v1/widget/attachments", va, "shot.png", pngBytes()).Want(t, 422)
+	var created struct {
+		Message domain.Message `json:"message"`
+	}
+	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"attachment_ids": []string{voice.ID.String()}}).Want(t, 201).JSON(t, &created)
+	if len(created.Message.Attachments) != 1 {
+		t.Fatal(created.Message)
+	}
+
+	// Both off: nothing.
+	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"voice_messages": false})
+	e.Upload("/v1/widget/attachments", va, "voice.webm", webm).Want(t, 403)
+
+	for _, n := range []int{4, 301} {
+		e.Do("PATCH", "/v1/widget/settings", ws.Admin.As(ws), map[string]any{"voice_max_seconds": n}).Want(t, 422)
+	}
+}
+
 func TestAgentAttachments(t *testing.T) {
 	e, ws := setup(t)
 	other := e.NewWorkspace()
