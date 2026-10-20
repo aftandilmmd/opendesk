@@ -368,7 +368,7 @@ export class Controller {
         content_type: f.type,
         size_bytes: f.size,
         inline: false,
-        url: f.type.startsWith("image/") ? URL.createObjectURL(f) : "",
+        url: f.type.startsWith("image/") || f.type.startsWith("audio/") ? URL.createObjectURL(f) : "",
       })),
       created_at: new Date().toISOString(),
       local: "pending",

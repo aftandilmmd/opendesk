@@ -13,6 +13,7 @@ import { Bolt, BotFace, Check, Clock, Cross, FileIc, LinkIc, Person, Spinner, Th
 import type { LiveReply } from "./live";
 import { renderMarkdown } from "./markdown";
 import type { ActionUi } from "./store";
+import { VoicePlayer } from "./voice";
 import type { AIAction, AIActionStatus, Attachment, BotRef, Rating, TeamMember, UiMessage } from "./types";
 
 export const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -120,6 +121,7 @@ export function Bubble({ m, me, grouped, onRetry }: { m: UiMessage; me: boolean;
 }
 
 export function FileView({ a }: { a: Attachment }) {
+  if (a.content_type.startsWith("audio/") && a.url) return <VoicePlayer src={a.url} />;
   if (a.content_type.startsWith("image/") && a.url)
     return (
       <a href={a.url} target="_blank" rel="noopener noreferrer">
