@@ -43,6 +43,11 @@ const CHECKS: Partial<Record<keyof WidgetSettings, Check>> = {
   show_team: bool("show_team"),
   sound: bool("sound"),
   attachments: bool("attachments"),
+  voice_messages: bool("voice_messages"),
+  voice_max_seconds: (v) => {
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 5 || v > 300) throw invalid("voice_max_seconds must be a whole number of seconds from 5 to 300");
+    return v;
+  },
   attachment_types: (v) => {
     if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !ALL_FILE_TYPES.includes(x))) throw invalid("attachment_types must be file types of the catalog");
     return ALL_FILE_TYPES.filter((id) => v.includes(id));
@@ -155,6 +160,8 @@ export function widgetConfig(ws: WsData, widget?: Widget): WidgetConfig {
     sound: w.sound,
     attachments: w.attachments ?? true,
     attachment_extensions: !(w.attachments ?? true) ? [] : w.attachment_types?.length ? fileTypeExtensions(w.attachment_types) : null,
+    voice_messages: w.voice_messages ?? false,
+    voice_max_seconds: w.voice_max_seconds ?? 60,
     team,
     ai_answers: !aiOff() && ws.ai.enabled && ws.ai.widget_answers,
     bot: widgetBot(ws, row?.id),

@@ -158,6 +158,8 @@ export function defaultWidget(): WidgetSettings {
     email_follow_up: true,
     attachments: true,
     attachment_types: [],
+    voice_messages: false,
+    voice_max_seconds: 60,
   };
 }
 

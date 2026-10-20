@@ -1156,6 +1156,10 @@ export type WidgetSettings = {
   attachments: boolean;
   /** Ids of the file type catalog (components/widget/fileTypes.ts) visitors may send; [] takes any file but programs and scripts. */
   attachment_types: string[];
+  /** Visitors may record voice messages, whether or not they may send files. */
+  voice_messages: boolean;
+  /** The longest voice message, 5 to 300 seconds. */
+  voice_max_seconds: number;
 };
 /** GET /v1/widget/config: what the widget renders. */
 export type WidgetConfig = {
@@ -1182,6 +1186,9 @@ export type WidgetConfig = {
   attachments?: boolean;
   /** Extensions of the types visitors may send; null for any file but programs and scripts; [] while attachments is off. */
   attachment_extensions?: string[] | null;
+  /** Visitors may record voice messages; older servers omit it. */
+  voice_messages?: boolean;
+  voice_max_seconds?: number;
   team: { name: string; avatar_url: string | null }[];
   ai_answers: boolean;
   /** The widget's bot, else the default bot (contracts/bots.md). */
