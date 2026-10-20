@@ -9,7 +9,7 @@
 import { OLLIE_LOOK, type BotLook } from "../../src/lib/botlook";
 import type { Fetcher } from "./api";
 import type { RtChannelLike, RtSocketLike, SocketFactory } from "./realtime";
-import type { AIAction, BotIdentity, BotRef, Conversation, Message, WidgetConfig } from "./types";
+import type { AIAction, Attachment, BotIdentity, BotRef, Conversation, Message, WidgetConfig } from "./types";
 
 const WID = "00000000-0000-4000-8000-00000000d3e0";
 const HELP = "https://margin.opendeskhelp.com/a";
@@ -106,6 +106,8 @@ export function demoConfig(key: string, params = new URLSearchParams()): WidgetC
     subtitle: "",
     suggestions: ["Where is my order?", "Change my delivery address", "I can't sign in with SSO", "Talk to a person"],
     sound: true,
+    voice_messages: params.get("od_voice") !== "0",
+    voice_max_seconds: Number(params.get("od_voice_max")) || 60,
     team: [
       { name: "Priya", avatar_url: null },
       { name: "Tomás", avatar_url: null },
@@ -208,6 +210,10 @@ export function createMock(o: MockOptions = {}): Mock {
     const h = (++n).toString(16).padStart(4, "0") + Math.random().toString(16).slice(2, 10);
     return `${h.slice(0, 8)}-0000-4000-8000-${Date.now().toString(16).slice(-12).padStart(12, "0")}`;
   };
+
+  // Uploaded files, attached to the message that names them.
+  const uploads: Record<string, Attachment> = {};
+  const attached = (ids: unknown) => (Array.isArray(ids) ? ids.map((id) => uploads[String(id)]).filter(Boolean) : []);
 
   function msg(ticket_id: string, dir: "inbound" | "outbound", text: string, minsAgo = 0, html = ""): Message {
     return {
@@ -400,7 +406,7 @@ export function createMock(o: MockOptions = {}): Mock {
       const text = String(body.body ?? "");
       const c: Conversation = { id: cid, subject: text.slice(0, 60) || "New conversation", status: "open", last_message_preview: text, last_message_at: ago(0) };
       conversations.unshift(c);
-      const first = msg(cid, "inbound", text);
+      const first = { ...msg(cid, "inbound", text), attachments: attached(body.attachment_ids) };
       messages[cid] = [first];
       if (botOn()) agentTurn(cid, text);
       else teamTurn(cid);
@@ -441,7 +447,7 @@ export function createMock(o: MockOptions = {}): Mock {
       const cid = m[1];
       if (method === "GET") return json({ data: messages[cid] ?? [], next_cursor: null });
       const text = String(body.body ?? "");
-      const reply = msg(cid, "inbound", text);
+      const reply = { ...msg(cid, "inbound", text), attachments: attached(body.attachment_ids) };
       // Writing again expires a pending action (contracts/agent.md).
       for (const x of messages[cid] ?? [])
         if (x.ai_action?.status === "pending") {
@@ -460,7 +466,9 @@ export function createMock(o: MockOptions = {}): Mock {
     }
     if (path === "/v1/widget/attachments" && init.body instanceof FormData) {
       const f = init.body.get("file") as File;
-      return json({ id: uid(), filename: f.name, content_type: f.type, size_bytes: f.size, inline: false, url: URL.createObjectURL(f) }, 201);
+      const a: Attachment = { id: uid(), filename: f.name, content_type: f.type, size_bytes: f.size, inline: false, url: URL.createObjectURL(f) };
+      uploads[a.id] = a;
+      return json(a, 201);
     }
     return notFound();
   };
