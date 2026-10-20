@@ -491,6 +491,7 @@
     "hideQuoted": "Hide quoted text",
     "preview": "Preview {{name}}",
     "fullSize": "Open full size",
+    "download": "Download {{name}}",
     "fromAddress": "from {{name}} <{{address}}>",
     "toAddress": "to {{address}}",
     "replyTo": "Reply-To <m>{{address}}</m>",

@@ -86,13 +86,18 @@ function isImage(a: Attachment) {
   return a.content_type.startsWith("image/");
 }
 
+function isAudio(a: Attachment) {
+  return a.content_type.startsWith("audio/");
+}
+
 export function Attachments({ items }: { items: Attachment[] }) {
   const { t } = useTranslation("inbox");
   const [preview, setPreview] = useState<Attachment | null>(null);
   const visible = items.filter((a) => !a.inline);
   if (!visible.length) return null;
   const images = visible.filter(isImage);
-  const files = visible.filter((a) => !isImage(a));
+  const audio = visible.filter(isAudio);
+  const files = visible.filter((a) => !isImage(a) && !isAudio(a));
   return (
     <div className="mt-3 flex flex-col gap-2">
       {images.length > 0 && (
@@ -113,6 +118,14 @@ export function Attachments({ items }: { items: Attachment[] }) {
           ))}
         </div>
       )}
+      {audio.map((a) => (
+        <div key={a.id} className="flex max-w-[360px] items-center gap-2">
+          <audio controls preload="metadata" src={a.url} aria-label={a.filename} className="ph-no-capture h-9 min-w-0 flex-1" />
+          <a href={a.url} target="_blank" rel="noopener noreferrer" aria-label={t("message.download", { name: a.filename })} className="shrink-0 text-fg-4 hover:text-fg">
+            <Download className="size-3.5" />
+          </a>
+        </div>
+      ))}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {files.map((a) => (
