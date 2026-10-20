@@ -50,14 +50,23 @@ type WidgetSettings struct {
 	// file but a program or a script when that is empty.
 	Attachments     bool     `json:"attachments"`
 	AttachmentTypes []string `json:"attachment_types"`
+	// VoiceMessages lets visitors record voice messages of up to VoiceMaxSeconds.
+	VoiceMessages   bool `json:"voice_messages"`
+	VoiceMaxSeconds int  `json:"voice_max_seconds"`
 }
+
+// The range of a widget's longest voice message, in seconds.
+const (
+	MinVoiceSeconds = 5
+	MaxVoiceSeconds = 300
+)
 
 // DefaultWidgetSettings are the settings of a workspace that never changed them.
 func DefaultWidgetSettings() WidgetSettings {
 	return WidgetSettings{Greeting: "Hi! How can we help?", Enabled: true, AllowedOrigins: []string{},
 		Theme: "auto", Position: "right", OffsetX: 20, OffsetY: 20, Launcher: "icon", Radius: "soft",
 		ShowTeam: true, Suggestions: []string{}, Topics: []WidgetTopic{}, EmailFollowUp: true, Attachments: true,
-		AttachmentTypes: []string{}}
+		AttachmentTypes: []string{}, VoiceMaxSeconds: 60}
 }
 
 // UnmarshalJSON fills keys missing from a stored document with their defaults.
@@ -96,6 +105,9 @@ func (w *WidgetSettings) normalize() {
 	}
 	if w.Topics == nil {
 		w.Topics = []WidgetTopic{}
+	}
+	if w.VoiceMaxSeconds < MinVoiceSeconds || w.VoiceMaxSeconds > MaxVoiceSeconds {
+		w.VoiceMaxSeconds = d.VoiceMaxSeconds
 	}
 	// Ids this version does not know are dropped; a list of only those stays, and takes
 	// nothing, rather than opening the widget to any file.

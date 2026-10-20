@@ -46,6 +46,8 @@ type widgetSettingsPatch struct {
 	EmailFollowUp   *bool      `json:"email_follow_up,omitempty"`
 	Attachments     *bool      `json:"attachments,omitempty"`
 	AttachmentTypes *[]string  `json:"attachment_types,omitempty" maxItems:"50" doc:"Ids of the file type catalog (contracts/api.md); [] takes any file but a program or a script"`
+	VoiceMessages   *bool      `json:"voice_messages,omitempty"`
+	VoiceMaxSeconds *int       `json:"voice_max_seconds,omitempty" minimum:"5" maximum:"300" doc:"The longest voice message, in seconds"`
 }
 
 type topicIn struct {
@@ -197,6 +199,17 @@ func applyPatch(ctx context.Context, q db.Querier, wid uuid.UUID, w hd.WidgetSet
 		}
 		w.AttachmentTypes = types
 		fields = append(fields, "attachment_types")
+	}
+	if b.VoiceMessages != nil {
+		w.VoiceMessages = *b.VoiceMessages
+		fields = append(fields, "voice_messages")
+	}
+	if b.VoiceMaxSeconds != nil {
+		if *b.VoiceMaxSeconds < hd.MinVoiceSeconds || *b.VoiceMaxSeconds > hd.MaxVoiceSeconds {
+			return w, nil, httpx.Validation(fmt.Sprintf("voice_max_seconds must be %d to %d", hd.MinVoiceSeconds, hd.MaxVoiceSeconds))
+		}
+		w.VoiceMaxSeconds = *b.VoiceMaxSeconds
+		fields = append(fields, "voice_max_seconds")
 	}
 	if b.OfflineMessage != nil {
 		m, err := cleanText("offline_message", *b.OfflineMessage, 300)

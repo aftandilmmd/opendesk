@@ -115,6 +115,24 @@ var errWidgetDisabled = httpx.E(http.StatusForbidden, "widget_disabled", "The ch
 
 var errAttachmentsOff = httpx.E(http.StatusForbidden, "attachments_off", "This chat does not take files.")
 
+// visitorFileTypes lists the file types visitors may send: the widget's attachment
+// types, and with voice messages on, the types a recording comes in. Empty while they
+// may send none.
+func visitorFileTypes(w hd.WidgetSettings) []string {
+	out := []string{}
+	if w.Attachments {
+		out = append(out, w.AttachmentTypes...)
+	}
+	if w.VoiceMessages {
+		for _, t := range hd.VoiceFileTypes {
+			if !contains(out, t) {
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
 type configTopic struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
@@ -143,6 +161,8 @@ type widgetConfig struct {
 		Sound           bool          `json:"sound"`
 		Attachments     bool          `json:"attachments" doc:"Visitors may send files"`
 		AttachmentExts  []string      `json:"attachment_extensions" nullable:"true" doc:"Extensions of the file types visitors may send; null when any file but a program or a script; [] while attachments is off"`
+		VoiceMessages   bool          `json:"voice_messages" doc:"Visitors may record voice messages"`
+		VoiceMaxSeconds int           `json:"voice_max_seconds" doc:"The longest voice message, in seconds"`
 		Team            []teamFace    `json:"team" doc:"Up to 3 members of the widget's team (else of the workspace), available first; first names only"`
 		AIAnswers       bool          `json:"ai_answers" doc:"The AI agent handles new conversations"`
 		Bot             struct {
@@ -291,6 +311,7 @@ func (h *handler) registerPublic(api huma.API) {
 			} else if ws.Attachments {
 				b.AttachmentExts = hd.FileTypeExtensions(ws.AttachmentTypes)
 			}
+			b.VoiceMessages, b.VoiceMaxSeconds = ws.VoiceMessages, ws.VoiceMaxSeconds
 			if b.Title == "" {
 				b.Title = g.BrandName
 			}

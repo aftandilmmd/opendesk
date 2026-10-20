@@ -180,7 +180,7 @@ func (h *handler) registerConversations(api huma.API) {
 			if err != nil {
 				return nil, err
 			}
-			if len(attIDs) > 0 && !g.Settings.Attachments {
+			if len(attIDs) > 0 && len(visitorFileTypes(g.Settings)) == 0 {
 				return nil, errAttachmentsOff
 			}
 			if err := hd.CheckAttachmentTypes(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, g.Settings.AttachmentTypes); err != nil {
@@ -328,7 +328,7 @@ func (h *handler) registerConversations(api huma.API) {
 			if err != nil {
 				return nil, err
 			}
-			if len(attIDs) > 0 && !g.Settings.Attachments {
+			if len(attIDs) > 0 && len(visitorFileTypes(g.Settings)) == 0 {
 				return nil, errAttachmentsOff
 			}
 			if err := hd.CheckAttachmentTypes(ctx, h.d.Storage, h.d.DB.Pool, p.WorkspaceID, attIDs, g.Settings.AttachmentTypes); err != nil {
