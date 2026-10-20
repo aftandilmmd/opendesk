@@ -123,7 +123,7 @@ export function App({ c }: { c: Controller }) {
   };
 
   const addFiles = (list: FileList | File[] | null) => {
-    if (!list) return;
+    if (!list || cfg?.attachments === false) return;
     const arr = Array.from(list).slice(0, 5);
     if (!arr.length) return;
     if (s.view !== "thread") c.newConversation();
@@ -155,7 +155,7 @@ export function App({ c }: { c: Controller }) {
           aria-label={t("chatWith", { name: titleOf(cfg) })}
           onKeyDown={onKey}
           onDragOver={(e) => {
-            if (e.dataTransfer?.types.includes("Files")) {
+            if (cfg?.attachments !== false && e.dataTransfer?.types.includes("Files")) {
               e.preventDefault();
               setDrag(true);
             }
@@ -700,6 +700,7 @@ function Composer({
   const ta = useRef<HTMLTextAreaElement>(null);
   const mirror = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const attachments = useStore(c.store).config?.attachments !== false;
   const ready = !disabled && (!!text.trim() || files.length > 0);
 
   useEffect(() => {
@@ -761,7 +762,7 @@ function Composer({
             }}
             onPaste={(e) => {
               const f = e.clipboardData?.files;
-              if (f && f.length) {
+              if (attachments && f && f.length) {
                 e.preventDefault();
                 addFiles(f);
               }
@@ -770,19 +771,23 @@ function Composer({
           {/* After the field, and disabled, so focus and selectors never land on it. */}
           <textarea ref={mirror} class="input mirror" rows={1} tabIndex={-1} aria-hidden="true" disabled />
         </div>
-        <input
-          ref={picker}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            addFiles(e.currentTarget.files);
-            e.currentTarget.value = "";
-          }}
-        />
-        <button class="icon-btn" aria-label={t("attach")} disabled={disabled} onClick={() => picker.current?.click()}>
-          <Clip />
-        </button>
+        {attachments && (
+          <>
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                addFiles(e.currentTarget.files);
+                e.currentTarget.value = "";
+              }}
+            />
+            <button class="icon-btn" aria-label={t("attach")} disabled={disabled} onClick={() => picker.current?.click()}>
+              <Clip />
+            </button>
+          </>
+        )}
         <button class={`send${ready ? " ready" : ""}`} aria-label={t("send")} disabled={!ready} onClick={send}>
           <Up />
         </button>

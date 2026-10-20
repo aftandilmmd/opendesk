@@ -103,6 +103,7 @@ export function resolveConfig(raw: Partial<WidgetConfig> | null | undefined): Wi
     subtitle: str(r.subtitle, 80),
     suggestions,
     sound: r.sound === true,
+    attachments: r.attachments !== false,
     team,
     ai_answers: r.ai_answers === true,
     bot: readBot(r.bot),
