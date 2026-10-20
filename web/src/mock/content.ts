@@ -50,7 +50,7 @@ export type StoryMsg = {
   note?: boolean;
   html: string;
   min: number; // minutes ago
-  attach?: ("screenshot" | "screenshot2" | "pdf" | "log")[];
+  attach?: ("screenshot" | "screenshot2" | "pdf" | "log" | "voice")[];
   quoted?: boolean;
   delivery?: "failed" | "pending" | "bounced";
 };
@@ -205,6 +205,7 @@ export const STORIES: Story[] = [
     thread: [
       { from: "c", min: 41, html: `<p>hey! quick one: is there any way to nest tags? like <code>clients/acme</code> and <code>clients/globex</code></p>` },
       { from: "c", min: 40, html: `<p>we have ~200 tags now and the sidebar is getting wild 😅</p>` },
+      { from: "c", min: 39, html: "", attach: ["voice"] },
     ],
   },
   {
