@@ -244,6 +244,8 @@ export function toWidgetConfig(d: WidgetSettings, ws: Workspace | null, members:
     sound: d.sound,
     attachments: d.attachments,
     attachment_extensions: !d.attachments ? [] : d.attachment_types.length ? fileTypeExtensions(d.attachment_types) : null,
+    voice_messages: d.voice_messages,
+    voice_max_seconds: d.voice_max_seconds,
     team,
     ai_answers: aiAnswers,
     bot: bot ?? OLLIE_BOT,

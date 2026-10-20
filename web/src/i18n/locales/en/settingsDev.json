@@ -324,6 +324,12 @@
       "media": "Audio and video",
       "archive": "Archives"
     },
+    "voice": "Let visitors send voice messages",
+    "voiceHint": "Visitors record from their microphone, listen back, then send or delete the recording. Works with files turned off.",
+    "voiceLength": "Longest voice message",
+    "voiceLengthHint": "Recording stops on its own at this length.",
+    "seconds": "{{count}} s",
+    "minutes": "{{count}} min",
     "sound": "Sound for new replies",
     "soundHint": "A soft chime when a reply arrives while the visitor's tab is in the background.",
     "tooLong": "Up to {{max}} characters",

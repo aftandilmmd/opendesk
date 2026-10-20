@@ -82,6 +82,9 @@ function normalizeOrigin(v: string): string | null {
 }
 
 /** Defaults for keys an older server leaves out (contracts/api.md, contracts/teams.md). */
+// The lengths offered for a voice message, in seconds (the server takes 5 to 300).
+const VOICE_LENGTHS = [15, 30, 60, 120, 300];
+
 function withDefaults(s: WS): WS {
   return {
     ...s,
@@ -103,6 +106,8 @@ function withDefaults(s: WS): WS {
     email_follow_up: s.email_follow_up ?? true,
     attachments: s.attachments ?? true,
     attachment_types: s.attachment_types ?? [],
+    voice_messages: s.voice_messages ?? false,
+    voice_max_seconds: s.voice_max_seconds ?? 60,
   };
 }
 
@@ -559,6 +564,19 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
                     </span>
                   )}
                 </div>
+              </Row>
+            )}
+            <Row label={t("widget.voice")} description={t("widget.voiceHint")}>
+              <Switch checked={s.voice_messages} onCheckedChange={(voice_messages) => set({ voice_messages })} aria-label={t("widget.voice")} />
+            </Row>
+            {s.voice_messages && (
+              <Row label={t("widget.voiceLength")} description={t("widget.voiceLengthHint")}>
+                <Segmented
+                  size="xs"
+                  value={String(s.voice_max_seconds)}
+                  onChange={(v) => set({ voice_max_seconds: Number(v) })}
+                  options={VOICE_LENGTHS.map((n) => ({ value: String(n), label: n < 60 ? t("widget.seconds", { count: n }) : t("widget.minutes", { count: n / 60 }) }))}
+                />
               </Row>
             )}
             <Row label={t("widget.sound")} description={t("widget.soundHint")}>
