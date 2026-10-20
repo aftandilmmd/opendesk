@@ -1,0 +1,150 @@
+package hd
+
+import (
+	"bytes"
+	"path/filepath"
+	"slices"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/useopendesk/opendesk/internal/httpx"
+)
+
+// FileType is a kind of file a widget may take (contracts/api.md "Widget"): its
+// extensions, and the bytes a file of that kind starts with.
+type FileType struct {
+	ID         string   `json:"id"`
+	Group      string   `json:"group" enum:"image,document,spreadsheet,presentation,media,archive"`
+	Extensions []string `json:"extensions"`
+	match      func(head []byte) bool
+}
+
+var fileTypes = []FileType{
+	{ID: "png", Group: "image", Extensions: []string{".png"}, match: prefix("\x89PNG\r\n\x1a\n")},
+	{ID: "jpg", Group: "image", Extensions: []string{".jpg", ".jpeg"}, match: prefix("\xff\xd8\xff")},
+	{ID: "gif", Group: "image", Extensions: []string{".gif"}, match: prefix("GIF87a", "GIF89a")},
+	{ID: "webp", Group: "image", Extensions: []string{".webp"}, match: riff("WEBP")},
+	{ID: "heic", Group: "image", Extensions: []string{".heic", ".heif"}, match: ftyp("heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1")},
+	{ID: "pdf", Group: "document", Extensions: []string{".pdf"}, match: prefix("%PDF-")},
+	{ID: "txt", Group: "document", Extensions: []string{".txt"}, match: plainText},
+	{ID: "csv", Group: "document", Extensions: []string{".csv"}, match: plainText},
+	{ID: "rtf", Group: "document", Extensions: []string{".rtf"}, match: prefix(`{\rtf`)},
+	{ID: "doc", Group: "document", Extensions: []string{".doc"}, match: prefix(ole)},
+	{ID: "docx", Group: "document", Extensions: []string{".docx"}, match: prefix(zip)},
+	{ID: "odt", Group: "document", Extensions: []string{".odt"}, match: prefix(zip)},
+	{ID: "xls", Group: "spreadsheet", Extensions: []string{".xls"}, match: prefix(ole)},
+	{ID: "xlsx", Group: "spreadsheet", Extensions: []string{".xlsx"}, match: prefix(zip)},
+	{ID: "ods", Group: "spreadsheet", Extensions: []string{".ods"}, match: prefix(zip)},
+	{ID: "ppt", Group: "presentation", Extensions: []string{".ppt"}, match: prefix(ole)},
+	{ID: "pptx", Group: "presentation", Extensions: []string{".pptx"}, match: prefix(zip)},
+	{ID: "odp", Group: "presentation", Extensions: []string{".odp"}, match: prefix(zip)},
+	{ID: "mp4", Group: "media", Extensions: []string{".mp4", ".m4v"}, match: ftyp()},
+	{ID: "mov", Group: "media", Extensions: []string{".mov"}, match: ftyp()},
+	{ID: "mp3", Group: "media", Extensions: []string{".mp3"}, match: mp3},
+	{ID: "m4a", Group: "media", Extensions: []string{".m4a"}, match: ftyp()},
+	{ID: "wav", Group: "media", Extensions: []string{".wav"}, match: riff("WAVE")},
+	{ID: "zip", Group: "archive", Extensions: []string{".zip"}, match: prefix(zip)},
+}
+
+const (
+	ole = "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+	zip = "PK\x03\x04"
+)
+
+func prefix(magic ...string) func([]byte) bool {
+	return func(head []byte) bool {
+		return slices.ContainsFunc(magic, func(m string) bool { return bytes.HasPrefix(head, []byte(m)) })
+	}
+}
+
+func riff(kind string) func([]byte) bool {
+	return func(head []byte) bool {
+		return len(head) >= 12 && string(head[:4]) == "RIFF" && string(head[8:12]) == kind
+	}
+}
+
+// ftyp matches an ISO base media file (MP4, QuickTime, HEIF); with brands, only those.
+func ftyp(brands ...string) func([]byte) bool {
+	return func(head []byte) bool {
+		if len(head) < 12 || string(head[4:8]) != "ftyp" {
+			return false
+		}
+		return len(brands) == 0 || slices.Contains(brands, string(head[8:12]))
+	}
+}
+
+func mp3(head []byte) bool {
+	return bytes.HasPrefix(head, []byte("ID3")) || (len(head) >= 2 && head[0] == 0xff && head[1]&0xe0 == 0xe0)
+}
+
+// plainText is UTF-8 without NUL; a character cut at the end of the sniffed bytes is
+// allowed.
+func plainText(head []byte) bool {
+	if len(head) == 0 || bytes.IndexByte(head, 0) >= 0 {
+		return false
+	}
+	for i := 0; i < 3 && len(head) > 0 && !utf8.Valid(head); i++ {
+		head = head[:len(head)-1]
+	}
+	return len(head) > 0 && utf8.Valid(head)
+}
+
+// FileTypes is the catalog a widget picks from.
+func FileTypes() []FileType { return fileTypes }
+
+// DefaultFileTypes is every type of the catalog.
+func DefaultFileTypes() []string {
+	out := make([]string, len(fileTypes))
+	for i, f := range fileTypes {
+		out[i] = f.ID
+	}
+	return out
+}
+
+// FileTypeExtensions lists the extensions of the given types in catalog order;
+// unknown ids are skipped.
+func FileTypeExtensions(ids []string) []string {
+	out := []string{}
+	for _, f := range fileTypes {
+		if slices.Contains(ids, f.ID) {
+			out = append(out, f.Extensions...)
+		}
+	}
+	return out
+}
+
+// CleanFileTypes checks a picked list against the catalog: at least one, known ids,
+// deduplicated, in catalog order.
+func CleanFileTypes(ids []string) ([]string, error) {
+	for _, id := range ids {
+		if !slices.ContainsFunc(fileTypes, func(f FileType) bool { return f.ID == id }) {
+			return nil, httpx.Validation("attachment_types has an unknown type: " + Truncate(id, 20))
+		}
+	}
+	out := []string{}
+	for _, f := range fileTypes {
+		if slices.Contains(ids, f.ID) {
+			out = append(out, f.ID)
+		}
+	}
+	if len(out) == 0 {
+		return nil, httpx.Validation("pick at least one file type, or turn attachments off")
+	}
+	return out, nil
+}
+
+// FileTypeAllowed reports whether a file is one of the given types: its extension is
+// one of theirs and its first bytes are what that type starts with. A program or a
+// script is never allowed, whatever its name.
+func FileTypeAllowed(head []byte, filename string, ids []string) bool {
+	if len(head) == 0 || IsExecutable(head, filename) {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	for _, f := range fileTypes {
+		if slices.Contains(ids, f.ID) && slices.Contains(f.Extensions, ext) && f.match(head) {
+			return true
+		}
+	}
+	return false
+}
