@@ -111,6 +111,8 @@ export function resolveConfig(raw: Partial<WidgetConfig> | null | undefined): Wi
           .filter((x) => /^\.[a-z0-9]{1,10}$/.test(x))
           .slice(0, 60)
       : null,
+    voice_messages: r.voice_messages === true,
+    voice_max_seconds: clamp(r.voice_max_seconds, 5, 300, 60),
     team,
     ai_answers: r.ai_answers === true,
     bot: readBot(r.bot),
