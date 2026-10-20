@@ -19,10 +19,16 @@ describe("widget config", () => {
       subtitle: "",
       suggestions: [],
       sound: false,
+      attachments: true,
       team: [],
       ai_answers: false,
       bot: { id: null, name: "Ollie", role: "", avatar_url: "", look: OLLIE_LOOK, greeting: "" },
     });
+  });
+
+  it("takes files unless the widget turns them off", () => {
+    expect(resolveConfig({ workspace_name: "Acme", attachments: false }).attachments).toBe(false);
+    expect(resolveConfig({ workspace_name: "Acme", attachments: "no" as never }).attachments).toBe(true);
   });
 
   it("keeps values in range and drops invalid ones", () => {
