@@ -137,6 +137,8 @@ export function demoConfig(key: string, params = new URLSearchParams()): WidgetC
     wk_bot: { bot: PIP, brand_color: "#0f766e" },
     wk_emoji: { bot: FOX },
     wk_topics: { topics },
+    wk_files: { attachment_extensions: [".png", ".jpg", ".jpeg", ".pdf"] },
+    wk_nofiles: { attachments: false, attachment_extensions: [] },
     wk_closed: { open: false, topics },
     wk_offline: { open: false, offline_message: "We're offline for the weekend.\nLeave a message and we'll reply on Monday morning." },
     wk_press: {
