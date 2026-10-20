@@ -1149,6 +1149,8 @@ export type WidgetSettings = {
   email_follow_up: boolean;
   /** Visitors may send files. */
   attachments: boolean;
+  /** Ids of the file type catalog (components/widget/fileTypes.ts) visitors may send; at least one. */
+  attachment_types: string[];
 };
 /** GET /v1/widget/config: what the widget renders. */
 export type WidgetConfig = {
@@ -1173,6 +1175,8 @@ export type WidgetConfig = {
   sound: boolean;
   /** Visitors may send files; older servers omit it. */
   attachments?: boolean;
+  /** Extensions of the types visitors may send; [] while attachments is off. */
+  attachment_extensions?: string[] | null;
   team: { name: string; avatar_url: string | null }[];
   ai_answers: boolean;
   /** The widget's bot, else the default bot (contracts/bots.md). */

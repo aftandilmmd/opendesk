@@ -9,6 +9,7 @@ import { defaultBrand, helpPageUrl, legacyWidget, syncLegacyWidget, widgetOut } 
 import { hasControl, isRecord, nowIso, oneLine, uuid } from "../util";
 import { aiOff } from "./ai";
 import { widgetBot } from "../bots";
+import { ALL_FILE_TYPES, fileTypeExtensions } from "@/components/widget/fileTypes";
 
 type Check = (v: unknown) => unknown;
 
@@ -42,6 +43,12 @@ const CHECKS: Partial<Record<keyof WidgetSettings, Check>> = {
   show_team: bool("show_team"),
   sound: bool("sound"),
   attachments: bool("attachments"),
+  attachment_types: (v) => {
+    if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !ALL_FILE_TYPES.includes(x))) throw invalid("attachment_types must be file types of the catalog");
+    const list = ALL_FILE_TYPES.filter((id) => v.includes(id));
+    if (!list.length) throw invalid("Pick at least one file type, or turn attachments off");
+    return list;
+  },
   greeting: (v) => {
     if (typeof v !== "string") throw invalid("greeting must be text");
     const s = v.replace(/\r\n/g, "\n").trim();
@@ -149,6 +156,7 @@ export function widgetConfig(ws: WsData, widget?: Widget): WidgetConfig {
     suggestions: [...w.suggestions],
     sound: w.sound,
     attachments: w.attachments ?? true,
+    attachment_extensions: (w.attachments ?? true) ? fileTypeExtensions(w.attachment_types ?? ALL_FILE_TYPES) : [],
     team,
     ai_answers: !aiOff() && ws.ai.enabled && ws.ai.widget_answers,
     bot: widgetBot(ws, row?.id),
