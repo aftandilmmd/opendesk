@@ -24,6 +24,8 @@ type WidgetTopic struct {
 // name) find it.
 type WidgetSettings struct {
 	Greeting       string   `json:"greeting"`
+	Intro          string   `json:"intro" doc:"Under the greeting in a new chat; empty = the translated default"`
+	ChatWelcome    bool     `json:"chat_welcome" doc:"A new chat opens with the greeting and intro; off, it opens empty"`
 	RequireEmail   bool     `json:"require_email"`
 	Enabled        bool     `json:"enabled"`
 	AllowedOrigins []string `json:"allowed_origins"`
@@ -65,7 +67,7 @@ const (
 func DefaultWidgetSettings() WidgetSettings {
 	return WidgetSettings{Greeting: "Hi! How can we help?", Enabled: true, AllowedOrigins: []string{},
 		Theme: "auto", Position: "right", OffsetX: 20, OffsetY: 20, Launcher: "icon", Radius: "soft",
-		ShowTeam: true, Suggestions: []string{}, Topics: []WidgetTopic{}, EmailFollowUp: true, Attachments: true,
+		ChatWelcome: true, ShowTeam: true, Suggestions: []string{}, Topics: []WidgetTopic{}, EmailFollowUp: true, Attachments: true,
 		AttachmentTypes: []string{}, VoiceMaxSeconds: 60}
 }
 
@@ -143,6 +145,8 @@ type Settings struct {
 	BusinessHoursRaw json.RawMessage `json:"business_hours"`
 	// Locale is the default language (BCP 47) of customer-facing pages; "" = the visitor's browser.
 	Locale string `json:"locale"`
+	// LocaleFixed: customer-facing pages always use the locale (a brand's own, else this one).
+	LocaleFixed bool `json:"locale_fixed"`
 	// AutoCloseDays closes solved tickets after this many days; nil = 7, 0 = never.
 	AutoCloseDays *int            `json:"auto_close_days"`
 	Widget        *WidgetSettings `json:"widget"`

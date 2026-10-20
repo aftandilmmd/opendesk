@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import type { WidgetConfig } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 
-export type PreviewScene = "launcher" | "home" | "chat";
+export type PreviewScene = "launcher" | "home" | "chat" | "new";
 type PreviewOptions = { config: WidgetConfig; scene: PreviewScene; dark?: boolean };
 type PreviewHandle = { update(opts: Partial<PreviewOptions>): void; destroy(): void };
 type PreviewModule = { mountPreview(host: HTMLElement, opts: PreviewOptions): PreviewHandle };

@@ -10,11 +10,11 @@ import (
 )
 
 // supported are the web app's SUPPORTED locales (web/src/i18n/index.ts), in its order.
-var supported = []string{"en", "es", "fr", "de", "pt", "it", "nl", "pl", "ja", "zh-CN", "ko", "tr", "ar"}
+var supported = []string{"en", "es", "fr", "de", "pt", "it", "nl", "pl", "ja", "zh-CN", "ko", "tr", "az", "ar"}
 
 // localeNames are the native names language pickers show.
 var localeNames = map[string]string{"en": "English", "es": "Español", "fr": "Français", "de": "Deutsch", "pt": "Português",
-	"it": "Italiano", "nl": "Nederlands", "pl": "Polski", "ja": "日本語", "zh-CN": "简体中文", "ko": "한국어", "tr": "Türkçe", "ar": "العربية"}
+	"it": "Italiano", "nl": "Nederlands", "pl": "Polski", "ja": "日本語", "zh-CN": "简体中文", "ko": "한국어", "tr": "Türkçe", "az": "Azərbaycan dili", "ar": "العربية"}
 
 // catalog is one locale's public.json, flattened to dotted keys.
 type catalog map[string]string

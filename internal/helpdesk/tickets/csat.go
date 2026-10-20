@@ -77,9 +77,10 @@ type CsatSurvey struct {
 		Number  int64  `json:"number"`
 		Subject string `json:"subject"`
 	} `json:"ticket"`
-	Score   *int   `json:"score"`
-	Comment string `json:"comment"`
-	Locale  string `json:"locale" doc:"Workspace default language (BCP 47), empty when not set"`
+	Score       *int   `json:"score"`
+	Comment     string `json:"comment"`
+	Locale      string `json:"locale" doc:"Workspace default language (BCP 47), empty when not set"`
+	LocaleFixed bool   `json:"locale_fixed" doc:"The survey always uses locale, whatever the visitor's browser"`
 }
 
 type csatRow struct {
@@ -110,7 +111,7 @@ func loadCSAT(ctx context.Context, q db.Querier, token string, lock bool) (csatR
 		return r, err
 	}
 	st := hd.ParseSettings(settings)
-	r.view.BrandColor, r.view.Locale = st.BrandColor, st.Locale
+	r.view.BrandColor, r.view.Locale, r.view.LocaleFixed = st.BrandColor, st.Locale, st.LocaleFixed && st.Locale != ""
 	if score != nil {
 		v := int(*score)
 		r.view.Score = &v

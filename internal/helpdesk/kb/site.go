@@ -20,6 +20,7 @@ type HelpCenter struct {
 	Slug        string
 	Title       string // the brand's help center title, else its name
 	Locale      string // the brand's, else the workspace's; "" when neither is set
+	LocaleFixed bool   // pages always use Locale, whatever the reader's browser
 	Color       string // the brand's colour, else the workspace brand_color; "" when neither is set
 	Logo        domain.Avatar
 	Favicon     domain.Avatar
@@ -29,7 +30,7 @@ type HelpCenter struct {
 
 // A suspended workspace's help centers read as off (contracts/admin.md).
 var helpCenterSelect = `SELECT b.id, b.workspace_id, b.slug, b.name, b.help_center_title, b.help_center_enabled AND w.suspended_at IS NULL, b.locale, b.color, b.images,
-	COALESCE(w.settings ->> 'locale', ''), COALESCE(w.settings ->> 'brand_color', ''), w.avatar_url, COALESCE(` + brands.ActiveHostSQL("b.id") + `, '')
+	COALESCE(w.settings ->> 'locale', ''), COALESCE(w.settings ->> 'locale_fixed' = 'true', false), COALESCE(w.settings ->> 'brand_color', ''), w.avatar_url, COALESCE(` + brands.ActiveHostSQL("b.id") + `, '')
 	FROM brands b JOIN workspaces w ON w.id = b.workspace_id`
 
 func loadHelpCenter(ctx context.Context, q db.Querier, where string, arg any) (HelpCenter, error) {
@@ -38,7 +39,7 @@ func loadHelpCenter(ctx context.Context, q db.Querier, where string, arg any) (H
 	var imgs map[string]string
 	var wsLogo domain.Avatar
 	err := q.QueryRow(ctx, helpCenterSelect+` WHERE `+where, arg).
-		Scan(&hc.BrandID, &hc.WorkspaceID, &hc.Slug, &name, &title, &hc.Enabled, &hc.Locale, &hc.Color, &imgs, &wsLocale, &wsColor, &wsLogo, &hc.ActiveHost)
+		Scan(&hc.BrandID, &hc.WorkspaceID, &hc.Slug, &name, &title, &hc.Enabled, &hc.Locale, &hc.Color, &imgs, &wsLocale, &hc.LocaleFixed, &wsColor, &wsLogo, &hc.ActiveHost)
 	if err != nil {
 		return hc, err
 	}
@@ -49,6 +50,7 @@ func loadHelpCenter(ctx context.Context, q db.Querier, where string, arg any) (H
 	if hc.Locale == "" {
 		hc.Locale = wsLocale
 	}
+	hc.LocaleFixed = hc.LocaleFixed && hc.Locale != ""
 	if hc.Color == "" {
 		hc.Color = wsColor
 	}

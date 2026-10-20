@@ -141,9 +141,9 @@ describe("widget config", () => {
     expect(renderBotSvg(own.look)).toContain("🦊");
   });
 
-  it("reads topics, hours, the offline message and the brand", () => {
+  it("reads topics, hours, the offline message, the chat intro and the brand", () => {
     const older = resolveConfig({ workspace_name: "Acme", brand_color: null, greeting: "", help_center_url: null, require_email: false });
-    expect(older).toMatchObject({ topics: [], open: true, offline_message: "", brand: { name: "Acme", color: null } });
+    expect(older).toMatchObject({ topics: [], open: true, offline_message: "", intro: "", chat_welcome: true, language: "", brand: { name: "Acme", color: null } });
 
     const c = resolveConfig({
       workspace_name: "",
@@ -160,6 +160,9 @@ describe("widget config", () => {
       ],
       open: false,
       offline_message: "  Back on Monday.  ",
+      intro: "  Ask about orders.\nWe reply here.  ",
+      chat_welcome: false,
+      language: " tr ",
       brand: { name: "Pressroom", color: "#e11d48" },
     });
     expect(c.topics?.[0]).toEqual({ id: "billing", label: "Billing" });
@@ -167,6 +170,9 @@ describe("widget config", () => {
     expect(c.topics?.map((x) => x.id)).not.toContain("x");
     expect(c.open).toBe(false);
     expect(c.offline_message).toBe("Back on Monday.");
+    expect(c.intro).toBe("Ask about orders.\nWe reply here.");
+    expect(c.chat_welcome).toBe(false);
+    expect(c.language).toBe("tr");
     // No widget colour or name: the brand's.
     expect(c.brand_color).toBe("#e11d48");
     expect(c.workspace_name).toBe("Pressroom");

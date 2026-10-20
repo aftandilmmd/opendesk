@@ -118,6 +118,9 @@ export function demoConfig(key: string, params = new URLSearchParams()): WidgetC
     topics: [],
     open: params.get("od_closed") === null,
     offline_message: "",
+    intro: "",
+    chat_welcome: params.get("od_welcome") !== "0",
+    language: params.get("od_fixed_lang") ?? "",
     brand: { name: "Margin", color: null },
   };
   const topics = [
@@ -142,7 +145,11 @@ export function demoConfig(key: string, params = new URLSearchParams()): WidgetC
     wk_files: { attachment_extensions: [".png", ".jpg", ".jpeg", ".pdf"] },
     wk_nofiles: { attachments: false, attachment_extensions: [] },
     wk_closed: { open: false, topics },
-    wk_offline: { open: false, offline_message: "We're offline for the weekend.\nLeave a message and we'll reply on Monday morning." },
+    wk_offline: {
+      open: false,
+      offline_message: "We're offline for the weekend.\nLeave a message and we'll reply on Monday morning.",
+      intro: "Ask about orders, delivery or returns.\nLeave your email and we'll write back.",
+    },
     wk_press: {
       workspace_name: "Pressroom",
       title: "",

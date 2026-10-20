@@ -198,6 +198,13 @@ func TestLanguages(t *testing.T) {
 		!strings.Contains(fr.body, `hreflang="x-default" href="http://app.test/help/`+s.slug+`/"`) {
 		t.Fatalf("french default\n%s", fr.body)
 	}
+	// A fixed language is the only one: no other in the list, the menu or a parameter.
+	s.Exec(`UPDATE workspaces SET settings = settings || '{"locale_fixed": true}' WHERE id = $1`, s.ws.ID)
+	only := s.get(t, "app.test", "/help/"+s.slug+"/?lang=de")
+	if !strings.Contains(only.body, `<html lang="fr"`) || !strings.Contains(only.body, `data-langs="fr"`) ||
+		strings.Contains(only.body, `hreflang="de"`) || strings.Contains(only.body, `class="lang"`) {
+		t.Fatalf("fixed french\n%s", only.body)
+	}
 }
 
 func TestHelpDomainHosts(t *testing.T) {

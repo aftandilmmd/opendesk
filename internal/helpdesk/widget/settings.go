@@ -25,6 +25,8 @@ import (
 
 type widgetSettingsPatch struct {
 	Greeting        *string    `json:"greeting,omitempty" maxLength:"2000"`
+	Intro           *string    `json:"intro,omitempty" maxLength:"1000" doc:"Up to 200 characters; \"\" = the translated default"`
+	ChatWelcome     *bool      `json:"chat_welcome,omitempty"`
 	RequireEmail    *bool      `json:"require_email,omitempty"`
 	Enabled         *bool      `json:"enabled,omitempty"`
 	AllowedOrigins  *[]string  `json:"allowed_origins,omitempty" maxItems:"50"`
@@ -127,6 +129,14 @@ func applyPatch(ctx context.Context, q db.Querier, wid uuid.UUID, w hd.WidgetSet
 		w.Greeting = g
 		fields = append(fields, "greeting")
 	}
+	if b.Intro != nil {
+		m, err := cleanText("intro", *b.Intro, 200)
+		if err != nil {
+			return w, nil, err
+		}
+		w.Intro = m
+		fields = append(fields, "intro")
+	}
 	if b.RequireEmail != nil {
 		w.RequireEmail = *b.RequireEmail
 		fields = append(fields, "require_email")
@@ -175,6 +185,10 @@ func applyPatch(ctx context.Context, q db.Querier, wid uuid.UUID, w hd.WidgetSet
 		}
 		*t.out = v
 		fields = append(fields, name)
+	}
+	if b.ChatWelcome != nil {
+		w.ChatWelcome = *b.ChatWelcome
+		fields = append(fields, "chat_welcome")
 	}
 	if b.ShowTeam != nil {
 		w.ShowTeam = *b.ShowTeam

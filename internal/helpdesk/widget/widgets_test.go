@@ -39,6 +39,8 @@ func (w widgetOut) settings(t *testing.T) (s struct {
 	Attachments    bool     `json:"attachments"`
 	FileTypes      []string `json:"attachment_types"`
 	Greeting       string   `json:"greeting"`
+	Intro          string   `json:"intro"`
+	ChatWelcome    bool     `json:"chat_welcome"`
 }) {
 	t.Helper()
 	if err := json.Unmarshal(w.Settings, &s); err != nil {
@@ -115,6 +117,8 @@ func TestWidgetsCRUD(t *testing.T) {
 		{"settings": map[string]any{"topics": []map[string]any{{"label": "1a"}, {"label": "2a"}, {"label": "3a"}, {"label": "4a"},
 			{"label": "5a"}, {"label": "6a"}, {"label": "7a"}, {"label": "8a"}, {"label": "9a"}}}},
 		{"settings": map[string]any{"offline_message": strings.Repeat("a", 301)}},
+		{"settings": map[string]any{"intro": strings.Repeat("a", 201)}},
+		{"settings": map[string]any{"intro": "<b>Hi</b>"}},
 		{"settings": map[string]any{"attachment_types": []string{"png", "svg"}}},
 		{"settings": map[string]any{"attachment_types": []string{"exe"}}},
 		{"brand_id": other.BrandID.String()},
@@ -124,9 +128,9 @@ func TestWidgetsCRUD(t *testing.T) {
 	}
 	brand2, _ := addBrand(e, ws, "Shop")
 	e.Do("PATCH", "/v1/widgets/"+w.ID, admin, map[string]any{"team_id": nil, "brand_id": brand2.String(), "name": "Shop site",
-		"settings": map[string]any{"offline_message": "Back at 9", "email_follow_up": false, "attachments": false, "attachment_types": []string{"pdf", "png", "pdf"}}}).Want(t, 200).JSON(t, &got)
+		"settings": map[string]any{"offline_message": "Back at 9", "intro": "  Ask about orders.\r\nWe reply here.  ", "chat_welcome": false, "email_follow_up": false, "attachments": false, "attachment_types": []string{"pdf", "png", "pdf"}}}).Want(t, 200).JSON(t, &got)
 	st = got.settings(t)
-	if got.TeamID != nil || got.BrandID != brand2.String() || got.Name != "Shop site" || st.OfflineMessage != "Back at 9" || st.EmailFollowUp ||
+	if got.TeamID != nil || got.BrandID != brand2.String() || got.Name != "Shop site" || st.OfflineMessage != "Back at 9" || st.Intro != "Ask about orders.\nWe reply here." || st.ChatWelcome || st.EmailFollowUp ||
 		st.Attachments || strings.Join(st.FileTypes, ",") != "png,pdf" ||
 		st.Greeting != "Docs help" || len(st.Topics) != 2 {
 		t.Fatalf("patched %+v %s", got, got.Settings)
@@ -212,7 +216,7 @@ func TestWidgetPublicPerBrand(t *testing.T) {
 	var w widgetOut
 	e.Do("POST", "/v1/widgets", admin, map[string]any{"brand_id": brand2.String(), "name": "Shop", "team_id": team.String(),
 		"settings": map[string]any{"topics": []map[string]any{{"id": "orders", "label": "Orders", "team_id": team.String()}},
-			"offline_message": "We are away", "allowed_origins": []string{"https://shop.example"}}}).Want(t, 201).JSON(t, &w)
+			"offline_message": "We are away", "intro": "Ask about your order", "allowed_origins": []string{"https://shop.example"}}}).Want(t, 201).JSON(t, &w)
 	shop := map[string]string{"Origin": "https://shop.example"}
 
 	// Config shows the widget's brand, topics and hours.
@@ -222,12 +226,17 @@ func TestWidgetPublicPerBrand(t *testing.T) {
 	topics, _ := m["topics"].([]any)
 	faces, _ := m["team"].([]any)
 	if m["title"] != "Shop" || m["workspace_name"] != "Shop" || brand["name"] != "Shop" || brand["color"] != "#00aa00" ||
-		m["help_center_url"] != "http://app.test/help/"+slug2 || m["open"] != true || m["offline_message"] != "We are away" ||
+		m["help_center_url"] != "http://app.test/help/"+slug2 || m["open"] != true || m["offline_message"] != "We are away" || m["intro"] != "Ask about your order" || m["chat_welcome"] != true || m["language"] != "" ||
 		len(topics) != 1 || len(faces) != 1 {
 		t.Fatalf("config %v", m)
 	}
 	if tp := topics[0].(map[string]any); tp["id"] != "orders" || tp["label"] != "Orders" || tp["team_id"] != nil {
 		t.Fatalf("topic %v", tp)
+	}
+	// The workspace's fixed language reaches the widget.
+	e.Exec(`UPDATE workspaces SET settings = settings || '{"locale": "tr", "locale_fixed": true}' WHERE id = $1`, ws.ID)
+	if m := e.Do("GET", "/v1/widget/config?key="+w.Key, hdtest.Auth{Header: shop}, nil).Want(t, 200).Map(t); m["language"] != "tr" || m["locale"] != "tr" {
+		t.Fatalf("fixed language %v %v", m["language"], m["locale"])
 	}
 	e.Exec(`UPDATE teams SET business_hours = '{"enabled": true, "schedule": {}}' WHERE id = $1`, team)
 	m = e.Do("GET", "/v1/widget/config?key="+w.Key, hdtest.Auth{Header: shop}, nil).Want(t, 200).Map(t)

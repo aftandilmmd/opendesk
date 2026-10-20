@@ -81,6 +81,12 @@ export type WidgetConfig = {
   open?: boolean;
   /** Shown while closed; "" = the translated default. */
   offline_message?: string;
+  /** Under the greeting in a new chat; "" = the translated default. */
+  intro?: string;
+  /** false: a new chat opens empty, without the greeting and intro. */
+  chat_welcome?: boolean;
+  /** A language the widget always uses unless the page sets one; "" = the visitor's browser. */
+  language?: string;
   /** The widget's brand: its name, and its colour (else the workspace brand colour). */
   brand?: { name: string; color: string | null };
 };

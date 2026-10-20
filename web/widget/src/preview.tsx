@@ -23,7 +23,7 @@ import { css } from "./styles";
 import type { WidgetConfig } from "./types";
 import { App } from "./ui";
 
-export type PreviewScene = "launcher" | "home" | "chat";
+export type PreviewScene = "launcher" | "home" | "chat" | "new";
 export type PreviewOptions = { config: WidgetConfig; scene: PreviewScene; dark?: boolean; autoplay?: boolean };
 export type PreviewHandle = { update(opts: Partial<PreviewOptions>): void; destroy(): void };
 export type { WidgetConfig };
@@ -64,6 +64,11 @@ export function mountPreview(host: HTMLElement, opts: PreviewOptions): PreviewHa
     }
     if (scene === "home") {
       store.set({ open: true, view: "home", active: null });
+      return;
+    }
+    if (scene === "new") {
+      store.set({ open: true });
+      c.newConversation();
       return;
     }
     store.set({ open: true, view: "thread", active: mock.showcaseId });

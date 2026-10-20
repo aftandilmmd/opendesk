@@ -14,7 +14,7 @@ import { OLLIE_LOOK } from "@/lib/botlook";
 import { cn } from "@/lib/cn";
 import { fileTypeExtensions } from "./fileTypes";
 
-export const LIMITS = { greeting: 300, launcher_label: 24, title: 40, subtitle: 80, suggestion: 60, suggestions: 4, origins: 20 } as const;
+export const LIMITS = { greeting: 300, intro: 200, launcher_label: 24, title: 40, subtitle: 80, suggestion: 60, suggestions: 4, origins: 20 } as const;
 
 /** Text settings refuse markup and control characters (contracts/api.md). */
 // eslint-disable-next-line no-control-regex
@@ -226,6 +226,8 @@ export function toWidgetConfig(d: WidgetSettings, ws: Workspace | null, members:
     workspace_name: ws?.name ?? "",
     brand_color: d.color || ws?.settings.brand_color || null,
     greeting: d.greeting,
+    intro: d.intro.trim(),
+    chat_welcome: d.chat_welcome,
     help_center_url: null,
     require_email: d.require_email,
     locale: ws?.settings.locale || null,

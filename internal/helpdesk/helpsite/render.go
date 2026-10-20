@@ -158,6 +158,7 @@ type page struct {
 	base     string // the help center's root URL, without a trailing slash
 	path     string // this page's path under base
 	langQ    string // "?lang=xx" when the reader chose a language other than the default
+	fixed    bool   // the help center speaks only its default language
 	explicit string
 	defLang  string
 	inSite   bool // a page of an existing help center (its 404 links home)

@@ -9,12 +9,6 @@ test.use({
 });
 
 test.beforeEach(async ({ page }) => {
-  // Only the widget on screen. The text stays in the DOM: the recorder starts at the first text.
-  await page.addInitScript(() => {
-    document.addEventListener("DOMContentLoaded", () => {
-      document.head.insertAdjacentHTML("beforeend", "<style>main { opacity: 0; }</style>");
-    });
-  });
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => {
       const ctx = new AudioContext();

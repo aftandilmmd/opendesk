@@ -287,6 +287,8 @@
     "searchTimezones": "Search timezones",
     "language": "Customer language",
     "languageHint": "The help center, satisfaction survey and chat widget follow each visitor's browser language. This one is used when we don't support theirs.",
+    "languageFixed": "Use for everyone",
+    "languageFixedHint": "Show the help center, satisfaction survey and chat widget in {{language}} for every visitor, whatever their browser language. A brand with its own language uses that one.",
     "searchLanguages": "Search languages",
     "helpCenter": "Help center",
     "helpCenterHint": "A public site with your published knowledge base articles.",

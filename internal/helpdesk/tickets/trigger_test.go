@@ -295,10 +295,23 @@ func TestCSAT(t *testing.T) {
 		Ticket        struct{ Number int64 }
 		Score         *int
 		Comment       string
+		Locale        string
+		LocaleFixed   bool `json:"locale_fixed"`
 	}
 	e.Do("POST", "/v1/public/csat/survey", hdtest.Auth{}, map[string]any{"token": token}).Want(t, 200).JSON(t, &view)
-	if view.Score != nil || view.Ticket.Number != tk.Number {
+	if view.Score != nil || view.Ticket.Number != tk.Number || view.LocaleFixed {
 		t.Fatalf("view %+v", view)
+	}
+	// A fixed language without a language set fixes nothing.
+	e.Exec(`UPDATE workspaces SET settings = settings || '{"locale_fixed": true}' WHERE id = $1`, ws.ID)
+	e.Do("POST", "/v1/public/csat/survey", hdtest.Auth{}, map[string]any{"token": token}).Want(t, 200).JSON(t, &view)
+	if view.LocaleFixed {
+		t.Fatalf("fixed without a locale %+v", view)
+	}
+	e.Exec(`UPDATE workspaces SET settings = settings || '{"locale": "tr"}' WHERE id = $1`, ws.ID)
+	e.Do("POST", "/v1/public/csat/survey", hdtest.Auth{}, map[string]any{"token": token}).Want(t, 200).JSON(t, &view)
+	if view.Locale != "tr" || !view.LocaleFixed {
+		t.Fatalf("fixed %+v", view)
 	}
 	e.Do("POST", "/v1/public/csat/rating", hdtest.Auth{}, map[string]any{"token": token, "score": 6}).Want(t, 422)
 	e.Do("POST", "/v1/public/csat/rating", hdtest.Auth{}, map[string]any{"token": token, "score": 4, "comment": "<b>Quick</b> help"}).Want(t, 200).JSON(t, &view)

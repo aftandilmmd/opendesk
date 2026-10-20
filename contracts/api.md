@@ -42,7 +42,7 @@ type Workspace = { id: string; name: string; slug: string; widget_key: string /*
 // settings.help_center_enabled, help_center_title, brand_color and locale are kept in step with the default brand
 // (contracts/teams.md): a PATCH here updates it, and a PATCH of the default brand's help center updates them.
 type WorkspaceSettings = { brand_color?: string; timezone?: string; help_center_enabled?: boolean; help_center_title?: string; csat_enabled?: boolean;
-  auto_assign?: AssignMode /* the workspace default; see "Assignment" */; new_ticket_notify?: NewTicketNotify /* read here, set through /v1/assignment; see "Assignment" */; locale?: string /* BCP 47 default for customer-facing pages (help center, CSAT, widget); "" = the visitor's browser */;
+  auto_assign?: AssignMode /* the workspace default; see "Assignment" */; new_ticket_notify?: NewTicketNotify /* read here, set through /v1/assignment; see "Assignment" */; locale?: string /* BCP 47 default for customer-facing pages (help center, CSAT, widget); "" = the visitor's browser */; locale_fixed?: boolean /* default false; true: those pages always use locale (a brand's own, else the workspace's), whatever the visitor's browser: the help center renders only it, without a language menu or ?lang= */;
   gravatar?: boolean /* default false: look up contact pictures on Gravatar (sends a hash of the contact's email to Gravatar) */;
   domain_logos?: boolean /* default true: fetch company logos from the company's website */;
   label_creation?: "anyone" | "admins" /* default "anyone": applying an unknown label name creates it; "admins": only admins (and keys with settings:write) may, others get 422 unknown_label */;
@@ -650,7 +650,7 @@ checklist is complete (`GET /v1/ai/agent/setup`, `contracts/agent.md` "Setup"). 
 | GET | `/v1/public/help/{workspace_slug}/collections/{slug}` | `{collection, articles}`, the brand's and shared only |
 | GET | `/v1/public/help/{workspace_slug}/articles/{slug}` | `KbArticle`, increments views; the brand's and shared only |
 | GET | `/v1/public/help/{workspace_slug}/search?q=` | `KbArticle[]`, the brand's and shared only |
-| POST | `/v1/public/csat/survey` | `{token}` → `{workspace_name, brand_color, ticket: {number, subject}, score: number \| null, comment, locale}` |
+| POST | `/v1/public/csat/survey` | `{token}` → `{workspace_name, brand_color, ticket: {number, subject}, score: number \| null, comment, locale, locale_fixed}`; `locale_fixed` true when the workspace fixes a set `locale`: the page uses it and offers no other |
 | POST | `/v1/public/csat/rating` | `{token, score: 1..5, comment?}` records the score and answers the same survey object. The token rides in bodies only, never an API URL |
 
 ### Widget (owner: backend-helpdesk; `Authorization: Visitor <token>` except session)
@@ -674,6 +674,8 @@ checklist is complete (`GET /v1/ai/agent/setup`, `contracts/agent.md` "Setup"). 
 interface WidgetSettings {
   enabled: boolean
   greeting: string                      // up to 300 chars, plain text with newlines
+  intro: string                         // under the greeting at the top of a new chat; up to 200 chars, plain text with newlines; "" = the translated default
+  chat_welcome: boolean                 // default true: a new chat opens with the greeting and intro; false opens it empty
   require_email: boolean
   allowed_origins: string[]             // at most 20
   // Appearance. Every key has a default, so a stored settings.widget without it reads the same.
@@ -704,6 +706,9 @@ interface WidgetConfig {
   workspace_name: string                // the widget's brand name (the workspace name for the default brand)
   brand_color: string | null            // the widget's color, else the brand's, else the workspace brand_color
   greeting: string; require_email: boolean
+  intro: string                         // under the greeting in a new chat; "" = the translated default
+  chat_welcome: boolean                 // false: a new chat opens empty, without the greeting and intro
+  language: string                     // the brand's, else the workspace's locale when the workspace fixes it (locale_fixed); used before the visitor's browser languages, after the page's data-lang or opendesk("locale"); "" = none
   help_center_url: string | null        // the brand's help center url (contracts/teams.md) when its help center is on
   locale: string | null                 // the brand's, else the workspace's
   avatar_url: string | null             // the widget's avatar, else the brand logo, else the workspace logo

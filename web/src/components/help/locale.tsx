@@ -1,5 +1,6 @@
 // Language for the customer-facing pages (help center, CSAT): `?lang=` first,
-// then the visitor's browser, then the workspace default, then English.
+// then the visitor's browser, then the workspace default, then English. A
+// workspace that fixes its language uses it for everyone.
 // The agent app stays English, so the choice is undone on unmount.
 
 import { useRouter, useRouterState } from "@tanstack/react-router";
@@ -39,14 +40,14 @@ function remember(l: string) {
  * carries the workspace default, has loaded or failed). Returns the locale and
  * whether its catalogs are in, so pages can hold back text until then.
  */
-export function usePublicLocale(workspaceDefault: string | null | undefined, ready: boolean) {
+export function usePublicLocale(workspaceDefault: string | null | undefined, ready: boolean, fixed = false) {
   const fromUrl = useRouterState({ select: (s) => langParam(s.location.search) });
   useEffect(() => {
     if (fromUrl) remember(fromUrl);
   }, [fromUrl]);
   const explicit = fromUrl ?? remembered();
   const [applied, setApplied] = useState<Locale | null>(null);
-  const lng = ready ? pickLocale({ explicit, workspaceDefault }) : null;
+  const lng = ready ? (fixed ? pickLocale({ explicit: workspaceDefault }) : pickLocale({ explicit, workspaceDefault })) : null;
 
   useEffect(() => {
     if (!lng) return;

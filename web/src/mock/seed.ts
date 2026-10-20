@@ -185,6 +185,8 @@ export function defaultWidget(): WidgetSettings {
     sound: false,
     topics: [],
     offline_message: "",
+    intro: "",
+    chat_welcome: true,
     email_follow_up: true,
     attachments: true,
     attachment_types: [],

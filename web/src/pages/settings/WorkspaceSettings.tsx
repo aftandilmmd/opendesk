@@ -32,7 +32,7 @@ import { LOCALE_NAMES, matchLocale, SUPPORTED } from "@/i18n";
 type DisplaySettings = { status_labels?: Overrides<TicketStatus>; priority_labels?: Overrides<Priority> };
 type Draft = {
   name: string;
-  settings: Required<Pick<WS, "timezone" | "help_center_enabled" | "help_center_title" | "csat_enabled" | "gravatar" | "domain_logos">> & { brand_color: string; locale: string };
+  settings: Required<Pick<WS, "timezone" | "help_center_enabled" | "help_center_title" | "csat_enabled" | "gravatar" | "domain_logos">> & { brand_color: string; locale: string; locale_fixed: boolean };
   display: Required<DisplaySettings>;
 };
 
@@ -50,6 +50,7 @@ function toDraft(w: Workspace): Draft {
       domain_logos: w.settings.domain_logos ?? true,
       brand_color: w.settings.brand_color ?? "",
       locale: matchLocale(w.settings.locale) ?? "en",
+      locale_fixed: w.settings.locale_fixed ?? false,
     },
   };
 }
@@ -196,6 +197,9 @@ export default function WorkspaceSettings() {
                 </Button>
               }
             />
+          </Row>
+          <Row label={t("workspace.languageFixed")} description={t("workspace.languageFixedHint", { language: LOCALE_NAMES[matchLocale(draft.settings.locale) ?? "en"] })}>
+            <Switch aria-label={t("workspace.languageFixed")} checked={draft.settings.locale_fixed} onCheckedChange={(v) => set("locale_fixed", v)} disabled={!canEdit} />
           </Row>
         </Section>
 

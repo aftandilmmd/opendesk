@@ -120,6 +120,10 @@ export function resolveConfig(raw: Partial<WidgetConfig> | null | undefined): Wi
     // Older servers have no hours here: open.
     open: r.open !== false,
     offline_message: typeof r.offline_message === "string" ? r.offline_message.trim().slice(0, 300) : "",
+    intro: typeof r.intro === "string" ? r.intro.trim().slice(0, 200) : "",
+    // Older servers have no switch: the welcome shows.
+    chat_welcome: r.chat_welcome !== false,
+    language: typeof r.language === "string" ? r.language.trim() : "",
     brand,
   };
 }

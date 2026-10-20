@@ -476,10 +476,10 @@ function Thread({
         ) : items.length === 0 && !needsEmail && !s.queued ? (
           opener ? (
             <div class="thread">{opener}</div>
-          ) : (
+          ) : cfg?.chat_welcome === false ? null : (
             <div class="empty">
               <b dir="auto">{greeting(cfg?.greeting)}</b>
-              {t("emptyHint")}
+              <span class="intro" dir="auto">{cfg?.intro?.trim() || t("emptyHint")}</span>
             </div>
           )
         ) : items.length > 0 ? (

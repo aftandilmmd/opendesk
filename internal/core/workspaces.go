@@ -44,6 +44,7 @@ type CoreWorkspaceSettings struct {
 	Gravatar          *bool   `json:"gravatar,omitempty" doc:"Look up contact pictures on Gravatar (sends a hash of each contact's email to Gravatar). Default false"`
 	DomainLogos       *bool   `json:"domain_logos,omitempty" doc:"Fetch company logos from the company's website. Default true"`
 	Locale            *string `json:"locale,omitempty" maxLength:"35" doc:"Default language (BCP 47) of customer-facing pages: help center, CSAT, widget"`
+	LocaleFixed       *bool   `json:"locale_fixed,omitempty" doc:"Customer-facing pages always use locale (a brand's own, else the workspace's), whatever the visitor's browser. Default false"`
 	LabelCreation     *string `json:"label_creation,omitempty" enum:"anyone,admins" doc:"Who may create labels by applying a new name"`
 	// StatusLabels and PriorityLabels rename and recolour the fixed values for display only.
 	StatusLabels   map[string]DisplayOverride `json:"status_labels,omitempty"`
@@ -203,6 +204,9 @@ func validateSettings(s *CoreWorkspaceSettings) (map[string]any, error) {
 			return nil, httpx.Validation("locale must be a language tag like en or pt-BR.")
 		}
 		out["locale"] = *s.Locale
+	}
+	if s.LocaleFixed != nil {
+		out["locale_fixed"] = *s.LocaleFixed
 	}
 	if s.LabelCreation != nil {
 		if *s.LabelCreation != "anyone" && *s.LabelCreation != "admins" {

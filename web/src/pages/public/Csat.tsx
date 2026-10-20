@@ -73,7 +73,7 @@ export default function Csat() {
     if (params.token) history.replaceState(history.state, "", `/csat#t=${encodeURIComponent(token)}`);
   }, [params.token, token]);
   const { data, isLoading, isError, isPending } = useQuery(q.csat(token));
-  const { locale, loaded } = usePublicLocale(data?.locale || undefined, !isPending);
+  const { locale, loaded } = usePublicLocale(data?.locale || undefined, !isPending, !!data?.locale_fixed);
   const { t } = useTranslation("public");
   const label = (n: number) => t(`csat.scores.${n as 1 | 2 | 3 | 4 | 5}`);
   const pre = Number(landingScore);
@@ -200,7 +200,7 @@ export default function Csat() {
         )}
       </main>
       <footer className="flex h-14 items-center gap-3 text-xs text-fg-4">
-        <LanguageSwitcher current={locale} />
+        {!data?.locale_fixed && <LanguageSwitcher current={locale} />}
         <span className="flex items-center gap-1.5">
           {t("footer.powered_by")} <Lockup className="h-[11px]" />
         </span>

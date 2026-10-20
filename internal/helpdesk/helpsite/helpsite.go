@@ -407,12 +407,15 @@ func (s *Server) newPage(r *http.Request, hc kb.HelpCenter, base, sub string) *p
 		def = "en"
 	}
 	explicit := matchLocale(r.URL.Query().Get("lang"))
+	if hc.LocaleFixed {
+		explicit = ""
+	}
 	lang := def
 	if explicit != "" {
 		lang = explicit
 	}
 	p := &page{Lang: lang, Dir: dir(lang), T: translator{lang: lang}, Year: time.Now().Year(), OGType: "website",
-		base: base, path: sub, explicit: explicit, defLang: def}
+		base: base, path: sub, explicit: explicit, defLang: def, fixed: hc.LocaleFixed}
 	if explicit != "" && explicit != def {
 		p.langQ = "?lang=" + url.QueryEscape(explicit)
 	}
@@ -437,10 +440,14 @@ func (s *Server) newPage(r *http.Request, hc kb.HelpCenter, base, sub string) *p
 // languages fills the language picker and the page's alternates.
 func (s *Server) languages(p *page) {
 	p.LangName = localeNames[p.Lang]
-	p.LangList = strings.Join(supported, " ")
-	p.Languages = make([]language, 0, len(supported))
-	p.Alternates = make([]alternate, 0, len(supported))
-	for _, l := range supported {
+	langs := supported
+	if p.fixed {
+		langs = []string{p.Lang}
+	}
+	p.LangList = strings.Join(langs, " ")
+	p.Languages = make([]language, 0, len(langs))
+	p.Alternates = make([]alternate, 0, len(langs))
+	for _, l := range langs {
 		u := p.langURL(l)
 		p.Languages = append(p.Languages, language{Lang: l, Name: localeNames[l], Dir: dir(l), URL: u, Current: l == p.Lang})
 		p.Alternates = append(p.Alternates, alternate{Lang: l, URL: u})

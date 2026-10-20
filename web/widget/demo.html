@@ -6,27 +6,27 @@
     <meta name="color-scheme" content="light dark" />
     <title>opendesk widget demo</title>
     <style>
-      body { margin: 0; font: 15px/1.6 system-ui, sans-serif; color: #0a0a0a; background: #fafafa; }
-      @media (prefers-color-scheme: dark) { body { color: #e4e4e4; background: #0a0a0a; } .card { background: #141414 !important; border-color: #262626 !important; } }
-      main { max-width: 680px; margin: 0 auto; padding: 72px 24px; }
-      h1 { font-size: 30px; letter-spacing: -0.03em; margin: 0 0 8px; }
-      p { color: #737373; margin: 0 0 24px; }
-      .card { background: #fff; border: 1px solid #e4e4e4; border-radius: 12px; padding: 20px; margin-bottom: 14px; }
-      .bar { height: 10px; border-radius: 5px; background: rgba(128,128,128,.15); margin: 10px 0; }
-      code { font: 13px ui-monospace, monospace; }
+      body { margin: 0; min-height: 100vh; background: #f4f4f5; }
+      @media (prefers-color-scheme: dark) { body { background: #18181b; } }
     </style>
   </head>
   <body>
-    <main>
-      <h1>Margin</h1>
-      <p>A host page for testing the opendesk chat widget against an in-memory backend that simulates the AI agent (live streaming, tools, an action card, ratings and a handoff).</p>
-      <div class="card">
-        <p style="margin:0 0 8px"><b>Appearance</b>: <code>?key=</code> <code>wk_brand</code> (brand colour), <code>wk_left</code> (left, offsets), <code>wk_label</code> (label launcher), <code>wk_round</code> (round corners), <code>wk_square</code>, <code>wk_dark</code> / <code>wk_light</code> (forced theme), <code>wk_email</code> (email capture), <code>wk_human</code> (no AI agent), <code>wk_topics</code> (topics), <code>wk_files</code> / <code>wk_nofiles</code> (images and PDFs only, no files), <code>wk_closed</code> / <code>wk_offline</code> (closed, default or own offline message), <code>wk_press</code> (another brand). <code>?od_closed</code> closes any of them, <code>?od_lang=ar</code> for a language, <code>?od_open=1</code> to open it.</p>
-        <p style="margin:0"><b>The agent</b>: tap a suggestion, or ask about an order with a number and street (<em>"Send order #4821 to 22 Baker Street"</em>) for a tool step and an action card, SSO for an answer with sources, or a person for a handoff. Hover a reply to rate it. Helpers: <code>?od_demo=thread</code>, <code>send</code>, <code>order</code>, <code>handoff</code>.</p>
-      </div>
-      <div class="card"><div class="bar" style="width:60%"></div><div class="bar" style="width:85%"></div><div class="bar" style="width:40%"></div></div>
-      <div class="card"><div class="bar" style="width:70%"></div><div class="bar" style="width:55%"></div></div>
-    </main>
+    <!--
+      A blank host page for the opendesk chat widget, against an in-memory backend that simulates
+      the AI agent (live streaming, tools, an action card, ratings and a handoff).
+
+      Appearance, ?key=: wk_brand (brand colour), wk_left (left, offsets), wk_label (label launcher),
+      wk_round (round corners), wk_square, wk_dark / wk_light (forced theme), wk_email (email capture),
+      wk_human (no AI agent), wk_topics (topics), wk_files / wk_nofiles (images and PDFs only, no files),
+      wk_closed / wk_offline (closed, default or own offline message and chat intro), wk_press (another
+      brand). ?od_closed closes any of them, ?od_lang=ar for a language, ?od_open=1 to open it,
+      ?od_welcome=0 to open new chats without the greeting and intro, ?od_fixed_lang=tr for a
+      workspace that fixes its language.
+
+      The agent: tap a suggestion, or ask about an order with a number and street ("Send order #4821
+      to 22 Baker Street") for a tool step and an action card, SSO for an answer with sources, or a
+      person for a handoff. Hover a reply to rate it. Helpers: ?od_demo=thread, send, order, handoff.
+    -->
     <script>
       window.opendesk = window.opendesk || function () { (window.opendesk.q = window.opendesk.q || []).push(arguments); };
       var params = new URLSearchParams(location.search);

@@ -63,8 +63,9 @@ function start(key: string, base: string, fetcher: (u: string, i: RequestInit) =
   const set = (p: Parameters<typeof c.store.set>[0]) => c.store.set(p);
   const queued = Array.from(window.opendesk?.q ?? []);
 
-  // Language: data-lang or opendesk("locale") first, then the browser, then the
-  // workspace default (known once the config arrives), then English.
+  // Language: data-lang or opendesk("locale") first, then the workspace's fixed
+  // language, then the browser, then the workspace default (both known once the
+  // config arrives), then English.
   const scriptUrl = script?.src || location.href;
   const queuedLocale = queued.filter((a) => a[0] === "locale").map((a) => String(a[1] ?? "")).pop();
   let explicit: string | null = matchLocale(queuedLocale) ?? matchLocale(script?.dataset.lang);
@@ -134,7 +135,10 @@ function start(key: string, base: string, fetcher: (u: string, i: RequestInit) =
   // Identify before the first session so a known user never starts anonymous.
   for (const a of queued) if (a[0] === "identify") api(...(Array.from(a) as [string, ...unknown[]]));
   void c.boot().then(() => {
-    if (!explicit && get().config?.locale) void applyLocale(get().config?.locale);
+    const cfg = get().config;
+    const fixed = explicit ? null : matchLocale(cfg?.language);
+    if (fixed) explicit = fixed;
+    if (fixed || (!explicit && cfg?.locale)) void applyLocale(cfg?.locale);
     for (const a of queued) if (a[0] !== "identify" && a[0] !== "locale") api(...(Array.from(a) as [string, ...unknown[]]));
   });
 }

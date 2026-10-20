@@ -100,6 +100,8 @@ function withDefaults(s: WS): WS {
     sound: s.sound ?? false,
     topics: (s.topics ?? []).map((x) => ({ ...x })),
     offline_message: s.offline_message ?? "",
+    intro: s.intro ?? "",
+    chat_welcome: s.chat_welcome ?? true,
     email_follow_up: s.email_follow_up ?? true,
     attachments: s.attachments ?? true,
     attachment_types: s.attachment_types ?? [],
@@ -115,7 +117,7 @@ const toDraft = (w: Widget): Draft => {
   return { name: w.name, team_id: w.team_id, bot_id: w.bot_id ?? null, limitTypes: settings.attachment_types.length > 0, settings };
 };
 
-type TextKey = "greeting" | "launcher_label" | "title" | "subtitle";
+type TextKey = "greeting" | "intro" | "launcher_label" | "title" | "subtitle";
 
 export default function WidgetDetail() {
   const { t } = useTranslation("settingsTeams");
@@ -229,7 +231,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
   const offlineError = tidy(s.offline_message).length > OFFLINE_MAX ? t("widget.tooLong", { max: OFFLINE_MAX }) : hasMarkup(s.offline_message) ? t("widget.noMarkup") : null;
   const invalid =
     !draft.name.trim() ||
-    (["greeting", "launcher_label", "title", "subtitle"] as TextKey[]).some((k) => textError(k)) ||
+    (["greeting", "intro", "launcher_label", "title", "subtitle"] as TextKey[]).some((k) => textError(k)) ||
     s.suggestions.some((x) => suggestionProblem(x)) ||
     s.topics.some((x) => topicProblem(x, s.topics)) ||
     !!offlineError ||
@@ -450,6 +452,14 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
               <Row label={t("widget.greeting")} description={t("widget.greetingHint")} stack htmlFor="widget-greeting">
                 {text("greeting", t("widget.greetingPlaceholder"), { area: true })}
               </Row>
+              <div onFocusCapture={() => setScene("new")}>
+                <Row label={t("widget.intro")} description={t("widget.introHint")} stack htmlFor="widget-intro">
+                  {text("intro", t("widget.introPlaceholder"), { area: true })}
+                </Row>
+                <Row label={t("widget.chatWelcome")} description={t("widget.chatWelcomeHint")}>
+                  <Switch checked={s.chat_welcome} onCheckedChange={(chat_welcome) => set({ chat_welcome })} aria-label={t("widget.chatWelcome")} />
+                </Row>
+              </div>
               <Row label={t("widget.suggestions")} description={t("widget.suggestionsHint")} stack>
                 <SuggestionsEditor value={s.suggestions} onChange={(suggestions) => set({ suggestions })} />
               </Row>

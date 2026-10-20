@@ -553,7 +553,7 @@ export function registerResources() {
   };
   post("/v1/public/csat/survey", (ctx) => {
     const { ws, c, t } = findCsat(String(ctx.body.token ?? ""));
-    return respond(200, { score: c.score, comment: c.comment ?? "", workspace_name: ws.workspace.name, brand_color: ws.workspace.settings.brand_color ?? "", ticket: { number: t.number, subject: t.subject }, locale: ws.workspace.settings.locale ?? "" });
+    return respond(200, { score: c.score, comment: c.comment ?? "", workspace_name: ws.workspace.name, brand_color: ws.workspace.settings.brand_color ?? "", ticket: { number: t.number, subject: t.subject }, locale: ws.workspace.settings.locale ?? "", locale_fixed: !!ws.workspace.settings.locale_fixed && !!ws.workspace.settings.locale });
   });
   post("/v1/public/csat/rating", (ctx) => {
     const { ws, c, t } = findCsat(String(ctx.body.token ?? ""));

@@ -44,6 +44,7 @@ const CHECKS: Partial<Record<keyof WidgetSettings, Check>> = {
   sound: bool("sound"),
   attachments: bool("attachments"),
   voice_messages: bool("voice_messages"),
+  chat_welcome: bool("chat_welcome"),
   voice_max_seconds: (v) => {
     if (typeof v !== "number" || !Number.isInteger(v) || v < 5 || v > 300) throw invalid("voice_max_seconds must be a whole number of seconds from 5 to 300");
     return v;
@@ -51,6 +52,13 @@ const CHECKS: Partial<Record<keyof WidgetSettings, Check>> = {
   attachment_types: (v) => {
     if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !ALL_FILE_TYPES.includes(x))) throw invalid("attachment_types must be file types of the catalog");
     return ALL_FILE_TYPES.filter((id) => v.includes(id));
+  },
+  intro: (v) => {
+    if (typeof v !== "string") throw invalid("intro must be text");
+    const s = v.replace(/\r\n/g, "\n").trim();
+    if (s.length > 200) throw invalid("Keep the intro under 200 characters");
+    if (/[<>]/.test(s) || hasControl(s, true)) throw invalid("The intro must be plain text, without < or >");
+    return s;
   },
   greeting: (v) => {
     if (typeof v !== "string") throw invalid("greeting must be text");
@@ -168,6 +176,9 @@ export function widgetConfig(ws: WsData, widget?: Widget): WidgetConfig {
     topics: (w.topics ?? []).map((t) => ({ id: t.id, label: t.label })),
     open: openNow(ws, row?.team_id ?? null),
     offline_message: w.offline_message ?? "",
+    intro: w.intro ?? "",
+    chat_welcome: w.chat_welcome ?? true,
+    language: wsSettings.locale_fixed ? brand?.locale || wsSettings.locale || "" : "",
     brand: { name: brand?.name ?? ws.workspace.name, color: brand?.color || wsSettings.brand_color || null },
   };
 }

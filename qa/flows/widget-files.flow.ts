@@ -36,15 +36,6 @@ test("turn files off for a chat widget, or limit them to some types", async ({ p
 test.describe("widget", () => {
   test.use({ target: "widget" });
 
-  // Only the widget on screen. The text stays in the DOM: the recorder starts at the first text.
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      document.addEventListener("DOMContentLoaded", () => {
-        document.head.insertAdjacentHTML("beforeend", "<style>main { opacity: 0; }</style>");
-      });
-    });
-  });
-
   test("refuse a file type the widget does not allow", async ({ page, proof }) => {
     await proof.open(undefined, { key: "wk_files" });
     await page.getByRole("button", { name: "Open chat" }).click();

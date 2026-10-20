@@ -1,0 +1,13 @@
+{
+  "actions": {
+    "cancel": "Ləğv et",
+    "save": "Yadda saxla",
+    "close": "Bağla",
+    "retry": "Yenidən cəhd et",
+    "apply": "Tətbiq et",
+    "copy": "Kopyala",
+    "back": "Geri",
+    "continue": "Davam et"
+  },
+  "aboutCost": "təxminən {{cost}}"
+}

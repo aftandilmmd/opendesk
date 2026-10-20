@@ -153,6 +153,9 @@ type widgetConfig struct {
 		WorkspaceName   string        `json:"workspace_name" doc:"The brand's name"`
 		BrandColor      string        `json:"brand_color"`
 		Greeting        string        `json:"greeting"`
+		Intro           string        `json:"intro" doc:"Under the greeting in a new chat; empty = the translated default"`
+		ChatWelcome     bool          `json:"chat_welcome" doc:"A new chat opens with the greeting and intro; false: empty"`
+		Language        string        `json:"language" doc:"The language the widget always uses (locale, when the workspace fixes it); empty = the visitor's browser"`
 		HelpCenterURL   string        `json:"help_center_url" doc:"The brand's help center, when it is on"`
 		RequireEmail    bool          `json:"require_email"`
 		Locale          string        `json:"locale" doc:"The brand's language, else the workspace's (BCP 47); empty when not set"`
@@ -303,6 +306,9 @@ func (h *handler) registerPublic(api huma.API) {
 			if b.Locale == "" {
 				b.Locale = g.WSSettings.Locale
 			}
+			if g.WSSettings.LocaleFixed {
+				b.Language = b.Locale
+			}
 			b.AvatarURL = domain.Avatar(g.Images["avatar"])
 			if b.AvatarURL == "" {
 				b.AvatarURL = domain.Avatar(g.BrandImages["logo"])
@@ -349,7 +355,7 @@ func (h *handler) registerPublic(api huma.API) {
 			if b.Open, err = isOpen(ctx, h.d.DB.Pool, g, time.Now()); err != nil {
 				return nil, httpx.Wrap(err)
 			}
-			b.OfflineMessage = ws.OfflineMessage
+			b.Intro, b.ChatWelcome, b.OfflineMessage = ws.Intro, ws.ChatWelcome, ws.OfflineMessage
 			return out, nil
 		})
 

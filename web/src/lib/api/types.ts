@@ -37,6 +37,8 @@ export type WorkspaceSettings = {
   domain_logos?: boolean;
   /** Default language (BCP 47) for customer-facing pages when the visitor's browser has no match. */
   locale?: string;
+  /** Customer-facing pages always use locale (a brand's own, else this one), whatever the visitor's browser. Default false. */
+  locale_fixed?: boolean;
   ai?: AISettings;
   /** "admins": only admins may create labels by applying a new name. Default "anyone". */
   label_creation?: "anyone" | "admins";
@@ -1135,6 +1137,10 @@ export type WidgetSettings = {
   enabled: boolean;
   /** Up to 300 chars, plain text with newlines. */
   greeting: string;
+  /** Under the greeting in a new chat; up to 200 chars, plain text with newlines; "" is the translated default. */
+  intro: string;
+  /** A new chat opens with the greeting and intro; off, it opens empty. */
+  chat_welcome: boolean;
   require_email: boolean;
   /** At most 20. */
   allowed_origins: string[];
@@ -1209,6 +1215,12 @@ export type WidgetConfig = {
   /** Business hours of the routed team, else the workspace's. */
   open?: boolean;
   offline_message?: string;
+  /** Under the greeting in a new chat; older servers omit it. */
+  intro?: string;
+  /** false: a new chat opens empty; older servers omit it. */
+  chat_welcome?: boolean;
+  /** The widget's fixed language; "" or missing: the visitor's browser. */
+  language?: string;
   brand?: { name: string; color: string | null };
 };
 
@@ -1220,6 +1232,8 @@ export type CsatSurvey = {
   score: number | null;
   comment: string;
   locale: string;
+  /** The survey always uses locale; older servers omit it. */
+  locale_fixed?: boolean;
 };
 
 export type TicketPatch = {

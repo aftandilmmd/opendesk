@@ -47,13 +47,16 @@ export class Recorder {
     await writeFile(join(this.dir, file), data);
   }
 
-  // The video starts at the first frame with visible text, not on the blank page before the app renders.
+  // The video starts at the first frame with visible text or the chat widget, not on the blank page
+  // before the app renders.
   private async painted(): Promise<boolean> {
     if (this.page.url() === "about:blank") return false;
     return this.page
       .evaluate(
         // Not the first-contentful-paint entry: the fixed clock flows run on replaces `performance`.
-        () => document.readyState !== "loading" && (document.body?.innerText ?? "").trim().length > 0,
+        () =>
+          document.readyState !== "loading" &&
+          ((document.body?.innerText ?? "").trim().length > 0 || !!document.querySelector("[data-opendesk-widget]")?.shadowRoot?.querySelector("button")),
       )
       .catch(() => false);
   }

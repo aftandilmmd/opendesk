@@ -381,6 +381,7 @@ a.chip:hover { border-color: var(--line-2); }
 
 .empty { padding: 32px 24px; text-align: center; color: var(--fg-3); font-size: 13px; animation: rise .22s var(--ease) both; }
 .empty b { display: block; color: var(--fg); font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.empty .intro { white-space: pre-line; }
 
 /* Composer: one inset field with its actions inside. */
 .composer { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); flex: none; }

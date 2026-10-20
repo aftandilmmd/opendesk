@@ -1,0 +1,63 @@
+{
+  "help": {
+    "default_title": "Yardım mərkəzi",
+    "hero_title": "Sizə necə kömək edə bilərik?",
+    "hero_subtitle": "Məqalələrdə axtarış edin və ya mövzulara baxın.",
+    "search_placeholder": "Məqalələrdə axtar",
+    "topics": "Mövzular",
+    "popular": "Populyar məqalələr",
+    "articles_one": "{{count}} məqalə",
+    "articles_other": "{{count}} məqalə",
+    "empty_title": "Burada hələ heç nə yoxdur",
+    "empty_body": "Məqalələr dərc olunduqdan sonra burada görünəcək.",
+    "not_found_title": "Yardım mərkəzi tapılmadı",
+    "not_found_body": "Bu yardım mərkəzi mövcud deyil və ya hələ hamıya açıq deyil.",
+    "topic_not_found_title": "Mövzu tapılmadı",
+    "topic_not_found_body": "Onun adı dəyişdirilmiş və ya o silinmiş ola bilər.",
+    "topic_empty": "Hələ məqalə yoxdur",
+    "article_not_found_title": "Məqalə tapılmadı",
+    "article_not_found_body": "O, başqa yerə köçürülmüş və ya dərcdən çıxarılmış ola bilər.",
+    "updated": "Yenilənib: {{date}}",
+    "breadcrumb": "Naviqasiya yolu",
+    "search": "Axtar",
+    "search_min": "Ən azı iki simvol yazın",
+    "no_results_title": "“{{term}}” üzrə nəticə tapılmadı",
+    "no_results_body": "Daha az və ya fərqli sözlərlə yoxlayın.",
+    "results_one": "{{count}} nəticə",
+    "results_other": "{{count}} nəticə",
+    "theme_light": "Açıq temaya keç",
+    "theme_dark": "Tünd temaya keç"
+  },
+  "csat": {
+    "page_title": "Söhbətinizi qiymətləndirin",
+    "invalid_title": "Bu keçid etibarlı deyil",
+    "invalid_body": "Onun müddəti bitmiş ola bilər. Rəyinizi bölüşmək istədiyiniz üçün təşəkkür edirik.",
+    "already_title": "Bu söhbəti artıq qiymətləndirmisiniz",
+    "already_body": "Təşəkkür edirik, rəyiniz komandaya çatdı.",
+    "thanks_title": "Rəyiniz üçün təşəkkür edirik",
+    "thanks_body": "Rəyiniz {{name}} komandasına daha yaxşı olmağa kömək edir.",
+    "thanks_body_generic": "Rəyiniz komandaya daha yaxşı olmağa kömək edir.",
+    "question": "Söhbətiniz necə keçdi?",
+    "rating": "Qiymət",
+    "score_label": "{{score}}, {{label}}",
+    "scores": {
+      "1": "Çox pis",
+      "2": "Pis",
+      "3": "Normal",
+      "4": "Yaxşı",
+      "5": "Əla"
+    },
+    "comment_label": "Əlavə etmək istədiyiniz nəsə var?",
+    "optional": "İstəyə bağlı",
+    "comment_placeholder": "Nə yaxşı alındı, nə daha yaxşı ola bilərdi",
+    "saved": "Qiymətiniz yadda saxlanıldı. İstəsəniz, şərh də əlavə edin.",
+    "send_comment": "Şərhi göndər",
+    "send_feedback": "Rəyi göndər",
+    "error": "Nəsə alınmadı. Yenidən cəhd edin.",
+    "offline": "Serverə qoşulmaq mümkün olmadı. İnternet bağlantınızı yoxlayın."
+  },
+  "footer": {
+    "powered_by": "Texnoloji dəstək:",
+    "language": "Dil"
+  }
+}
