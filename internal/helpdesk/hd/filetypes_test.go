@@ -44,6 +44,9 @@ func TestFileTypeAllowed(t *testing.T) {
 		{"voice.mp3", "ID3\x04\x00"},
 		{"voice.m4a", "\x00\x00\x00\x20ftypM4A \x00\x00"},
 		{"call.wav", "RIFF\x24\x00\x00\x00WAVEfmt "},
+		{"voice.webm", "\x1a\x45\xdf\xa3\x9f\x42\x86\x81"},
+		{"voice.ogg", "OggS\x00\x02\x00\x00"},
+		{"voice.opus", "OggS\x00\x02\x00\x00"},
 	}
 	for _, c := range ok {
 		if !hd.FileTypeAllowed([]byte(c.head), c.name, all) {
@@ -69,6 +72,7 @@ func TestFileTypeAllowed(t *testing.T) {
 		{"script.js", "alert(1)"},
 		{"archive.rar", "Rar!\x1a\x07\x00"},
 		{"noextension", "%PDF-1.7"},
+		{"voice.webm", "OggS\x00\x02\x00\x00"}, // Ogg named as WebM
 		{"invoice.pdf.exe", "%PDF-1.7"},
 		{"invoice.pdf", ""},
 	}
