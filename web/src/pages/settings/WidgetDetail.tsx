@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty";
 import { Textarea, TextInput } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Segmented } from "@/components/ui/tabs";
 import { CopyField } from "@/components/ui/copy-button";
 import { useConfirm } from "@/components/ui/confirm";
@@ -34,6 +35,7 @@ import { LivePreview, type PreviewScene } from "@/components/widget/LivePreview"
 import { ColorField, hasMarkup, HEX, LIMITS, suggestionProblem, SuggestionsEditor, tidy, toWidgetConfig, widgetBotOf } from "@/components/widget/fields";
 import { BotSelect, resolveBot } from "@/components/bots/BotSelect";
 import { topicProblem, topicsForSave, TopicsEditor } from "@/components/widget/TopicsEditor";
+import { ALL_FILE_TYPES, FILE_TYPE_GROUPS, FILE_TYPES } from "@/components/widget/fileTypes";
 import { api } from "@/lib/api/endpoints";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import type { Brand, Widget, WidgetSettings as WS } from "@/lib/api/types";
@@ -100,6 +102,7 @@ function withDefaults(s: WS): WS {
     offline_message: s.offline_message ?? "",
     email_follow_up: s.email_follow_up ?? true,
     attachments: s.attachments ?? true,
+    attachment_types: s.attachment_types ?? [...ALL_FILE_TYPES],
   };
 }
 
@@ -224,6 +227,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
     s.suggestions.some((x) => suggestionProblem(x)) ||
     s.topics.some((x) => topicProblem(x, s.topics)) ||
     !!offlineError ||
+    (s.attachments && s.attachment_types.length === 0) ||
     (s.color !== "" && !HEX.test(s.color));
 
   const save = useMutation({
@@ -234,6 +238,8 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
         if (JSON.stringify(d.settings[k]) !== JSON.stringify(base.settings[k])) (patch as Record<string, unknown>)[k] = d.settings[k];
       }
       if (patch.suggestions) patch.suggestions = patch.suggestions.map(tidy);
+      // With files off an emptied list is not saved: the server needs at least one type.
+      if (patch.attachment_types?.length === 0) delete patch.attachment_types;
       if (patch.topics) patch.topics = topicsForSave(patch.topics);
       for (const k of ["launcher_label", "title", "subtitle", "offline_message"] as const) if (patch[k] !== undefined) patch[k] = tidy(patch[k]!);
       return api.widgets.update(widget.id, {
@@ -503,6 +509,37 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
             <Row label={t("widget.attachments")} description={t("widget.attachmentsHint")}>
               <Switch checked={s.attachments} onCheckedChange={(attachments) => set({ attachments })} aria-label={t("widget.attachments")} />
             </Row>
+            {s.attachments && (
+              <Row label={t("widget.fileTypes")} description={t("widget.fileTypesHint")} stack>
+                <div className="flex flex-col gap-2">
+                  <div className="overflow-hidden rounded-md border border-line">
+                    {FILE_TYPE_GROUPS.map((g) => (
+                      <div key={g} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-line-soft px-3 py-2 last:border-0">
+                        <span className="w-28 shrink-0 text-[12.5px] text-fg">{t(`widget.fileGroups.${g}`)}</span>
+                        {FILE_TYPES.filter((f) => f.group === g).map((f) => {
+                          const on = s.attachment_types.includes(f.id);
+                          return (
+                            <label key={f.id} className={cn("flex items-center gap-1.5 font-mono text-[12px]", on ? "text-fg" : "text-fg-3")}>
+                              <Checkbox
+                                checked={on}
+                                onCheckedChange={(v) => set({ attachment_types: ALL_FILE_TYPES.filter((id) => (id === f.id ? v : s.attachment_types.includes(id))) })}
+                                aria-label={f.extensions.join(", ")}
+                              />
+                              {f.extensions.join(" ")}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                  {s.attachment_types.length === 0 && (
+                    <span role="alert" className="text-xs text-danger-fg">
+                      {t("widget.noFileTypes")}
+                    </span>
+                  )}
+                </div>
+              </Row>
+            )}
             <Row label={t("widget.sound")} description={t("widget.soundHint")}>
               <Switch checked={s.sound} onCheckedChange={(sound) => set({ sound })} aria-label={t("widget.sound")} />
             </Row>

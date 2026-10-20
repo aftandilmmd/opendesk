@@ -12,6 +12,7 @@ import { SortableList } from "@/components/settings2/Sortable";
 import type { Bot, Member, WidgetBot, WidgetConfig, WidgetSettings, Workspace } from "@/lib/api/types";
 import { OLLIE_LOOK } from "@/lib/botlook";
 import { cn } from "@/lib/cn";
+import { fileTypeExtensions } from "./fileTypes";
 
 export const LIMITS = { greeting: 300, launcher_label: 24, title: 40, subtitle: 80, suggestion: 60, suggestions: 4, origins: 20 } as const;
 
@@ -242,6 +243,7 @@ export function toWidgetConfig(d: WidgetSettings, ws: Workspace | null, members:
     suggestions: d.suggestions.map(tidy).filter((s) => s.length >= 2),
     sound: d.sound,
     attachments: d.attachments,
+    attachment_extensions: d.attachments ? fileTypeExtensions(d.attachment_types) : [],
     team,
     ai_answers: aiAnswers,
     bot: bot ?? OLLIE_BOT,
