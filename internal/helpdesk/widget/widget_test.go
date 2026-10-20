@@ -51,7 +51,7 @@ func TestConfig(t *testing.T) {
 	e, ws := setup(t)
 	e.Do("GET", "/v1/widget/config?key=nope", hdtest.Auth{}, nil).Want(t, 404)
 	m := e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t)
-	if m["workspace_name"] != "Acme "+ws.Slug || m["help_center_url"] != "" || m["require_email"] != false {
+	if m["workspace_name"] != "Acme "+ws.Slug || m["help_center_url"] != "" || m["require_email"] != false || m["attachments"] != true {
 		t.Fatal(m)
 	}
 	e.SetSettings(ws, map[string]any{"brand_color": "#111111"})
@@ -298,6 +298,9 @@ func TestVisitorAttachments(t *testing.T) {
 	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "x", "attachment_ids": []string{theirs.ID.String()}}).Want(t, 422)
 	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "x", "attachment_ids": []string{agents.ID.String()}}).Want(t, 422)
 	var created struct {
+		Conversation struct {
+			ID uuid.UUID `json:"id"`
+		} `json:"conversation"`
 		Message domain.Message `json:"message"`
 	}
 	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "see file", "attachment_ids": []string{mine.ID.String()}}).
@@ -312,6 +315,21 @@ func TestVisitorAttachments(t *testing.T) {
 	e.Do("GET", "/v1/attachments/"+mine.ID.String(), va, nil).Want(t, 200)
 	e.Do("GET", "/v1/attachments/"+mine.ID.String(), oa, nil).Want(t, 404)
 	e.Do("GET", "/v1/attachments/"+agents.ID.String(), va, nil).Want(t, 404)
+
+	// With attachments off the widget takes no files, not even one uploaded before.
+	var early domain.Attachment
+	e.Upload("/v1/widget/attachments", va, "early.txt", []byte("early")).Want(t, 201).JSON(t, &early)
+	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"attachments": false})
+	if m := e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t); m["attachments"] != false {
+		t.Fatal(m)
+	}
+	e.Upload("/v1/widget/attachments", va, "late.txt", []byte("late")).Want(t, 403)
+	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "x", "attachment_ids": []string{early.ID.String()}}).Want(t, 403)
+	cid := created.Conversation.ID.String()
+	e.Do("POST", "/v1/widget/conversations/"+cid+"/messages", va, map[string]any{"body": "x", "attachment_ids": []string{early.ID.String()}}).Want(t, 403)
+	e.Do("POST", "/v1/widget/conversations/"+cid+"/messages", va, map[string]any{"body": "text still works"}).Want(t, 201)
+	// The agent's own uploads are not the widget's.
+	e.Upload("/v1/attachments", ws.Agent.As(ws), "agent2.txt", []byte("agent file")).Want(t, 201)
 }
 
 func TestAgentAttachments(t *testing.T) {

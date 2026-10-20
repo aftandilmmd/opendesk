@@ -36,6 +36,7 @@ func (w widgetOut) settings(t *testing.T) (s struct {
 	Topics         []topic `json:"topics"`
 	OfflineMessage string  `json:"offline_message"`
 	EmailFollowUp  bool    `json:"email_follow_up"`
+	Attachments    bool    `json:"attachments"`
 	Greeting       string  `json:"greeting"`
 }) {
 	t.Helper()
@@ -90,7 +91,7 @@ func TestWidgetsCRUD(t *testing.T) {
 		t.Fatal(w.Install.Snippet)
 	}
 	st := w.settings(t)
-	if st.Greeting != "Docs help" || !st.EmailFollowUp || len(st.Topics) != 2 || !strings.HasPrefix(st.Topics[0].ID, "tp_") ||
+	if st.Greeting != "Docs help" || !st.EmailFollowUp || !st.Attachments || len(st.Topics) != 2 || !strings.HasPrefix(st.Topics[0].ID, "tp_") ||
 		st.Topics[1].ID != "bugs" || st.Topics[0].TeamID == nil || st.Topics[1].TeamID != nil {
 		t.Fatalf("settings %s", w.Settings)
 	}
@@ -120,9 +121,10 @@ func TestWidgetsCRUD(t *testing.T) {
 	}
 	brand2, _ := addBrand(e, ws, "Shop")
 	e.Do("PATCH", "/v1/widgets/"+w.ID, admin, map[string]any{"team_id": nil, "brand_id": brand2.String(), "name": "Shop site",
-		"settings": map[string]any{"offline_message": "Back at 9", "email_follow_up": false}}).Want(t, 200).JSON(t, &got)
+		"settings": map[string]any{"offline_message": "Back at 9", "email_follow_up": false, "attachments": false}}).Want(t, 200).JSON(t, &got)
 	st = got.settings(t)
 	if got.TeamID != nil || got.BrandID != brand2.String() || got.Name != "Shop site" || st.OfflineMessage != "Back at 9" || st.EmailFollowUp ||
+		st.Attachments ||
 		st.Greeting != "Docs help" || len(st.Topics) != 2 {
 		t.Fatalf("patched %+v %s", got, got.Settings)
 	}
