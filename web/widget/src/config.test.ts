@@ -31,6 +31,13 @@ describe("widget config", () => {
     expect(resolveConfig({ workspace_name: "Acme", attachments: "no" as never }).attachments).toBe(true);
   });
 
+  it("takes voice messages only when the widget turns them on, of a length in range", () => {
+    expect(resolveConfig({ workspace_name: "Acme" })).toMatchObject({ voice_messages: false, voice_max_seconds: 60 });
+    expect(resolveConfig({ workspace_name: "Acme", voice_messages: true, voice_max_seconds: 120 })).toMatchObject({ voice_messages: true, voice_max_seconds: 120 });
+    expect(resolveConfig({ workspace_name: "Acme", voice_max_seconds: 9999 }).voice_max_seconds).toBe(300);
+    expect(resolveConfig({ workspace_name: "Acme", voice_max_seconds: 1 }).voice_max_seconds).toBe(5);
+  });
+
   it("reads the allowed extensions and checks files against them", () => {
     expect(resolveConfig({ workspace_name: "Acme" }).attachment_extensions).toBeNull();
     const c = resolveConfig({ workspace_name: "Acme", attachment_extensions: [".png", ".JPG", "exe", ".tar.gz", 5 as never, ".pdf"] });
