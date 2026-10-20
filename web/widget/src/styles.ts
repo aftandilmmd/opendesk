@@ -397,6 +397,9 @@ a.chip:hover { border-color: var(--line-2); }
 .rec-time, .rec-max { font-family: var(--mono); font-variant-numeric: tabular-nums; flex: none; }
 .rec-time { color: var(--fg); }
 .rec-max { color: var(--fg-4); }
+/* Newest bar on the right; each moves left as the next comes in. */
+.rec-wave { flex: 1; min-width: 24px; height: 22px; display: flex; align-items: center; justify-content: space-between; gap: 2px; overflow: hidden; }
+.rec-wave span { flex: 1; max-width: 3px; min-height: 3px; border-radius: 2px; background: var(--fg-3); transition: height .1s linear; }
 .rec-track, .voice-track { flex: 1; min-width: 24px; height: 4px; border-radius: 2px; background: var(--bg-2); overflow: hidden; }
 .rec-track span, .voice-track span { display: block; height: 100%; border-radius: inherit; background: var(--danger); transition: width .1s linear; }
 .rec-stop { width: 30px; height: 30px; flex: none; border-radius: var(--r-ctl, 8px); display: grid; place-items: center; background: var(--danger); color: #fff; transition: transform .12s, filter .12s; }
@@ -422,6 +425,8 @@ a.chip:hover { border-color: var(--line-2); }
 .cbar .icon-btn { width: 30px; height: 30px; }
 .cbar.lead { padding-inline-start: 5px; }
 .cbar.lead .input-wrap { margin-inline-start: 2px; }
+.cbar.rec { border-radius: 999px; padding-inline-start: 5px; align-items: center; }
+.cbar.rec .icon-btn, .cbar.rec .rec-stop { border-radius: 50%; }
 .input-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
 textarea.input {
   flex: 1; width: 100%; resize: none; border: 0; background: transparent; font-size: 14px; line-height: 20px; padding: 5px 0;

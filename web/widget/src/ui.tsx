@@ -792,7 +792,7 @@ function Composer({
           ))}
         </div>
       )}
-      <div class={`cbar${disabled ? " off" : ""}${attachments && !recording ? " lead" : ""}`}>
+      <div class={`cbar${disabled ? " off" : ""}${attachments && !recording ? " lead" : ""}${recording ? " rec" : ""}`}>
         {attachments && !recording && (
           <>
             <input
@@ -811,13 +811,26 @@ function Composer({
             </button>
           </>
         )}
+        {recording && (
+          <button class="icon-btn" aria-label={t("cancelRecording")} onClick={recorder.cancel}>
+            {X(16)}
+          </button>
+        )}
         {recording ? (
           <div class="rec-bar" role="timer" aria-label={t("recording")}>
             <span class="rec-dot" aria-hidden="true" />
             <span class="rec-time">{clock(recorder.elapsed)}</span>
-            <div class="rec-track" aria-hidden="true">
-              <span style={{ width: `${Math.min(100, (recorder.elapsed / maxVoice) * 100)}%` }} />
-            </div>
+            {recorder.levels ? (
+              <div class="rec-wave" aria-hidden="true">
+                {recorder.levels.map((v, k) => (
+                  <span key={k} style={{ height: `${Math.max(14, v * 100)}%` }} />
+                ))}
+              </div>
+            ) : (
+              <div class="rec-track" aria-hidden="true">
+                <span style={{ width: `${Math.min(100, (recorder.elapsed / maxVoice) * 100)}%` }} />
+              </div>
+            )}
             <span class="rec-max">{clock(maxVoice)}</span>
           </div>
         ) : (
@@ -855,14 +868,9 @@ function Composer({
           </div>
         )}
         {recording ? (
-          <>
-            <button class="rec-stop" aria-label={t("stopRecording")} onClick={recorder.stop}>
-              <StopIc />
-            </button>
-            <button class="icon-btn" aria-label={t("cancelRecording")} onClick={recorder.cancel}>
-              {X(16)}
-            </button>
-          </>
+          <button class="rec-stop" aria-label={t("stopRecording")} onClick={recorder.stop}>
+            <StopIc />
+          </button>
         ) : (
           mic &&
           !voice && (
