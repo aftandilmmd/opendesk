@@ -332,6 +332,45 @@ func TestVisitorAttachments(t *testing.T) {
 	e.Upload("/v1/attachments", ws.Agent.As(ws), "agent2.txt", []byte("agent file")).Want(t, 201)
 }
 
+func TestVisitorFileTypes(t *testing.T) {
+	e, ws := setup(t)
+	s := start(t, e, map[string]any{"key": ws.WidgetKey})
+	va := hdtest.Auth{Visitor: s.VisitorToken}
+
+	// By default every type of the catalog, each checked against its bytes.
+	m := e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t)
+	if ext, _ := m["attachment_extensions"].([]any); len(ext) < 10 || ext[0] != ".png" {
+		t.Fatal(m["attachment_extensions"])
+	}
+	e.Upload("/v1/widget/attachments", va, "invoice.pdf", []byte("%PDF-1.7\n")).Want(t, 201)
+	e.Upload("/v1/widget/attachments", va, "notes.txt", []byte("hello")).Want(t, 201)
+	e.Upload("/v1/widget/attachments", va, "shell.png", []byte("#!/bin/sh\nid")).Want(t, 422)
+	e.Upload("/v1/widget/attachments", va, "page.png", []byte("<html><script>alert(1)</script></html>")).Want(t, 422)
+	e.Upload("/v1/widget/attachments", va, "x.svg", []byte("<svg onload=alert(1)>")).Want(t, 422)
+	e.Upload("/v1/widget/attachments", va, "x.html", []byte("<p>hi</p>")).Want(t, 422)
+
+	// Images only.
+	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"attachment_types": []string{"png", "jpg"}})
+	m = e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t)
+	if ext, _ := m["attachment_extensions"].([]any); len(ext) != 3 || ext[0] != ".png" || ext[1] != ".jpg" || ext[2] != ".jpeg" {
+		t.Fatal(m["attachment_extensions"])
+	}
+	e.Upload("/v1/widget/attachments", va, "shot.png", pngBytes()).Want(t, 201)
+	r := e.Upload("/v1/widget/attachments", va, "invoice.pdf", []byte("%PDF-1.7\n")).Want(t, 422).Map(t)
+	if r["code"] != "file_type_not_allowed" {
+		t.Fatal(r)
+	}
+	// Agents are not limited by the widget's types.
+	e.Upload("/v1/attachments", ws.Agent.As(ws), "invoice.pdf", []byte("%PDF-1.7\n")).Want(t, 201)
+
+	// Files off: no extensions.
+	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"attachments": false})
+	m = e.Do("GET", "/v1/widget/config?key="+ws.WidgetKey, hdtest.Auth{}, nil).Want(t, 200).Map(t)
+	if ext, _ := m["attachment_extensions"].([]any); len(ext) != 0 {
+		t.Fatal(m["attachment_extensions"])
+	}
+}
+
 func TestAgentAttachments(t *testing.T) {
 	e, ws := setup(t)
 	other := e.NewWorkspace()

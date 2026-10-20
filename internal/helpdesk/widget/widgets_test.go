@@ -33,11 +33,12 @@ type topic struct {
 }
 
 func (w widgetOut) settings(t *testing.T) (s struct {
-	Topics         []topic `json:"topics"`
-	OfflineMessage string  `json:"offline_message"`
-	EmailFollowUp  bool    `json:"email_follow_up"`
-	Attachments    bool    `json:"attachments"`
-	Greeting       string  `json:"greeting"`
+	Topics         []topic  `json:"topics"`
+	OfflineMessage string   `json:"offline_message"`
+	EmailFollowUp  bool     `json:"email_follow_up"`
+	Attachments    bool     `json:"attachments"`
+	FileTypes      []string `json:"attachment_types"`
+	Greeting       string   `json:"greeting"`
 }) {
 	t.Helper()
 	if err := json.Unmarshal(w.Settings, &s); err != nil {
@@ -91,7 +92,7 @@ func TestWidgetsCRUD(t *testing.T) {
 		t.Fatal(w.Install.Snippet)
 	}
 	st := w.settings(t)
-	if st.Greeting != "Docs help" || !st.EmailFollowUp || !st.Attachments || len(st.Topics) != 2 || !strings.HasPrefix(st.Topics[0].ID, "tp_") ||
+	if st.Greeting != "Docs help" || !st.EmailFollowUp || !st.Attachments || len(st.FileTypes) < 10 || len(st.Topics) != 2 || !strings.HasPrefix(st.Topics[0].ID, "tp_") ||
 		st.Topics[1].ID != "bugs" || st.Topics[0].TeamID == nil || st.Topics[1].TeamID != nil {
 		t.Fatalf("settings %s", w.Settings)
 	}
@@ -114,6 +115,9 @@ func TestWidgetsCRUD(t *testing.T) {
 		{"settings": map[string]any{"topics": []map[string]any{{"label": "1a"}, {"label": "2a"}, {"label": "3a"}, {"label": "4a"},
 			{"label": "5a"}, {"label": "6a"}, {"label": "7a"}, {"label": "8a"}, {"label": "9a"}}}},
 		{"settings": map[string]any{"offline_message": strings.Repeat("a", 301)}},
+		{"settings": map[string]any{"attachment_types": []string{}}},
+		{"settings": map[string]any{"attachment_types": []string{"png", "svg"}}},
+		{"settings": map[string]any{"attachment_types": []string{"exe"}}},
 		{"brand_id": other.BrandID.String()},
 		{"team_id": foreignTeam.String()},
 	} {
@@ -121,10 +125,10 @@ func TestWidgetsCRUD(t *testing.T) {
 	}
 	brand2, _ := addBrand(e, ws, "Shop")
 	e.Do("PATCH", "/v1/widgets/"+w.ID, admin, map[string]any{"team_id": nil, "brand_id": brand2.String(), "name": "Shop site",
-		"settings": map[string]any{"offline_message": "Back at 9", "email_follow_up": false, "attachments": false}}).Want(t, 200).JSON(t, &got)
+		"settings": map[string]any{"offline_message": "Back at 9", "email_follow_up": false, "attachments": false, "attachment_types": []string{"pdf", "png", "pdf"}}}).Want(t, 200).JSON(t, &got)
 	st = got.settings(t)
 	if got.TeamID != nil || got.BrandID != brand2.String() || got.Name != "Shop site" || st.OfflineMessage != "Back at 9" || st.EmailFollowUp ||
-		st.Attachments ||
+		st.Attachments || strings.Join(st.FileTypes, ",") != "png,pdf" ||
 		st.Greeting != "Docs help" || len(st.Topics) != 2 {
 		t.Fatalf("patched %+v %s", got, got.Settings)
 	}
