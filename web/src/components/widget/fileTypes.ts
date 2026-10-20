@@ -30,6 +30,8 @@ export const FILE_TYPES: { id: string; group: FileTypeGroup; extensions: string[
   { id: "mp3", group: "media", extensions: [".mp3"] },
   { id: "m4a", group: "media", extensions: [".m4a"] },
   { id: "wav", group: "media", extensions: [".wav"] },
+  { id: "webm", group: "media", extensions: [".webm"] },
+  { id: "ogg", group: "media", extensions: [".ogg", ".oga", ".opus"] },
   { id: "zip", group: "archive", extensions: [".zip"] },
 ];
 

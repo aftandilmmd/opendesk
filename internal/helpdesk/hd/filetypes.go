@@ -42,6 +42,8 @@ var fileTypes = []FileType{
 	{ID: "mp3", Group: "media", Extensions: []string{".mp3"}, match: mp3},
 	{ID: "m4a", Group: "media", Extensions: []string{".m4a"}, match: ftyp()},
 	{ID: "wav", Group: "media", Extensions: []string{".wav"}, match: riff("WAVE")},
+	{ID: "webm", Group: "media", Extensions: []string{".webm"}, match: prefix("\x1a\x45\xdf\xa3")},
+	{ID: "ogg", Group: "media", Extensions: []string{".ogg", ".oga", ".opus"}, match: prefix("OggS")},
 	{ID: "zip", Group: "archive", Extensions: []string{".zip"}, match: prefix(zip)},
 }
 
@@ -93,6 +95,10 @@ func plainText(head []byte) bool {
 	}
 	return true
 }
+
+// VoiceFileTypes are the types a browser records a voice message in: WebM (Chrome,
+// Edge), Ogg (Firefox) and MP4 audio (Safari).
+var VoiceFileTypes = []string{"webm", "ogg", "m4a"}
 
 // FileTypes is the catalog a widget picks from.
 func FileTypes() []FileType { return fileTypes }
