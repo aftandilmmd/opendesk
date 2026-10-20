@@ -70,5 +70,15 @@
   "topicsHint": "Choisissez un sujet pour que votre message arrive aux bonnes personnes.",
   "placeholderTopic": "Choisissez un sujet pour commencer",
   "changeTopic": "Changer de sujet",
-  "offlineDefault": "Nous sommes absents pour le moment. Laissez un message et nous vous répondrons dès notre retour."
+  "offlineDefault": "Nous sommes absents pour le moment. Laissez un message et nous vous répondrons dès notre retour.",
+  "recordVoice": "Enregistrer un message vocal",
+  "stopRecording": "Arrêter l’enregistrement",
+  "cancelRecording": "Annuler l’enregistrement",
+  "recording": "Enregistrement",
+  "deleteRecording": "Supprimer l’enregistrement",
+  "playVoice": "Écouter le message vocal",
+  "pauseVoice": "Pause",
+  "micBlocked": "Autorisez le micro dans votre navigateur pour enregistrer un message vocal.",
+  "micFailed": "Enregistrement impossible. Vérifiez votre micro et réessayez.",
+  "voiceFileName": "Message vocal"
 }

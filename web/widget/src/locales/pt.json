@@ -70,5 +70,15 @@
   "topicsHint": "Escolha um tema para que sua mensagem chegue às pessoas certas.",
   "placeholderTopic": "Escolha um tema para começar",
   "changeTopic": "Mudar tema",
-  "offlineDefault": "No momento estamos ausentes. Deixe uma mensagem e responderemos assim que voltarmos."
+  "offlineDefault": "No momento estamos ausentes. Deixe uma mensagem e responderemos assim que voltarmos.",
+  "recordVoice": "Gravar uma mensagem de voz",
+  "stopRecording": "Parar a gravação",
+  "cancelRecording": "Cancelar a gravação",
+  "recording": "Gravando",
+  "deleteRecording": "Excluir a gravação",
+  "playVoice": "Reproduzir mensagem de voz",
+  "pauseVoice": "Pausar",
+  "micBlocked": "Permita o microfone no seu navegador para gravar uma mensagem de voz.",
+  "micFailed": "Não foi possível gravar. Verifique o microfone e tente novamente.",
+  "voiceFileName": "Mensagem de voz"
 }

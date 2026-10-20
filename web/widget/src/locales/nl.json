@@ -70,5 +70,15 @@
   "topicsHint": "Kies een onderwerp, zodat je bericht bij de juiste mensen komt.",
   "placeholderTopic": "Kies een onderwerp om te beginnen",
   "changeTopic": "Onderwerp wijzigen",
-  "offlineDefault": "We zijn er nu even niet. Laat een bericht achter, dan reageren we zodra we terug zijn."
+  "offlineDefault": "We zijn er nu even niet. Laat een bericht achter, dan reageren we zodra we terug zijn.",
+  "recordVoice": "Spraakbericht opnemen",
+  "stopRecording": "Opname stoppen",
+  "cancelRecording": "Opname annuleren",
+  "recording": "Opnemen",
+  "deleteRecording": "Opname verwijderen",
+  "playVoice": "Spraakbericht afspelen",
+  "pauseVoice": "Pauzeren",
+  "micBlocked": "Sta de microfoon toe in je browser om een spraakbericht op te nemen.",
+  "micFailed": "Opnemen lukte niet. Controleer je microfoon en probeer het opnieuw.",
+  "voiceFileName": "Spraakbericht"
 }

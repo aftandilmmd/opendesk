@@ -77,6 +77,16 @@ export const en = {
   placeholderTopic: "Pick a topic to start",
   changeTopic: "Change topic",
   offlineDefault: "We're away right now. Leave a message and we'll reply as soon as we're back.",
+  recordVoice: "Record a voice message",
+  stopRecording: "Stop recording",
+  cancelRecording: "Cancel the recording",
+  recording: "Recording",
+  deleteRecording: "Delete the recording",
+  playVoice: "Play voice message",
+  pauseVoice: "Pause",
+  micBlocked: "Allow the microphone in your browser to record a voice message.",
+  micFailed: "Couldn't record. Check your microphone and try again.",
+  voiceFileName: "Voice message",
 };
 
 export type Dict = typeof en;

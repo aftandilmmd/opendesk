@@ -70,5 +70,15 @@
   "topicsHint": "適切な担当者に届くよう、トピックを選んでください。",
   "placeholderTopic": "トピックを選んで始めましょう",
   "changeTopic": "トピックを変更",
-  "offlineDefault": "ただいま営業時間外です。メッセージを残していただければ、戻り次第お返事します。"
+  "offlineDefault": "ただいま営業時間外です。メッセージを残していただければ、戻り次第お返事します。",
+  "recordVoice": "ボイスメッセージを録音",
+  "stopRecording": "録音を停止",
+  "cancelRecording": "録音をキャンセル",
+  "recording": "録音中",
+  "deleteRecording": "録音を削除",
+  "playVoice": "ボイスメッセージを再生",
+  "pauseVoice": "一時停止",
+  "micBlocked": "ボイスメッセージを録音するには、ブラウザでマイクを許可してください。",
+  "micFailed": "録音できませんでした。マイクを確認してもう一度お試しください。",
+  "voiceFileName": "ボイスメッセージ"
 }

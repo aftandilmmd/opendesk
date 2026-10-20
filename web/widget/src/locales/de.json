@@ -70,5 +70,15 @@
   "topicsHint": "Wählen Sie ein Thema, damit Ihre Nachricht die richtigen Personen erreicht.",
   "placeholderTopic": "Wählen Sie ein Thema, um zu beginnen",
   "changeTopic": "Thema ändern",
-  "offlineDefault": "Wir sind gerade nicht da. Hinterlassen Sie eine Nachricht, wir antworten, sobald wir zurück sind."
+  "offlineDefault": "Wir sind gerade nicht da. Hinterlassen Sie eine Nachricht, wir antworten, sobald wir zurück sind.",
+  "recordVoice": "Sprachnachricht aufnehmen",
+  "stopRecording": "Aufnahme beenden",
+  "cancelRecording": "Aufnahme abbrechen",
+  "recording": "Aufnahme läuft",
+  "deleteRecording": "Aufnahme löschen",
+  "playVoice": "Sprachnachricht abspielen",
+  "pauseVoice": "Pause",
+  "micBlocked": "Erlauben Sie das Mikrofon in Ihrem Browser, um eine Sprachnachricht aufzunehmen.",
+  "micFailed": "Aufnahme nicht möglich. Prüfen Sie Ihr Mikrofon und versuchen Sie es erneut.",
+  "voiceFileName": "Sprachnachricht"
 }

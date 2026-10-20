@@ -70,5 +70,15 @@
   "topicsHint": "Wybierz temat, aby wiadomość trafiła do właściwych osób.",
   "placeholderTopic": "Wybierz temat, aby zacząć",
   "changeTopic": "Zmień temat",
-  "offlineDefault": "Teraz nas nie ma. Zostaw wiadomość, a odpowiemy, gdy tylko wrócimy."
+  "offlineDefault": "Teraz nas nie ma. Zostaw wiadomość, a odpowiemy, gdy tylko wrócimy.",
+  "recordVoice": "Nagraj wiadomość głosową",
+  "stopRecording": "Zatrzymaj nagrywanie",
+  "cancelRecording": "Anuluj nagrywanie",
+  "recording": "Nagrywanie",
+  "deleteRecording": "Usuń nagranie",
+  "playVoice": "Odtwórz wiadomość głosową",
+  "pauseVoice": "Wstrzymaj",
+  "micBlocked": "Zezwól na mikrofon w przeglądarce, aby nagrać wiadomość głosową.",
+  "micFailed": "Nie udało się nagrać. Sprawdź mikrofon i spróbuj ponownie.",
+  "voiceFileName": "Wiadomość głosowa"
 }
