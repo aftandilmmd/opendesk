@@ -48,6 +48,12 @@ func TestNotificationSubjects(t *testing.T) {
 	if got := one(n); strings.ContainsAny(got, "\r\n") || len([]rune(got)) > 120 {
 		t.Errorf("subject not flattened and clipped: %q", got)
 	}
+	if got := one(Note{Type: "new_ticket", TicketID: &tid, TicketNumber: 7, TicketSubject: "Hi", Data: map[string]any{"contact": map[string]any{"name": "Sam"}}}); got != "New ticket from Sam #7: Hi" {
+		t.Errorf("new ticket: %q", got)
+	}
+	if got := one(Note{Type: "new_ticket", TicketID: &tid, TicketNumber: 7, TicketSubject: "Hi"}); got != "New ticket #7: Hi" {
+		t.Errorf("new ticket without a contact: %q", got)
+	}
 	if got := one(Note{Type: "ai_balance_out", Data: map[string]any{"remaining_usd": 0.0}}); got != "Your AI balance is used up in Margin" {
 		t.Errorf("billing: %q", got)
 	}
@@ -87,6 +93,12 @@ func TestWebPushText(t *testing.T) {
 	if title != "Your AI balance is used up" || body != "" || link != "https://app.example/settings/billing?ws="+wid.String() {
 		t.Errorf("billing: %q %q %q", title, body, link)
 	}
+	// A new ticket nobody is assigned to opens in Unassigned and names its customer.
+	title, body, link = WebPush(s, wid, Note{Type: "new_ticket", TicketID: &tid, TicketNumber: 1121, TicketSubject: "Gmail",
+		Data: map[string]any{"channel": "email", "contact": map[string]any{"name": "Sam Ortiz"}}})
+	if title != "New ticket from Sam Ortiz" || body != "#1121 Gmail" || link != "https://app.example/inbox/unassigned/"+tid.String()+"?ws="+wid.String() {
+		t.Errorf("new ticket: %q %q %q", title, body, link)
+	}
 	_, body, _ = WebPush(s, wid, Note{Type: "collab_mention", TicketSubject: "Quarterly\nnumbers"})
 	if body != "Quarterly numbers" {
 		t.Errorf("collab: %q", body)
@@ -114,13 +126,15 @@ func TestListGroupsAndLeads(t *testing.T) {
 		add(Note{Type: "assigned", TicketID: ticket(int64(10 + i)), TicketNumber: int64(1200 + i), TicketSubject: "Bulk", Data: map[string]any{"actor": who("Maya Chen")}})
 	}
 	add(Note{Type: "ai_balance_low", Data: map[string]any{"remaining_usd": 2.0}})
+	add(Note{Type: "new_ticket", TicketID: ticket(30), TicketNumber: 1300, TicketSubject: "Hello", Data: map[string]any{"channel": "chat"}})
+	add(Note{Type: "new_ticket", TicketID: ticket(31), TicketNumber: 1301, TicketSubject: "Hi", Data: map[string]any{"channel": "email"}})
 	m := Notifications(s, Batch{WorkspaceID: uuid.New(), Workspace: "Margin", Notes: notes, Now: now,
 		Urgent: func(t string) bool { return t == "sla_breached" }})
-	if m.Subject != "First response target missed #1110 and 7 more" {
+	if m.Subject != "First response target missed #1110 and 9 more" {
 		t.Errorf("subject %q", m.Subject)
 	}
 	for _, want := range []string{"NEEDS YOU NOW", "TICKETS", "WORKSPACE", "Dana Lee replied twice", "Maya Chen assigned you 4 tickets",
-		"#1200, #1201, #1202 and 1 more", "> Still missing", "Since 14:52: 4 assigned, 2 replies, 1 missed target, 1 AI or billing notice"} {
+		"#1200, #1201, #1202 and 1 more", "> Still missing", "Since 14:50: 4 assigned, 2 new tickets, 2 replies, 1 missed target, 1 AI or billing notice"} {
 		if !strings.Contains(m.Text, want) {
 			t.Errorf("missing %q in\n%s", want, m.Text)
 		}

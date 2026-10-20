@@ -196,3 +196,9 @@ func (b BusinessHours) AddBusinessMinutes(start time.Time, mins int, loc *time.L
 	}
 	return start.Add(time.Duration(mins) * time.Minute)
 }
+
+// OpenAt reports whether the business hours are open at now. A schedule with no open
+// time is never open. Callers check Enabled first: hours that are off read as open.
+func OpenAt(b BusinessHours, loc *time.Location, now time.Time) bool {
+	return b.open() && b.AddBusinessMinutes(now, 1, loc).Equal(now.Add(time.Minute))
+}

@@ -17,8 +17,9 @@ import { AssistantDock, AssistantRoot } from "@/components/assistant/AssistantRo
 import type { Notification, Ticket } from "@/lib/api/types";
 import { q, qk } from "@/lib/queries";
 import { subscribeWebPush } from "@/lib/webPush";
+import { afterOwnCreations, wantsTicketSound } from "@/lib/ownTickets";
 import { i18n } from "@/i18n";
-import { collabThread, describe, joinedTeam } from "./Notifications";
+import { collabThread, describe, joinedTeam, ticketFolder } from "./Notifications";
 import { Sidebar } from "./Sidebar";
 import { SuspendedWorkspace } from "./SuspendedWorkspace";
 import { AppHeader } from "./AppHeader";
@@ -43,6 +44,8 @@ function notificationText(n: Notification) {
   switch (n.type) {
     case "assigned":
       return `Assigned to you ${subject}`;
+    case "new_ticket":
+      return describe(n, i18n.getFixedT(null, "shell"));
     case "mentioned":
       return `You were mentioned ${subject}`;
     case "customer_replied":
@@ -108,11 +111,11 @@ function soundForNotification(n: Notification) {
   playAlertOnce(kind, n.id);
 }
 
-/** A customer wrote in (not a chat, which alerts on its own) to the team or to you. */
+/** A new ticket for the team or for you that someone else created (lib/ownTickets.ts). */
 function soundForTicket(t: Ticket, me: string) {
-  if (t.channel === "chat" || t.spam || !t.last_customer_message_at) return;
-  if (t.assignee && t.assignee.id !== me) return;
-  playAlertOnce("ticket", t.id);
+  afterOwnCreations(() => {
+    if (wantsTicketSound(t, me)) playAlertOnce("ticket", t.id);
+  });
 }
 
 function useRealtimeConnection() {
@@ -143,7 +146,7 @@ function useRealtimeConnection() {
             ? {
                 label: "Open",
                 onClick: () =>
-                  void navigate({ to: "/inbox/$folder/{-$ticketId}", params: { folder: "mine", ticketId: n.ticket!.id } }),
+                  void navigate({ to: "/inbox/$folder/{-$ticketId}", params: { folder: ticketFolder(n), ticketId: n.ticket!.id } }),
               }
             : n.type === "team_joined"
               ? {

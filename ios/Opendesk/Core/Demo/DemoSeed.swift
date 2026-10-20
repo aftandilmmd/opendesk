@@ -225,6 +225,7 @@ private extension DemoSeed {
         let rows: [(String, Int?, [String: JSONValue], Double, Double?)] = [
             ("ai_handoff", 1086, ["via": .string("contact"), "contact": contact(1086), "preview": .string("Thanks. We're 140 people, so can I talk to someone about volume pricing?")], 3.6, nil),
             ("customer_replied", 1072, ["contact": contact(1072), "message_id": .string(demoID(.message, 107_205)), "preview": .string("You were right, our identity team rotated the certificate last night without telling us.")], 6, nil),
+            ("new_ticket", 1071, ["channel": .string("email"), "contact": contact(1071)], 14, nil),
             ("customer_replied", 1045, ["contact": contact(1045), "preview": .string("That works for us. Can you send a quote for 520 seats, billed yearly?")], 25, nil),
             ("customer_replied", 1068, ["contact": contact(1068), "preview": .string("Hi, just checking in on this. I haven't heard back yet. Is the refund being processed?")], 35, nil),
             ("mentioned", 1072, ["actor": jonas, "preview": .string("Confirmed. Every assertion since 07:38 is signed with a cert we don't have.")], 61, nil),

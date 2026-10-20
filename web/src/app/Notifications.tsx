@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { AtSign, Bell, BellOff, Mail, ChevronRight, CornerDownLeft, CreditCard, Gauge, Hand, Import, KeyRound, MailX, MessagesSquare, Moon, Settings2, Sparkles, TimerOff, UserPlus, UsersRound } from "lucide-react";
+import { AtSign, Bell, BellOff, Mail, ChevronRight, CornerDownLeft, CreditCard, Gauge, Hand, Import, Inbox, KeyRound, MailX, MessagesSquare, Moon, Settings2, Sparkles, TimerOff, UserPlus, UsersRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -22,6 +22,7 @@ import { i18n } from "@/i18n";
 // Each kind keeps one icon and one hue, so the list scans by what happened.
 const kind: Record<Notification["type"], { icon: React.ReactNode; tone: Tone }> = {
   assigned: { icon: <UserPlus />, tone: "blue" },
+  new_ticket: { icon: <Inbox />, tone: "green" },
   mentioned: { icon: <AtSign />, tone: "indigo" },
   customer_replied: { icon: <CornerDownLeft />, tone: "teal" },
   thread_replied: { icon: <MessagesSquare />, tone: "cyan" },
@@ -68,8 +69,13 @@ export function notificationPath(n: Notification): string | null {
     const id = typeof n.data.import_id === "string" && n.data.import_id ? n.data.import_id : null;
     return id ? `/settings/import?id=${encodeURIComponent(id)}` : "/settings/import";
   }
-  if (n.ticket) return `/inbox/mine/${encodeURIComponent(n.ticket.id)}`;
+  if (n.ticket) return `/inbox/${ticketFolder(n)}/${encodeURIComponent(n.ticket.id)}`;
   return null;
+}
+
+/** The inbox folder a ticket notification opens in: a new ticket is nobody's yet, so not in Mine. */
+export function ticketFolder(n: Notification): "mine" | "unassigned" {
+  return n.type === "new_ticket" ? "unassigned" : "mine";
 }
 
 /** The team of a `team_joined` notification and who joined it. */
@@ -93,6 +99,8 @@ export function describe(n: Notification, t: TFunction<"shell">): string {
   switch (n.type) {
     case "assigned":
       return who ? t("notifications.type.assigned", { who }) : t("notifications.type.assignedAnon");
+    case "new_ticket":
+      return contact ? t("notifications.type.newTicket", { who: contact }) : t("notifications.type.newTicketAnon");
     case "mentioned":
       return who ? t("notifications.type.mentioned", { who }) : t("notifications.type.mentionedAnon");
     case "customer_replied":
@@ -191,7 +199,7 @@ export function NotificationsButton() {
     else if (n.ticket)
       void navigate({
         to: "/inbox/$folder/{-$ticketId}",
-        params: { folder: n.type === "assigned" || n.type === "mentioned" ? "mine" : "open", ticketId: n.ticket.id },
+        params: { folder: n.type === "assigned" || n.type === "mentioned" ? "mine" : n.type === "new_ticket" ? "unassigned" : "open", ticketId: n.ticket.id },
       });
   };
 

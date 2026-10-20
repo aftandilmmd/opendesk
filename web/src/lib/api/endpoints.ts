@@ -2,6 +2,7 @@
 
 import { http, stream, streamEvents, type StreamHandlers } from "./client";
 import type * as T from "./types";
+import { creatingTicket } from "../ownTickets";
 
 type ListQuery = { limit?: number; cursor?: string | null };
 
@@ -398,7 +399,7 @@ export const api = {
   tickets: {
     list: (q: TicketListQuery) => http.get<T.Page<T.Ticket>>("/v1/tickets", { query: listQuery(q) }),
     counts: () => http.get<T.TicketCounts>("/v1/tickets/counts"),
-    create: (b: CreateTicketBody) => http.create<T.Ticket>("/v1/tickets", b),
+    create: (b: CreateTicketBody) => creatingTicket(http.create<T.Ticket>("/v1/tickets", b)),
     get: (id: string) => http.get<T.Ticket>(`/v1/tickets/${encodeURIComponent(id)}`),
     update: (id: string, patch: T.TicketPatch) => http.patch<T.Ticket>(`/v1/tickets/${id}`, patch),
     delete: (id: string) => http.del(`/v1/tickets/${id}`),

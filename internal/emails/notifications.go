@@ -254,6 +254,7 @@ func groupTone(g group, urgent func(string) bool) string {
 // summaryLabels name notification counts in the summary line.
 var summaryLabels = map[string][2]string{
 	"assigned":         {"assigned", "assigned"},
+	"new_ticket":       {"new ticket", "new tickets"},
 	"mentioned":        {"mention", "mentions"},
 	"customer_replied": {"reply", "replies"},
 	"thread_replied":   {"side conversation answer", "side conversation answers"},
@@ -287,7 +288,7 @@ func summary(notes []Note, now time.Time, loc *time.Location) string {
 		count[k]++
 	}
 	var parts []string
-	for _, k := range []string{"assigned", "mentioned", "customer_replied", "thread_replied", "sla_breached", "ai_handoff", "collab_assigned", "collab_mention", "team_joined", "import_finished", "ai_billing", "other"} {
+	for _, k := range []string{"assigned", "new_ticket", "mentioned", "customer_replied", "thread_replied", "sla_breached", "ai_handoff", "collab_assigned", "collab_mention", "team_joined", "import_finished", "ai_billing", "other"} {
 		n := count[k]
 		if n == 0 {
 			continue
@@ -450,6 +451,20 @@ func describe(n Note) copyOf {
 		}
 		return copyOf{title: actor + " assigned you", subject: actor + " assigned you", heading: actor + " assigned you a ticket",
 			intro: []string{"It now shows in your inbox under Mine."}, meta: "Assigned to you"}
+	case "new_ticket":
+		meta := "Nobody is assigned yet"
+		switch str(n.Data, "channel") {
+		case "email":
+			meta = "By email, nobody assigned yet"
+		case "chat":
+			meta = "In chat, nobody assigned yet"
+		}
+		if contact == "" {
+			return copyOf{title: "New ticket", subject: "New ticket", heading: "A new ticket came in",
+				intro: []string{"Nobody is assigned to it yet."}, meta: meta}
+		}
+		return copyOf{title: "New ticket from " + contact, subject: "New ticket from " + contact, heading: "New ticket from " + contact,
+			intro: []string{"Nobody is assigned to it yet."}, meta: meta}
 	case "mentioned":
 		who := or(actor, "A teammate")
 		return copyOf{title: who + " mentioned you", subject: who + " mentioned you on", heading: who + " mentioned you", meta: "In an internal note"}
@@ -546,6 +561,7 @@ func describe(n Note) copyOf {
 // TypeLabels name the notification types in plain words (also the settings page's labels).
 var TypeLabels = map[string]string{
 	"assigned":             "assignments",
+	"new_ticket":           "new tickets nobody is assigned to",
 	"mentioned":            "mentions",
 	"customer_replied":     "customer replies",
 	"thread_replied":       "answers in your side conversations",
@@ -615,7 +631,11 @@ func noteURL(s Site, wid uuid.UUID, n Note) string {
 		return s.App("/settings/import", "ws", ws, "id", id)
 	}
 	if n.TicketID != nil {
-		return s.App("/inbox/mine/"+n.TicketID.String(), "ws", ws)
+		folder := "mine"
+		if n.Type == "new_ticket" {
+			folder = "unassigned" // nobody's yet: it is not in Mine
+		}
+		return s.App("/inbox/"+folder+"/"+n.TicketID.String(), "ws", ws)
 	}
 	return s.App("/", "ws", ws)
 }
@@ -628,6 +648,8 @@ func toneOf(n Note) string {
 		return "#6366F1"
 	case "customer_replied":
 		return "#14B8A6"
+	case "new_ticket":
+		return "#22C55E"
 	case "sla_breached", "ai_balance_out", "auto_recharge_failed", "ai_key_failed":
 		return "#EF4444"
 	case "ai_handoff", "ai_cap_reached":

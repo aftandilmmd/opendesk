@@ -71,6 +71,23 @@ Further down the Assignment page, **Team availability** lists everyone who can b
 
 </Callout>
 
+## New unassigned tickets
+
+When a ticket comes in and nobody is assigned to it, the team gets a **New ticket** notification, so a ticket never waits unseen. Choose who under **New unassigned tickets** on the Assignment page:
+
+| Choice | Who is notified |
+| --- | --- |
+| Automatic | Everyone on the ticket's team when that is 5 people or fewer. On a bigger team, only its leads. This is the default. |
+| Everyone on the team | The leads and members of the ticket's team. |
+| Leads and admins only | The team's leads. |
+| Off | Nobody. New tickets wait in **Unassigned**. |
+
+- The team is the ticket's team, else the team of the address it was sent to. A ticket with no team goes to every owner, admin and agent, or with **Leads and admins only** (and on a big workspace with **Automatic**) to the owners and admins. A team without leads falls back to the owners and admins too.
+- Observers and viewers are not notified, and neither is whoever created the ticket.
+- A ticket that was assigned when it came in, by a person or by assignment, sends **Assigned** to its assignee instead.
+- While Ollie answers a chat, or an email to an address set to **Send automatically**, nobody is notified until Ollie hands the conversation to a person. With **Draft for review** the team hears at once, and with **Only outside business hours** it hears at once during business hours.
+- Each person chooses where it reaches them in their [notification settings](/guides/notifications/#per-type-and-channel). It goes to phones and the desktop, and by email only for those who turn it on.
+
 ## Online, away and offline
 
 Everyone sets their own availability. Click your name at the bottom of the sidebar, and pick **Online**, **Away** or **Offline** under **Availability**. Only online teammates get new tickets. Admins can change anyone's status from **Team availability**.

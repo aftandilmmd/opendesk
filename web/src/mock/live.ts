@@ -86,6 +86,10 @@ function randomNewTicket() {
   contact.ticket_count++;
   publish(w, "ticket.created", { ticket: t });
   addMessage(w, t, { kind: "reply", direction: "inbound", html: textToHtml(body) });
+  // Nobody is assigned: the team hears (contracts/api.md "Assignment"). A chat waits for Ollie's handoff.
+  if (!t.assignee && t.channel === "email" && w.workspace.settings.new_ticket_notify !== "off") {
+    notify(w, "new_ticket", t, { channel: t.channel, contact: { id: contact.id, name: contact.name } });
+  }
 }
 
 function randomNotification() {

@@ -1,0 +1,390 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "push.ai_balance_low.body": {
+      "comment": "Push notification body for ai_balance_low.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top up to keep Ollie answering"
+          }
+        }
+      }
+    },
+    "push.ai_balance_low.title": {
+      "comment": "Push notification title for ai_balance_low.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI balance is running low"
+          }
+        }
+      }
+    },
+    "push.ai_balance_out.body": {
+      "comment": "Push notification body for ai_balance_out.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top up in billing settings"
+          }
+        }
+      }
+    },
+    "push.ai_balance_out.title": {
+      "comment": "Push notification title for ai_balance_out.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI balance is used up"
+          }
+        }
+      }
+    },
+    "push.ai_cap_reached.body": {
+      "comment": "Push notification body for ai_cap_reached.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The chat agent reached its monthly cap"
+          }
+        }
+      }
+    },
+    "push.ai_cap_reached.title": {
+      "comment": "Push notification title for ai_cap_reached.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monthly AI cap reached"
+          }
+        }
+      }
+    },
+    "push.ai_handoff.body": {
+      "comment": "Push notification body for ai_handoff. %@ is the ticket number.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ollie handed ticket #%@ to the team"
+          }
+        }
+      }
+    },
+    "push.ai_handoff.title": {
+      "comment": "Push notification title for ai_handoff.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A person is needed"
+          }
+        }
+      }
+    },
+    "push.ai_key_failed.body": {
+      "comment": "Push notification body for ai_key_failed.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check your AI provider key in settings"
+          }
+        }
+      }
+    },
+    "push.ai_key_failed.title": {
+      "comment": "Push notification title for ai_key_failed.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI provider key problem"
+          }
+        }
+      }
+    },
+    "push.assigned.body": {
+      "comment": "Push notification body for assigned. %@ is the ticket number.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ticket #%@ is yours now"
+          }
+        }
+      }
+    },
+    "push.assigned.title": {
+      "comment": "Push notification title for assigned.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assigned to you"
+          }
+        }
+      }
+    },
+    "push.auto_recharge_failed.body": {
+      "comment": "Push notification body for auto_recharge_failed.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We could not recharge your AI balance"
+          }
+        }
+      }
+    },
+    "push.auto_recharge_failed.title": {
+      "comment": "Push notification title for auto_recharge_failed.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-recharge failed"
+          }
+        }
+      }
+    },
+    "push.collab_assigned.body": {
+      "comment": "Push notification body for collab_assigned.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A mail conversation was assigned to you"
+          }
+        }
+      }
+    },
+    "push.collab_assigned.title": {
+      "comment": "Push notification title for collab_assigned.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation assigned to you"
+          }
+        }
+      }
+    },
+    "push.collab_mention.body": {
+      "comment": "Push notification body for collab_mention.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In a comment on a mail conversation"
+          }
+        }
+      }
+    },
+    "push.collab_mention.title": {
+      "comment": "Push notification title for collab_mention.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You were mentioned"
+          }
+        }
+      }
+    },
+    "push.customer_replied.body": {
+      "comment": "Push notification body for customer_replied. %@ is the ticket number.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On ticket #%@"
+          }
+        }
+      }
+    },
+    "push.customer_replied.title": {
+      "comment": "Push notification title for customer_replied.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Customer replied"
+          }
+        }
+      }
+    },
+    "push.import_finished.body": {
+      "comment": "Push notification body for import_finished.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your history import has finished"
+          }
+        }
+      }
+    },
+    "push.import_finished.title": {
+      "comment": "Push notification title for import_finished.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import finished"
+          }
+        }
+      }
+    },
+    "push.mentioned.body": {
+      "comment": "Push notification body for mentioned. %@ is the ticket number.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In a note on ticket #%@"
+          }
+        }
+      }
+    },
+    "push.mentioned.title": {
+      "comment": "Push notification title for mentioned.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You were mentioned"
+          }
+        }
+      }
+    },
+    "push.new_ticket.body": {
+      "comment": "Push notification body for new_ticket. %@ is the ticket number.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ticket #%@ came in and nobody is assigned"
+          }
+        }
+      }
+    },
+    "push.new_ticket.title": {
+      "comment": "Push notification title for new_ticket.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New ticket"
+          }
+        }
+      }
+    },
+    "push.sla_breached.body": {
+      "comment": "Push notification body for sla_breached. %@ is the ticket number.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ticket #%@ missed its target"
+          }
+        }
+      }
+    },
+    "push.sla_breached.title": {
+      "comment": "Push notification title for sla_breached.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Target missed"
+          }
+        }
+      }
+    },
+    "push.team_joined.body": {
+      "comment": "Push notification body for team_joined.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An admin joined a team you lead"
+          }
+        }
+      }
+    },
+    "push.team_joined.title": {
+      "comment": "Push notification title for team_joined.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Team changes"
+          }
+        }
+      }
+    },
+    "push.thread_replied.body": {
+      "comment": "Push notification body for thread_replied. %@ is the ticket number.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On ticket #%@"
+          }
+        }
+      }
+    },
+    "push.thread_replied.title": {
+      "comment": "Push notification title for thread_replied.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Side conversation answered"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

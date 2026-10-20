@@ -338,25 +338,11 @@ func MarkAIHandoff(ctx context.Context, tx pgx.Tx, wid, tid uuid.UUID, actorType
 	// The assignee, else the ticket's team's leads and members (not observers), else every
 	// member who can reply. Notify skips anyone who may not see the ticket.
 	var recipients []uuid.UUID
-	var rows pgx.Rows
-	var err error
-	switch {
-	case assignee != nil:
+	if assignee != nil {
 		recipients = []uuid.UUID{*assignee}
-	case team != nil:
-		rows, err = tx.Query(ctx, `SELECT tm.user_id FROM team_members tm JOIN teams t ON t.id = tm.team_id
-			JOIN members m ON m.user_id = tm.user_id AND m.workspace_id = t.workspace_id
-			WHERE t.workspace_id = $1 AND t.id = $2 AND tm.role <> 'observer' AND m.role <> 'viewer'
-			ORDER BY tm.user_id LIMIT 50`, wid, *team)
-	default:
-		rows, err = tx.Query(ctx, `SELECT user_id FROM members WHERE workspace_id = $1 AND role <> 'viewer'
-			ORDER BY user_id LIMIT 50`, wid)
-	}
-	if err != nil {
-		return false, err
-	}
-	if rows != nil {
-		if recipients, err = pgx.CollectRows(rows, pgx.RowTo[uuid.UUID]); err != nil {
+	} else {
+		var err error
+		if recipients, err = TicketAudience(ctx, tx, wid, team, 50); err != nil {
 			return false, err
 		}
 	}

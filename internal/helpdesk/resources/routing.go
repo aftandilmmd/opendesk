@@ -33,12 +33,14 @@ type Assignment struct {
 	Mode            string           `json:"mode" enum:"none,round_robin,load_balanced" doc:"Workspace default (settings.auto_assign)"`
 	Rules           []AssignmentRule `json:"rules"`
 	AutoAwayMinutes int              `json:"auto_away_minutes" doc:"0 = off"`
+	NewTicketNotify string           `json:"new_ticket_notify" enum:"auto,everyone,leads,off" doc:"Who is notified of a new ticket nobody is assigned to (settings.new_ticket_notify)"`
 }
 
 type assignmentPatch struct {
 	Mode            *string           `json:"mode,omitempty" enum:"none,round_robin,load_balanced"`
 	Rules           *[]AssignmentRule `json:"rules,omitempty" maxItems:"200" doc:"Replaces every rule"`
 	AutoAwayMinutes *int              `json:"auto_away_minutes,omitempty" minimum:"0" maximum:"1440" doc:"0 or 10..1440"`
+	NewTicketNotify *string           `json:"new_ticket_notify,omitempty" enum:"auto,everyone,leads,off"`
 }
 
 // TriageSettings is GET /v1/triage.
@@ -71,7 +73,7 @@ func loadAssignment(ctx context.Context, q db.Querier, wid uuid.UUID) (Assignmen
 	if err != nil {
 		return Assignment{}, err
 	}
-	a := Assignment{Mode: st.AutoAssign, AutoAwayMinutes: st.AutoAwayMinutes, Rules: []AssignmentRule{}}
+	a := Assignment{Mode: st.AutoAssign, AutoAwayMinutes: st.AutoAwayMinutes, NewTicketNotify: st.NewTicketNotify(), Rules: []AssignmentRule{}}
 	if !slices.Contains(assignModes, a.Mode) {
 		a.Mode = "none"
 	}
@@ -151,6 +153,12 @@ func registerRouting(d *deps.Deps, api huma.API) {
 				}
 				patch["auto_away_minutes"] = *b.AutoAwayMinutes
 			}
+			if b.NewTicketNotify != nil {
+				if !slices.Contains(hd.NewTicketNotifyModes, *b.NewTicketNotify) {
+					return nil, httpx.Validation("new_ticket_notify must be auto, everyone, leads or off.")
+				}
+				patch["new_ticket_notify"] = *b.NewTicketNotify
+			}
 			var a Assignment
 			err = d.DB.Tx(ctx, func(tx pgx.Tx) error {
 				if len(patch) > 0 {
@@ -169,7 +177,8 @@ func registerRouting(d *deps.Deps, api huma.API) {
 					return err
 				}
 				return audit.Log(ctx, tx, p, p.WorkspaceID, "assignment.updated", "workspace", &p.WorkspaceID,
-					map[string]any{"mode": a.Mode, "rules": len(a.Rules), "auto_away_minutes": a.AutoAwayMinutes})
+					map[string]any{"mode": a.Mode, "rules": len(a.Rules), "auto_away_minutes": a.AutoAwayMinutes,
+						"new_ticket_notify": a.NewTicketNotify})
 			})
 			if err != nil {
 				return nil, httpx.Wrap(err)

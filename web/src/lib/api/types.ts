@@ -29,6 +29,8 @@ export type WorkspaceSettings = {
   csat_enabled?: boolean;
   /** The workspace default assignment mode; see Assignment. */
   auto_assign?: AssignMode;
+  /** Who hears about a new ticket nobody is assigned to (read only here, set through Assignment). Default "auto". */
+  new_ticket_notify?: NewTicketNotify;
   /** Look up contact pictures on Gravatar. Default false. */
   gravatar?: boolean;
   /** Fetch company logos from the company's website. Default true. */
@@ -538,6 +540,8 @@ export type SlaPolicy = {
 
 // Triage, assignment and setup (contracts/api.md "Assignment", "Triage", "Business hours", "Onboarding").
 export type AssignMode = "none" | "round_robin" | "load_balanced";
+/** Who hears about a new ticket nobody is assigned to (settings.new_ticket_notify). */
+export type NewTicketNotify = "auto" | "everyone" | "leads" | "off";
 export type AssignmentRule = { target_type: "mailbox" | "team"; target_id: string; mode: AssignMode };
 export type Assignment = {
   /** settings.auto_assign */
@@ -545,6 +549,7 @@ export type Assignment = {
   rules: AssignmentRule[];
   /** 0 is off, else 10..1440. */
   auto_away_minutes: number;
+  new_ticket_notify: NewTicketNotify;
 };
 export type TriageField = "priority" | "severity" | "labels" | "team";
 /** The decision engine behind triage (contracts/api.md). Jev is TypeSafe's decision model. */
@@ -937,7 +942,7 @@ export type AuditLog = {
   ip: string;
   created_at: string;
 };
-export type NotificationType = "assigned" | "mentioned" | "customer_replied" | "thread_replied" | "sla_breached" | "ai_handoff" | "ai_cap_reached" | "ai_balance_low" | "ai_balance_out" | "auto_recharge_failed" | "ai_key_failed" | "team_joined" | "import_finished" | "collab_assigned" | "collab_mention";
+export type NotificationType = "assigned" | "new_ticket" | "mentioned" | "customer_replied" | "thread_replied" | "sla_breached" | "ai_handoff" | "ai_cap_reached" | "ai_balance_low" | "ai_balance_out" | "auto_recharge_failed" | "ai_key_failed" | "team_joined" | "import_finished" | "collab_assigned" | "collab_mention";
 /** `ai_cap_reached`: data `{cap_usd}`, ticket null; the widget agent reached `widget_monthly_cap_usd` (once a month, owners and admins).
  * `ai_balance_low` / `ai_balance_out`: data `{remaining_usd}` (US dollars); `auto_recharge_failed`: data `{reason: AutoRechargeFailure}` (billing, owners and admins, ticket null).
  * `ai_key_failed`: data `{provider: AIKeyKind, reason: "rejected" | "no_funds"}`; the workspace's own AI key failed (at most hourly, owners and admins, ticket null).

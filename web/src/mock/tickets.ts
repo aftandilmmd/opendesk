@@ -421,7 +421,7 @@ export function applyPatch(ws: WsData, t: Ticket, patch: TicketPatch, actor: Use
 
 export function notify(
   ws: WsData,
-  type: "assigned" | "mentioned" | "customer_replied" | "sla_breached",
+  type: "assigned" | "new_ticket" | "mentioned" | "customer_replied" | "sla_breached",
   t: Ticket,
   data: Record<string, unknown> = {},
 ) {

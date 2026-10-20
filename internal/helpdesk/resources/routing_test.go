@@ -17,14 +17,15 @@ func TestAssignmentSettings(t *testing.T) {
 
 	var a resources.Assignment
 	e.Do("GET", "/v1/assignment", ws.Viewer.As(ws), nil).Want(t, 200).JSON(t, &a)
-	if a.Mode != "none" || len(a.Rules) != 0 || a.AutoAwayMinutes != 0 {
+	if a.Mode != "none" || len(a.Rules) != 0 || a.AutoAwayMinutes != 0 || a.NewTicketNotify != "auto" {
 		t.Fatalf("defaults %+v", a)
 	}
-	body := map[string]any{"mode": "load_balanced", "auto_away_minutes": 30,
+	body := map[string]any{"mode": "load_balanced", "auto_away_minutes": 30, "new_ticket_notify": "leads",
 		"rules": []map[string]any{{"target_type": "team", "target_id": team.String(), "mode": "round_robin"}}}
 	e.Do("PATCH", "/v1/assignment", ws.Agent.As(ws), body).Want(t, 403)
 	e.Do("PATCH", "/v1/assignment", ws.Admin.As(ws), body).Want(t, 200).JSON(t, &a)
-	if a.Mode != "load_balanced" || len(a.Rules) != 1 || a.Rules[0].Mode != "round_robin" || a.AutoAwayMinutes != 30 {
+	if a.Mode != "load_balanced" || len(a.Rules) != 1 || a.Rules[0].Mode != "round_robin" || a.AutoAwayMinutes != 30 ||
+		a.NewTicketNotify != "leads" {
 		t.Fatalf("saved %+v", a)
 	}
 	// Another workspace's team, duplicates and out-of-range values are refused.
@@ -33,17 +34,30 @@ func TestAssignmentSettings(t *testing.T) {
 		{"rules": []map[string]any{{"target_type": "team", "target_id": team.String(), "mode": "none"}, {"target_type": "team", "target_id": team.String(), "mode": "none"}}},
 		{"auto_away_minutes": 5},
 		{"mode": "random"},
+		{"new_ticket_notify": "nobody"},
 	} {
 		e.Do("PATCH", "/v1/assignment", ws.Admin.As(ws), b).Want(t, 422)
 	}
 	e.Do("PATCH", "/v1/assignment", ws.Admin.As(ws), map[string]any{"rules": []any{}}).Want(t, 200).JSON(t, &a)
-	if len(a.Rules) != 0 || a.Mode != "load_balanced" {
+	if len(a.Rules) != 0 || a.Mode != "load_balanced" || a.NewTicketNotify != "leads" {
 		t.Fatalf("rules not replaced %+v", a)
 	}
 	var n int
 	e.Scalar(`SELECT count(*) FROM audit_logs WHERE workspace_id = $1 AND action = 'assignment.updated'`, &n, ws.ID)
 	if n != 2 {
 		t.Fatalf("audit %d", n)
+	}
+	var notify string
+	e.Scalar(`SELECT data->>'new_ticket_notify' FROM audit_logs WHERE workspace_id = $1 AND action = 'assignment.updated'
+		ORDER BY created_at DESC LIMIT 1`, &notify, ws.ID)
+	if notify != "leads" {
+		t.Fatalf("audit new_ticket_notify %q", notify)
+	}
+	// An unknown stored value reads as auto.
+	e.SetSettings(ws, map[string]any{"new_ticket_notify": "sometimes"})
+	e.Do("GET", "/v1/assignment", ws.Viewer.As(ws), nil).Want(t, 200).JSON(t, &a)
+	if a.NewTicketNotify != "auto" {
+		t.Fatalf("unknown value read as %q", a.NewTicketNotify)
 	}
 }
 

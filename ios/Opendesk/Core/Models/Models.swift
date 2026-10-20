@@ -863,7 +863,9 @@ struct NotificationTicket: Codable, Hashable, Sendable {
 
 /// The kinds of in-app notification (contracts/api.md `Notification.type`).
 enum NotificationKind: String, CaseIterable, Sendable, Identifiable {
-    case assigned, mentioned
+    case assigned
+    case newTicket = "new_ticket"
+    case mentioned
     case customerReplied = "customer_replied"
     case slaBreached = "sla_breached"
     case aiHandoff = "ai_handoff"
@@ -881,6 +883,7 @@ enum NotificationKind: String, CaseIterable, Sendable, Identifiable {
     var settingTitle: String {
         switch self {
         case .assigned: "Assigned to you"
+        case .newTicket: "New tickets"
         case .mentioned: "Mentions"
         case .customerReplied: "Customer replies"
         case .slaBreached: "SLA breaches"
@@ -898,6 +901,7 @@ enum NotificationKind: String, CaseIterable, Sendable, Identifiable {
     var settingHint: String {
         switch self {
         case .assigned: "A teammate or a rule gives you a ticket"
+        case .newTicket: "A new ticket nobody is assigned to"
         case .mentioned: "Someone @mentions you in a note"
         case .customerReplied: "A customer answers on a ticket you own"
         case .slaBreached: "A ticket you own misses its target"
@@ -915,6 +919,7 @@ enum NotificationKind: String, CaseIterable, Sendable, Identifiable {
     var symbol: String {
         switch self {
         case .assigned: "person.crop.circle.badge.plus"
+        case .newTicket: "tray.and.arrow.down"
         case .mentioned: "at"
         case .customerReplied: "arrowshape.turn.up.left"
         case .slaBreached: "clock.badge.exclamationmark"
@@ -971,6 +976,7 @@ struct AppNotification: Codable, Hashable, Sendable, Identifiable {
         let who = actorName
         switch kind {
         case .assigned: return who.map { "\($0) assigned you a ticket" } ?? "A ticket was assigned to you"
+        case .newTicket: return (data["contact"]?["name"]?.string).map { "New ticket from \($0)" } ?? "A new ticket came in"
         case .mentioned: return who.map { "\($0) mentioned you" } ?? "You were mentioned in a note"
         case .customerReplied: return (data["contact"]?["name"]?.string).map { "\($0) replied" } ?? "The customer replied"
         case .slaBreached: return "SLA breached"

@@ -53,6 +53,9 @@ describe("mock pictures, assignment and onboarding", () => {
     const a = await call("PATCH", "/v1/assignment", { mode: "load_balanced", auto_away_minutes: 15 });
     expect(a.body).toMatchObject({ mode: "load_balanced", auto_away_minutes: 15 });
     expect((await call("PATCH", "/v1/assignment", { auto_away_minutes: 5 })).status).toBe(422);
+    expect(a.body.new_ticket_notify).toBe("auto");
+    expect((await call("PATCH", "/v1/assignment", { new_ticket_notify: "leads" })).body.new_ticket_notify).toBe("leads");
+    expect((await call("PATCH", "/v1/assignment", { new_ticket_notify: "nobody" })).status).toBe(422);
     expect((await call("PATCH", "/v1/members/me/availability", { availability: "away" })).body.availability).toBe("away");
     const bh = (await call("GET", "/v1/business-hours")).body;
     expect((await call("PUT", "/v1/business-hours", { ...bh, schedule: { ...bh.schedule, mon: [{ start: "09:10", end: "17:00" }] } })).status).toBe(422);

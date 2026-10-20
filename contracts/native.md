@@ -195,7 +195,10 @@ in its transaction. The `core` worker loads the notification, sends nothing when
           "ticket_id": "…"?, "ticket_number": 1234?, "type": "customer_replied" } }
 ```
 
-Text comes from the app's localized strings (`loc-key`); with `push = "direct"` the alert
+Text comes from the app's localized strings (`loc-key`), in `ios/Opendesk/Resources/Localizable.xcstrings`:
+a title and a body for every notification type (`internal/push` tests that each type of the
+catalogue has both). The body may show the ticket number (`%@`, the only `loc-args`); the title
+gets no arguments. With `push = "direct"` the alert
 also carries `subtitle` = the ticket subject. A notification without a ticket (billing, AI)
 has no `loc-args`, no `category`, and `thread-id` = its type. `apns-collapse-id` = notification id,
 `apns-push-type: alert`, priority 10 (5 for badge updates). `POST /v1/notifications/read`

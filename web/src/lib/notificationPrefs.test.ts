@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NotificationPreferences, NotificationTypePrefs } from "./api/types";
-import { applyPreferencesPatch, DEFAULT_PACING, gapWords, groupTypes, isPaused, NOTIFICATION_DEFAULTS, notificationHolds, pacingCopy, pauseEnd, URGENT_TYPES, wantsDesktop } from "./notificationPrefs";
+import { applyPreferencesPatch, DEFAULT_PACING, gapWords, groupTypes, isPaused, NOTIFICATION_DEFAULTS, NOTIFICATION_ORDER, notificationHolds, pacingCopy, pauseEnd, URGENT_TYPES, wantsDesktop } from "./notificationPrefs";
 
 const row = (type: NotificationTypePrefs["type"], over: Partial<NotificationTypePrefs> = {}): NotificationTypePrefs => {
   const { group, defaults } = NOTIFICATION_DEFAULTS[type];
@@ -80,6 +80,15 @@ describe("applyPreferencesPatch", () => {
     const paused = applyPreferencesPatch(prefs(), { email_cadence: "daily", digest_hour: 7, timezone: "Europe/Budapest", paused_until: "2026-10-14T07:00:00Z" });
     expect(paused).toMatchObject({ email_cadence: "daily", digest_hour: 7, timezone: "Europe/Budapest", paused_until: "2026-10-14T07:00:00Z" });
     expect(applyPreferencesPatch(paused, { paused_until: "" }).paused_until).toBeNull();
+  });
+});
+
+describe("new_ticket", () => {
+  it("is a ticket notification right after assigned, pushed and on the desktop but not emailed until turned on", () => {
+    expect(NOTIFICATION_DEFAULTS.new_ticket).toEqual({ group: "tickets", defaults: { email: false, push: true, desktop: true } });
+    expect(NOTIFICATION_ORDER.indexOf("new_ticket")).toBe(NOTIFICATION_ORDER.indexOf("assigned") + 1);
+    expect(URGENT_TYPES.has("new_ticket")).toBe(false);
+    expect(wantsDesktop(undefined, "new_ticket", NOW)).toBe(true);
   });
 });
 

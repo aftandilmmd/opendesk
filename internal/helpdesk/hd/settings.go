@@ -124,6 +124,8 @@ type Settings struct {
 	AutoAssign        string `json:"auto_assign"`
 	// AutoAwayMinutes marks an online member away after this long unseen; 0 = off.
 	AutoAwayMinutes int `json:"auto_away_minutes"`
+	// NewTicketNotifyRaw is settings.new_ticket_notify; read it with NewTicketNotify().
+	NewTicketNotifyRaw string `json:"new_ticket_notify"`
 	// BusinessHoursRaw is settings.business_hours; read it with Hours().
 	BusinessHoursRaw json.RawMessage `json:"business_hours"`
 	// Locale is the default language (BCP 47) of customer-facing pages; "" = the visitor's browser.
@@ -133,6 +135,27 @@ type Settings struct {
 	Widget        *WidgetSettings `json:"widget"`
 	// AIRaw is settings.ai; read it with AI().
 	AIRaw json.RawMessage `json:"ai"`
+}
+
+// Who hears about a new ticket nobody is assigned to (settings.new_ticket_notify,
+// contracts/api.md "Assignment").
+const (
+	// NewTicketNotifyAuto: everyone on small teams, else only the leads.
+	NewTicketNotifyAuto     = "auto"
+	NewTicketNotifyEveryone = "everyone"
+	NewTicketNotifyLeads    = "leads"
+	NewTicketNotifyOff      = "off"
+)
+
+// NewTicketNotifyModes are the values of settings.new_ticket_notify.
+var NewTicketNotifyModes = []string{NewTicketNotifyAuto, NewTicketNotifyEveryone, NewTicketNotifyLeads, NewTicketNotifyOff}
+
+// NewTicketNotify returns settings.new_ticket_notify; empty or unknown reads as auto.
+func (s Settings) NewTicketNotify() string {
+	if slices.Contains(NewTicketNotifyModes, s.NewTicketNotifyRaw) {
+		return s.NewTicketNotifyRaw
+	}
+	return NewTicketNotifyAuto
 }
 
 // DefaultAutoCloseDays applies when settings.auto_close_days is not set.
@@ -196,6 +219,7 @@ func ParseSettings(raw []byte) Settings {
 	field("csat_enabled", &s.CSATEnabled)
 	field("auto_assign", &s.AutoAssign)
 	field("auto_away_minutes", &s.AutoAwayMinutes)
+	field("new_ticket_notify", &s.NewTicketNotifyRaw)
 	field("business_hours", &s.BusinessHoursRaw)
 	field("auto_close_days", &s.AutoCloseDays)
 	field("ai", &s.AIRaw)

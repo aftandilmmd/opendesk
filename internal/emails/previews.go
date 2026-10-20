@@ -47,6 +47,7 @@ func Previews(s Site, now time.Time) []Preview {
 	replied := ticket("customer_replied", t1102, 1102, "Export to CSV skips archived tickets", map[string]any{"contact": dana,
 		"preview": "Thanks, that worked for the open ones. The archived tickets from March are still missing from the file though."}, ago(4))
 	sla := ticket("sla_breached", t1110, 1110, "Refund for a double charge", map[string]any{"kind": "first_response"}, ago(12))
+	newTicket := ticket("new_ticket", t1121, 1121, "Cannot connect a Gmail inbox", map[string]any{"channel": "email", "contact": map[string]any{"name": "Sam Ortiz"}}, ago(1))
 	handoff := ticket("ai_handoff", t1121, 1121, "Cannot connect a Gmail inbox", map[string]any{"via": "contact", "contact": map[string]any{"name": "Sam Ortiz"}}, ago(15))
 
 	// What piles up during a cooldown on opendesk Cloud and goes out as one email.
@@ -66,7 +67,7 @@ func Previews(s Site, now time.Time) []Preview {
 		replied,
 	}
 	busy := []Note{
-		sla, handoff, mentioned, replied, replied2, assigned2, replied3, bulk[0], bulk[1], bulk[2], bulk[3],
+		sla, handoff, newTicket, mentioned, replied, replied2, assigned2, replied3, bulk[0], bulk[1], bulk[2], bulk[3],
 		plain("team_joined", map[string]any{"team": map[string]any{"id": team.String(), "name": "Billing", "private": true}, "user": map[string]any{"name": "Alex Kim"}}),
 		plain("ai_balance_low", map[string]any{"remaining_usd": 1.84}),
 	}
@@ -78,6 +79,7 @@ func Previews(s Site, now time.Time) []Preview {
 		{Name: "account-2fa-disabled", Title: "Two-factor authentication turned off", Mail: TwoFactorDisabled(s)},
 		{Name: "billing-payment-failed", Title: "Payment failed", Mail: PaymentFailed(s, ws, wid.String())},
 		{Name: "notify-assigned", Title: "Notification: assigned", Mail: Notifications(s, batch("instant", []Note{assigned}, 0))},
+		{Name: "notify-new-ticket", Title: "Notification: new unassigned ticket", Mail: Notifications(s, batch("instant", []Note{newTicket}, 0))},
 		{Name: "notify-mentioned", Title: "Notification: mentioned", Mail: Notifications(s, batch("instant", []Note{mentioned}, 0))},
 		{Name: "notify-customer-replied", Title: "Notification: customer replied", Mail: Notifications(s, batch("instant", []Note{replied}, 0))},
 		{Name: "notify-sla-breached", Title: "Notification: SLA breached", Mail: Notifications(s, batch("instant", []Note{sla}, 0))},

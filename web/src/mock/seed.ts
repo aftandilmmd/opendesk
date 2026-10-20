@@ -1211,8 +1211,17 @@ function seedMargin(): WsData {
   const byNum = (n: number) => ws.tickets.find((t) => t.number === n)!;
   const nref = (t: Ticket) => ({ id: t.id, number: t.number, subject: t.subject });
   const jonas = userRef(uid("jonas"));
+  // The newest unassigned email ticket, as the team heard about it.
+  const newTicketNotes = () => {
+    const t = ws.tickets
+      .filter((x) => !x.spam && !x.assignee && x.channel === "email" && x.status === "open" && x.contact)
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+    if (!t?.contact) return [];
+    return [{ id: uuid(), type: "new_ticket" as const, ticket: nref(t), data: { channel: "email", contact: { id: t.contact.id, name: t.contact.name } }, read_at: null, created_at: t.created_at }];
+  };
   ws.notifications = [
     { id: uuid(), type: "customer_replied", ticket: nref(byNum(1072)), data: { contact: { name: "Dana Whitfield" } }, read_at: null, created_at: ago(6 * MIN) },
+    ...newTicketNotes(),
     { id: uuid(), type: "mentioned", ticket: nref(byNum(1072)), data: { actor: jonas }, read_at: null, created_at: ago(61 * MIN) },
     { id: uuid(), type: "customer_replied", ticket: nref(byNum(1068)), data: { contact: { name: "Tomás García" } }, read_at: null, created_at: ago(35 * MIN) },
     { id: uuid(), type: "sla_breached", ticket: nref(byNum(1067)), data: { kind: "first_response" }, read_at: null, created_at: ago(2 * HOUR) },
@@ -1223,6 +1232,7 @@ function seedMargin(): WsData {
     { id: uuid(), type: "mentioned", ticket: nref(byNum(1070)), data: { actor: userRef(uid("lea")) }, read_at: ago(20 * HOUR), created_at: ago(25 * HOUR) },
     { id: uuid(), type: "customer_replied", ticket: nref(byNum(1065)), data: { contact: { name: "Hugo Moreau" } }, read_at: ago(60 * HOUR), created_at: ago(68 * HOUR) },
   ];
+  ws.notifications.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 
   ws.csat.demo = { ticket_id: byNum(1066).id, score: null, comment: "" };
 

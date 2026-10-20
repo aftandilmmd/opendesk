@@ -214,17 +214,7 @@ func isOpen(ctx context.Context, q db.Querier, g widgetRow, now time.Time) (bool
 	if !bh.Enabled {
 		return true, nil
 	}
-	return openAt(bh, loc, now), nil
-}
-
-// openAt reports whether the business hours are open at now. A schedule with no open
-// time is never open.
-func openAt(b hd.BusinessHours, loc *time.Location, now time.Time) bool {
-	open := false
-	for _, ranges := range b.Schedule {
-		open = open || len(ranges) > 0
-	}
-	return open && b.AddBusinessMinutes(now, 1, loc).Equal(now.Add(time.Minute))
+	return hd.OpenAt(bh, loc, now), nil
 }
 
 type widgetSessionInput struct {

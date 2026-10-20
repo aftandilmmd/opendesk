@@ -169,7 +169,7 @@ func (s *Service) loadEmailConv(ctx context.Context, wid, tid uuid.UUID) (*email
 		if err != nil {
 			return nil, err
 		}
-		if bh.Enabled && openAt(bh, loc, time.Now()) {
+		if bh.Enabled && hd.OpenAt(bh, loc, time.Now()) {
 			return nil, nil
 		}
 	}
@@ -214,16 +214,6 @@ func (s *Service) loadEmailConv(ctx context.Context, wid, tid uuid.UUID) (*email
 	}
 	ec.visitor.ConversationID = tid
 	return ec, nil
-}
-
-// openAt reports whether the business hours are open at now. A schedule with no open
-// time is never open.
-func openAt(b hd.BusinessHours, loc *time.Location, now time.Time) bool {
-	open := false
-	for _, ranges := range b.Schedule {
-		open = open || len(ranges) > 0
-	}
-	return open && b.AddBusinessMinutes(now, 1, loc).Equal(now.Add(time.Minute))
 }
 
 // input builds the loop's input for this email ticket.

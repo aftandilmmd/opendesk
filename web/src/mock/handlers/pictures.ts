@@ -9,6 +9,7 @@ import type {
   BusinessHours,
   Company,
   Contact,
+  NewTicketNotify,
   Onboarding,
   OnboardingStep,
   Role,
@@ -30,6 +31,7 @@ const MAX_BYTES = 5 << 20;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 const SLOTS: ("logo" | WorkspaceImageSlot)[] = ["logo", "help_center_logo", "help_center_favicon", "widget_avatar", "widget_launcher"];
 const MODES: AssignMode[] = ["none", "round_robin", "load_balanced"];
+const NEW_TICKET_NOTIFY: NewTicketNotify[] = ["auto", "everyone", "leads", "off"];
 const AVAILABILITY: Availability[] = ["online", "away", "offline"];
 const WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const SEEDED_LABELS = ["question", "problem", "bug", "feature request", "billing", "vip", "feedback"];
@@ -81,7 +83,13 @@ function syncCompanyRefs(ws: WsData, co: Company) {
 }
 
 function assignment(ws: WsData): Assignment {
-  return { mode: ws.workspace.settings.auto_assign ?? "none", rules: ws.routing.rules, auto_away_minutes: ws.routing.autoAwayMinutes };
+  const notify = ws.workspace.settings.new_ticket_notify;
+  return {
+    mode: ws.workspace.settings.auto_assign ?? "none",
+    rules: ws.routing.rules,
+    auto_away_minutes: ws.routing.autoAwayMinutes,
+    new_ticket_notify: notify && NEW_TICKET_NOTIFY.includes(notify) ? notify : "auto",
+  };
 }
 
 function triage(ws: WsData): TriageSettings {
@@ -291,6 +299,10 @@ export function registerPictures() {
     if ("mode" in b) {
       if (!MODES.includes(b.mode as AssignMode)) throw invalid("mode must be none, round_robin or load_balanced");
       ctx.ws.workspace.settings = { ...ctx.ws.workspace.settings, auto_assign: b.mode as AssignMode };
+    }
+    if ("new_ticket_notify" in b) {
+      if (!NEW_TICKET_NOTIFY.includes(b.new_ticket_notify as NewTicketNotify)) throw invalid("new_ticket_notify must be auto, everyone, leads or off");
+      ctx.ws.workspace.settings = { ...ctx.ws.workspace.settings, new_ticket_notify: b.new_ticket_notify as NewTicketNotify };
     }
     if ("auto_away_minutes" in b) {
       const n = b.auto_away_minutes;

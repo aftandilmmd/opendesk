@@ -104,7 +104,7 @@ Requires the owner, with two-factor authentication and a recent sign-in. All wor
 ```ts
 type Notification = {
   id: string;
-  type: "assigned" | "mentioned" | "customer_replied" | "sla_breached" | "ai_handoff" | "ai_cap_reached"
+  type: "assigned" | "new_ticket" | "mentioned" | "customer_replied" | "thread_replied" | "sla_breached" | "ai_handoff" | "ai_cap_reached"
     | "ai_balance_low" | "ai_balance_out" | "auto_recharge_failed" | "ai_key_failed";
   ticket: { id: string; number: number; subject: string } | null;
   data: Record<string, unknown>;
@@ -112,6 +112,8 @@ type Notification = {
   created_at: string;
 };
 ```
+
+`new_ticket` (`{ channel, contact?: { id, name } }`) tells the team about a ticket nobody is assigned to; who gets it follows `new_ticket_notify` in [assignment](/api/resources/pictures-assignment/).
 
 Owners and admins get the workspace notices, which have no ticket: `ai_cap_reached` (`{ cap_usd }`, the AI agent reached its monthly spending cap), `ai_balance_low` and `ai_balance_out` (`{ remaining_usd }`, in US dollars), `auto_recharge_failed` (`{ reason }`) and `ai_key_failed` (`{ provider, reason }`). See [Billing](/api/resources/billing/#auto-recharge).
 

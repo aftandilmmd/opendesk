@@ -13,7 +13,7 @@ description: Profile pictures and logos, agent availability, assignment rules, t
 | `PUT`, `DELETE` | `/v1/companies/{id}/avatar` | Upload or remove a company logo (agent) |
 | `POST` | `/v1/contacts/{id}/avatar/refresh`, `/v1/companies/{id}/avatar/refresh` | Look the automatic sources up again (202) |
 | `GET` | `/v1/images/{id}?s=256\|64` | The processed picture behind every `avatar_url` (public) |
-| `GET`, `PATCH` | `/v1/assignment` | Workspace mode, per mailbox and team rules, auto-away |
+| `GET`, `PATCH` | `/v1/assignment` | Workspace mode, per mailbox and team rules, auto-away, who hears about new unassigned tickets |
 | `GET`, `PATCH` | `/v1/triage` | Ollie's triage settings |
 | `GET`, `PUT` | `/v1/business-hours` | Opening hours, holidays and timezone |
 | `GET` | `/v1/onboarding` | The setup checklist for the current workspace |
@@ -57,6 +57,7 @@ type Assignment = {
   mode: AssignMode;
   rules: { target_type: "mailbox" | "team"; target_id: string; mode: AssignMode }[];
   auto_away_minutes: number; // 0 = off, else 10..1440
+  new_ticket_notify: "auto" | "everyone" | "leads" | "off"; // who hears about a new unassigned ticket, default auto
 };
 
 type TriageSettings = {
@@ -139,7 +140,7 @@ curl -X PATCH https://api.opendesk.sh/v1/assignment \
         "rules": [{ "target_type": "team", "target_id": "TEAM_ID", "mode": "load_balanced" }] }'
 ```
 
-`rules` replaces the whole list. See [Triage and assignment](/guides/triage-and-assignment/) for how a ticket's mode and assignee are chosen.
+`rules` replaces the whole list. `new_ticket_notify` decides who gets the `new_ticket` notification: `auto` (everyone on small teams, the leads on bigger ones), `everyone`, `leads` or `off`. See [Triage and assignment](/guides/triage-and-assignment/) for how a ticket's mode and assignee are chosen.
 
 ## Configure triage
 

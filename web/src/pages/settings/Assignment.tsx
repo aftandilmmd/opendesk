@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
-import { CircleSlash, Inbox, Lock, Moon, Plus, Repeat, Scale, Shuffle, Sparkles, UsersRound, X } from "lucide-react";
+import { BellOff, CircleSlash, Crown, Inbox, Lock, Moon, Plus, Repeat, Scale, Shuffle, Sparkles, UsersRound, Wand2, X } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ListRow, Row, Section, SettingsPage } from "@/components/layout";
@@ -27,7 +27,7 @@ import { TeamDot, useTeams } from "@/components/settings2/teams";
 import { toast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { api } from "@/lib/api/endpoints";
-import type { Assignment as A, AssignMode, AssignmentRule, Member } from "@/lib/api/types";
+import type { Assignment as A, AssignMode, AssignmentRule, Member, NewTicketNotify } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { springs } from "@/lib/motion";
 import { useSetAvailability } from "@/lib/pictures";
@@ -39,6 +39,8 @@ export const MODES: AssignMode[] = ["none", "round_robin", "load_balanced"];
 const modeIcon: Record<AssignMode, ReactNode> = { none: <CircleSlash />, round_robin: <Repeat />, load_balanced: <Scale /> };
 const modeTone: Record<AssignMode, Tone> = { none: "gray", round_robin: "blue", load_balanced: "violet" };
 const AWAY_DEFAULT = 30;
+export const NEW_TICKET_NOTIFY: NewTicketNotify[] = ["auto", "everyone", "leads", "off"];
+const notifyIcon: Record<NewTicketNotify, ReactNode> = { auto: <Wand2 />, everyone: <UsersRound />, leads: <Crown />, off: <BellOff /> };
 
 /** PATCH /v1/assignment with an optimistic cache write. */
 function useAssignmentWrite() {
@@ -108,6 +110,16 @@ export default function Assignment() {
       {teams.length > 0 && <Precedence />}
 
       <RulesSection a={a} loading={isLoading} canEdit={canEdit} onRules={(rules) => write.mutate({ rules })} />
+
+      <Section title={t("assignment.notifyTitle")} description={t("assignment.notifyHint")}>
+        {a ? (
+          <NotifyRow value={a.new_ticket_notify ?? "auto"} disabled={!canEdit} onChange={(new_ticket_notify) => write.mutate({ new_ticket_notify })} />
+        ) : (
+          <div className="py-4">
+            <Skeleton className="h-5 w-1/2" />
+          </div>
+        )}
+      </Section>
 
       <Section title={t("assignment.awayTitle")} description={t("assignment.awayHint")}>
         {a ? (
@@ -448,6 +460,24 @@ function TeamGroups({ assignable, canEdit, mode }: { assignable: Member[]; canEd
         </div>
       )}
     </div>
+  );
+}
+
+/** Who hears about a new ticket nobody is assigned to (settings.new_ticket_notify). */
+function NotifyRow({ value, onChange, disabled }: { value: NewTicketNotify; onChange: (v: NewTicketNotify) => void; disabled?: boolean }) {
+  const { t } = useTranslation("settingsInbox");
+  return (
+    <Row label={t("assignment.notify.label")} description={t(`assignment.notify.options.${value}.hint`)}>
+      <Select
+        size="sm"
+        className="w-[200px]"
+        aria-label={t("assignment.notify.label")}
+        disabled={disabled}
+        value={value}
+        onChange={onChange}
+        options={NEW_TICKET_NOTIFY.map((v) => ({ value: v, label: t(`assignment.notify.options.${v}.label`), icon: <span className="flex text-fg-3">{notifyIcon[v]}</span> }))}
+      />
+    </Row>
   );
 }
 

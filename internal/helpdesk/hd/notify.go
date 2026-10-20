@@ -35,6 +35,8 @@ const (
 	NotifySLABreached   = "sla_breached"
 	// NotifyTeamJoined tells a team's leads that an admin joined it (contracts/teams.md).
 	NotifyTeamJoined = "team_joined"
+	// NotifyNewTicket: a new ticket nobody is assigned to (contracts/api.md "Assignment").
+	NotifyNewTicket = "new_ticket"
 )
 
 type NotificationTicket struct {
@@ -126,6 +128,52 @@ func Notify(ctx context.Context, tx pgx.Tx, wid, userID uuid.UUID, typ string, t
 		return err
 	}
 	return enqueuePush(ctx, tx, wid, userID, n.ID)
+}
+
+// TicketAudience is who works a ticket of team: the team's leads and members (never
+// observers or viewers), or every member except viewers when team is nil. Ordered by
+// user id, at most limit.
+func TicketAudience(ctx context.Context, tx pgx.Tx, wid uuid.UUID, team *uuid.UUID, limit int) ([]uuid.UUID, error) {
+	var rows pgx.Rows
+	var err error
+	if team != nil {
+		rows, err = tx.Query(ctx, `SELECT tm.user_id FROM team_members tm JOIN teams t ON t.id = tm.team_id
+			JOIN members m ON m.user_id = tm.user_id AND m.workspace_id = t.workspace_id
+			WHERE t.workspace_id = $1 AND t.id = $2 AND tm.role <> 'observer' AND m.role <> 'viewer'
+			ORDER BY tm.user_id LIMIT $3`, wid, *team, limit)
+	} else {
+		rows, err = tx.Query(ctx, `SELECT user_id FROM members WHERE workspace_id = $1 AND role <> 'viewer'
+			ORDER BY user_id LIMIT $2`, wid, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+}
+
+// TicketLeads is who answers for a ticket of team: the team's leads (never viewers), or
+// the workspace's owners and admins when team is nil or has no lead. Ordered by user id,
+// at most limit.
+func TicketLeads(ctx context.Context, tx pgx.Tx, wid uuid.UUID, team *uuid.UUID, limit int) ([]uuid.UUID, error) {
+	if team != nil {
+		rows, err := tx.Query(ctx, `SELECT tm.user_id FROM team_members tm JOIN teams t ON t.id = tm.team_id
+			JOIN members m ON m.user_id = tm.user_id AND m.workspace_id = t.workspace_id
+			WHERE t.workspace_id = $1 AND t.id = $2 AND tm.role = 'lead' AND m.role <> 'viewer'
+			ORDER BY tm.user_id LIMIT $3`, wid, *team, limit)
+		if err != nil {
+			return nil, err
+		}
+		leads, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil || len(leads) > 0 {
+			return leads, err
+		}
+	}
+	rows, err := tx.Query(ctx, `SELECT user_id FROM members WHERE workspace_id = $1 AND role IN ('owner', 'admin')
+		ORDER BY user_id LIMIT $2`, wid, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
 }
 
 // enqueuePush queues the push for a stored notification when the user has a phone or a

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -36,8 +37,8 @@ func (w *TriggerWorker) Work(ctx context.Context, job *river.Job[jobs.TicketTrig
 	return RunTrigger(ctx, w.D, job.Args)
 }
 
-// RunTrigger applies SLA policies, automations, auto-assignment and reply
-// notifications for one ticket change, in one transaction.
+// RunTrigger applies SLA policies, automations, auto-assignment and the new ticket and
+// reply notifications for one ticket change, in one transaction.
 func RunTrigger(ctx context.Context, d *deps.Deps, a jobs.TicketTriggerArgs) error {
 	// A suspended workspace runs no automations (contracts/admin.md).
 	if suspended, err := domain.WorkspaceSuspended(ctx, d.DB.Pool, a.WorkspaceID); err != nil || suspended {
@@ -76,6 +77,12 @@ func RunTrigger(ctx context.Context, d *deps.Deps, a jobs.TicketTriggerArgs) err
 		// A ticket that moved to another team unassigned is assigned in the new team's pool.
 		if a.Trigger == jobs.TriggerTicketCreated || a.Trigger == jobs.TriggerCustomerReplied || updated("team_id") || run.teamMoved {
 			if err := autoAssign(ctx, tx, d, a.WorkspaceID, a.TicketID, a.Trigger); err != nil {
+				return err
+			}
+		}
+		// After auto-assignment: only a ticket still nobody's is announced.
+		if a.Trigger == jobs.TriggerTicketCreated {
+			if err := notifyNewTicket(ctx, tx, d, a.WorkspaceID, a.TicketID, a.ActorUserID); err != nil {
 				return err
 			}
 		}
@@ -744,6 +751,162 @@ func notifyCustomerReplied(ctx context.Context, tx pgx.Tx, wid, tid uuid.UUID, m
 		data["contact"] = map[string]any{"id": cid.String(), "name": cname}
 	}
 	return hd.Notify(ctx, tx, wid, *assignee, hd.NotifyCustomerReplied, &tid, data)
+}
+
+// Who hears about a new unassigned ticket (contracts/api.md "Assignment").
+const (
+	// newTicketSmallTeam: in auto, up to this many people hear; more, and only the leads do.
+	newTicketSmallTeam = 5
+	newTicketMax       = 50
+)
+
+// notifyNewTicket tells people about a new ticket nobody is assigned to, by
+// settings.new_ticket_notify, never the person who created it. Spam, a solved or closed
+// ticket, and one the answer bot is answering are not announced: the bot's handoff
+// notifies (ai_handoff).
+func notifyNewTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, tid uuid.UUID, actor *uuid.UUID) error {
+	s, err := hd.LoadSettings(ctx, tx, wid)
+	if err != nil {
+		return err
+	}
+	mode := s.NewTicketNotify()
+	if mode == hd.NewTicketNotifyOff {
+		return nil
+	}
+	var assignee, team, mailbox, contact *uuid.UUID
+	var channel, status string
+	var spam bool
+	var custom map[string]any
+	err = tx.QueryRow(ctx, `SELECT assignee_id, team_id, mailbox_id, contact_id, channel, status, spam, custom FROM tickets
+		WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL`, wid, tid).
+		Scan(&assignee, &team, &mailbox, &contact, &channel, &status, &spam, &custom)
+	if db.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if assignee != nil || spam || status == domain.StatusSolved || status == domain.StatusClosed {
+		return nil
+	}
+	if v, _ := custom["ai_handoff"].(bool); v {
+		return nil
+	}
+	if bot, err := botAnswers(ctx, tx, d, s, wid, team, mailbox, contact, channel); err != nil || bot {
+		return err
+	}
+	// The ticket's team, else its address's team: the pool auto-assignment uses.
+	pool := team
+	if pool == nil && mailbox != nil {
+		if err := tx.QueryRow(ctx, `SELECT team_id FROM mailboxes WHERE workspace_id = $1 AND id = $2`, wid, *mailbox).
+			Scan(&pool); err != nil && !db.IsNotFound(err) {
+			return err
+		}
+	}
+	recipients, err := newTicketRecipients(ctx, tx, wid, pool, mode, actor)
+	if err != nil || len(recipients) == 0 {
+		return err
+	}
+	data := map[string]any{"channel": channel}
+	if contact != nil {
+		var name string
+		if err := tx.QueryRow(ctx, `SELECT name FROM contacts WHERE workspace_id = $1 AND id = $2`, wid, *contact).Scan(&name); err == nil {
+			data["contact"] = map[string]any{"id": contact.String(), "name": name}
+		}
+	}
+	for _, uid := range recipients {
+		if err := hd.Notify(ctx, tx, wid, uid, hd.NotifyNewTicket, &tid, maps.Clone(data)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// newTicketRecipients picks who hears about a new ticket of pool, leaving out actor.
+// auto: the pool's audience when it is at most newTicketSmallTeam people, else its leads.
+// A pool with nobody to work it falls back to its leads, else the owners and admins.
+func newTicketRecipients(ctx context.Context, tx pgx.Tx, wid uuid.UUID, pool *uuid.UUID, mode string, actor *uuid.UUID) ([]uuid.UUID, error) {
+	// One more than needed, so leaving out the actor keeps the count right.
+	get := func(f func(context.Context, pgx.Tx, uuid.UUID, *uuid.UUID, int) ([]uuid.UUID, error), limit int) ([]uuid.UUID, error) {
+		list, err := f(ctx, tx, wid, pool, limit+1)
+		if err != nil {
+			return nil, err
+		}
+		list = slices.DeleteFunc(list, func(u uuid.UUID) bool { return actor != nil && u == *actor })
+		return list[:min(len(list), limit)], nil
+	}
+	switch mode {
+	case hd.NewTicketNotifyLeads:
+		return get(hd.TicketLeads, newTicketMax)
+	case hd.NewTicketNotifyEveryone:
+		list, err := get(hd.TicketAudience, newTicketMax)
+		if err != nil || len(list) > 0 {
+			return list, err
+		}
+		return get(hd.TicketLeads, newTicketMax)
+	}
+	list, err := get(hd.TicketAudience, newTicketSmallTeam+1)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) > 0 && len(list) <= newTicketSmallTeam {
+		return list, nil
+	}
+	return get(hd.TicketLeads, newTicketSmallTeam)
+}
+
+// botAnswers reports whether the answer bot takes a new ticket on before a person does:
+// a chat with widget answers on, or an email to an address whose bot sends its replies
+// itself (ai_answers_mode send, not draft), within the hours it answers. It decides as
+// the bots do (hd.EnqueueAIWidgetAnswer, internal/ai loadEmailConv).
+func botAnswers(ctx context.Context, tx pgx.Tx, d *deps.Deps, s hd.Settings, wid uuid.UUID, team, mailbox, contact *uuid.UUID, channel string) (bool, error) {
+	ai := s.AI()
+	if d.Cfg == nil || !d.Cfg.AIEnabled() || !ai.Enabled {
+		return false, nil
+	}
+	switch {
+	case channel == domain.ChannelChat:
+		return ai.WidgetAnswers, nil
+	case channel != domain.ChannelEmail || mailbox == nil:
+		return false, nil
+	}
+	var on, outside bool
+	var mode, status string
+	err := tx.QueryRow(ctx, `SELECT ai_answers, ai_answers_mode, ai_answers_outside_hours, status FROM mailboxes
+		WHERE workspace_id = $1 AND id = $2`, wid, *mailbox).Scan(&on, &mode, &outside, &status)
+	if db.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	// draft: the bot only suggests a reply a person sends, so people hear now.
+	if !on || status == "disabled" || mode != "send" {
+		return false, nil
+	}
+	if outside {
+		bh, loc, err := hd.HoursFor(ctx, tx, wid, team)
+		if err != nil {
+			return false, err
+		}
+		if bh.Enabled && hd.OpenAt(bh, loc, time.Now()) {
+			return false, nil
+		}
+	}
+	// The bot never answers the workspace's own members or addresses.
+	if contact != nil {
+		var own bool
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(c.email, '') <> '' AND (
+			EXISTS (SELECT 1 FROM members mb JOIN users u ON u.id = mb.user_id WHERE mb.workspace_id = $1 AND u.email = c.email::citext)
+			OR EXISTS (SELECT 1 FROM mailboxes x WHERE x.workspace_id = $1 AND (x.email = c.email::citext OR lower(x.config->>'oauth_email') = lower(c.email))))
+			FROM contacts c WHERE c.workspace_id = $1 AND c.id = $2`, wid, *contact).Scan(&own); err != nil && !db.IsNotFound(err) {
+			return false, err
+		}
+		if own {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // notifyThreadReplied tells the assignee that someone outside the team answered one of the

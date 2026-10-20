@@ -256,7 +256,7 @@
       "chat": "Live chat waiting",
       "chatHint": "A visitor waits with nobody on the chat, with a softer reminder each minute until someone picks it up.",
       "ticket": "New conversations",
-      "ticketHint": "A customer writes in by email or the help center, unassigned or to you.",
+      "ticketHint": "A new ticket arrives from a customer, a teammate or an integration, unassigned or for you.",
       "reply": "Customer replies",
       "replyHint": "A customer answers on one of your tickets, unless you are looking at it.",
       "assigned": "Assigned and mentions",
@@ -512,6 +512,10 @@
       "assigned": {
         "label": "Assigned to you",
         "hint": "A ticket is assigned to you"
+      },
+      "new_ticket": {
+        "label": "New tickets",
+        "hint": "New tickets nobody is assigned to. Who gets them is set in Assignment"
       },
       "mentioned": {
         "label": "Mentions",

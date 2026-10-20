@@ -42,7 +42,7 @@ type Workspace = { id: string; name: string; slug: string; widget_key: string /*
 // settings.help_center_enabled, help_center_title, brand_color and locale are kept in step with the default brand
 // (contracts/teams.md): a PATCH here updates it, and a PATCH of the default brand's help center updates them.
 type WorkspaceSettings = { brand_color?: string; timezone?: string; help_center_enabled?: boolean; help_center_title?: string; csat_enabled?: boolean;
-  auto_assign?: AssignMode /* the workspace default; see "Assignment" */; locale?: string /* BCP 47 default for customer-facing pages (help center, CSAT, widget); "" = the visitor's browser */;
+  auto_assign?: AssignMode /* the workspace default; see "Assignment" */; new_ticket_notify?: NewTicketNotify /* read here, set through /v1/assignment; see "Assignment" */; locale?: string /* BCP 47 default for customer-facing pages (help center, CSAT, widget); "" = the visitor's browser */;
   gravatar?: boolean /* default false: look up contact pictures on Gravatar (sends a hash of the contact's email to Gravatar) */;
   domain_logos?: boolean /* default true: fetch company logos from the company's website */;
   label_creation?: "anyone" | "admins" /* default "anyone": applying an unknown label name creates it; "admins": only admins (and keys with settings:write) may, others get 422 unknown_label */;
@@ -135,7 +135,9 @@ type SlaPolicy = { id: string; name: string; priority: Priority | null; team_id:
 // Triage, assignment and setup (see "Triage, assignment and onboarding").
 type AssignMode = "none" | "round_robin" | "load_balanced";
 type AssignmentRule = { target_type: "mailbox" | "team"; target_id: string; mode: AssignMode };
-type Assignment = { mode: AssignMode /* = settings.auto_assign */; rules: AssignmentRule[]; auto_away_minutes: number /* 0 = off */ };
+type NewTicketNotify = "auto" | "everyone" | "leads" | "off";
+type Assignment = { mode: AssignMode /* = settings.auto_assign */; rules: AssignmentRule[]; auto_away_minutes: number /* 0 = off */;
+  new_ticket_notify: NewTicketNotify /* = settings.new_ticket_notify; empty or unknown reads as "auto" */ };
 type TriageField = "priority" | "severity" | "labels" | "team";
 type DecisionEngine = { provider: "typesafe" /* Jev, direct or through OpenRouter */ | "llm" | "none"; model: string /* "jev-latest", "~typesafe/jev-latest", or the LLM fast model */; connected: boolean };
 type TriageSettings = { auto_triage: boolean; fields: TriageField[]; assign_after_triage: boolean;
@@ -190,7 +192,7 @@ type ApiKey = { id: string; name: string; prefix: string; scopes: string[]; last
 type Webhook = { id: string; url: string; description: string; events: string[]; enabled: boolean; created_at: string };
 type WebhookDelivery = { id: string; event_id: string; event_type: string; status: "pending" | "succeeded" | "failed"; attempts: number; response_code: number | null; duration_ms: number | null; created_at: string };
 type AuditLog = { id: string; actor: { type: "user" | "api_key" | "system"; user: UserRef | null; api_key_id: string | null }; action: string; entity_type: string; entity_id: string | null; data: Record<string, unknown>; ip: string; created_at: string };
-type Notification = { id: string; type: "assigned" | "mentioned" | "customer_replied" | "thread_replied" /* data {message_id, thread_id, subject, preview, from: {name, email}}: someone outside the team answered a third-party thread on a ticket assigned to you */ | "sla_breached" | "ai_handoff" | "ai_cap_reached" | "ai_balance_low" | "ai_balance_out" | "auto_recharge_failed" | "ai_key_failed" | "team_joined" /* data {team_id, team: {id, name, private}, user: {id, name}, by}: an admin joined a team you lead (a private one to see its tickets) */ | "import_finished" /* data contracts/imports.md: a history import you started completed, failed or needs new credentials */ | "collab_assigned" | "collab_mention" /* Collab conversations, contracts/collab.md "Notifications" */; ticket: { id: string; number: number; subject: string } | null; data: Record<string, unknown>; read_at: string | null; created_at: string };
+type Notification = { id: string; type: "assigned" | "new_ticket" /* data {channel, contact?: {id, name}}: a new ticket nobody is assigned to, see "Assignment" */ | "mentioned" | "customer_replied" | "thread_replied" /* data {message_id, thread_id, subject, preview, from: {name, email}}: someone outside the team answered a third-party thread on a ticket assigned to you */ | "sla_breached" | "ai_handoff" | "ai_cap_reached" | "ai_balance_low" | "ai_balance_out" | "auto_recharge_failed" | "ai_key_failed" | "team_joined" /* data {team_id, team: {id, name, private}, user: {id, name}, by}: an admin joined a team you lead (a private one to see its tickets) */ | "import_finished" /* data contracts/imports.md: a history import you started completed, failed or needs new credentials */ | "collab_assigned" | "collab_mention" /* Collab conversations, contracts/collab.md "Notifications" */; ticket: { id: string; number: number; subject: string } | null; data: Record<string, unknown>; read_at: string | null; created_at: string };
 type Device = { id: string; platform: "ios"; name: string; app_version: string; environment: "production" | "sandbox";
   muted_types: string[]; current: boolean /* bound to the caller's session */; created_at: string; last_push_at: string | null };
 // Notification preferences ("Notification preferences and emails" below). Channels per type, per workspace;
@@ -208,7 +210,7 @@ type NotificationPreferences = {
   unsubscribed_at: string | null /* an email's unsubscribe link turned off email from this workspace; resubscribe undoes it */;
   types: NotificationTypePrefs[] /* the types the caller can receive in this workspace: owners and admins also get the ai_billing and workspace groups */ };
 // Notification.data: assigned {by, actor_type, actor?: {id, name}}; mentioned {message_id, by, actor?: {id, name}, preview};
-// customer_replied {message_id?, preview?, contact?: {id, name}}; sla_breached {kind}; ai_handoff {via: "ai" | "contact", contact?: {id, name}}; ai_cap_reached {cap_usd} (ticket null; the widget agent reached `widget_monthly_cap_usd`, once a month to owners and admins); ai_balance_low {remaining_usd}, ai_balance_out {remaining_usd} (US dollars), auto_recharge_failed {reason} (ticket null; owners and admins, contracts/billing.md "Auto-recharge"); ai_key_failed {provider: "openrouter" | "openai" | "anthropic", reason: "rejected" | "no_funds"} (ticket null; the workspace's own AI key failed, at most once an hour to owners and admins, contracts/ai.md "Provider per workspace"); import_finished {import_id, source, source_name, account, status: "completed" | "failed" | "needs_credentials", tickets, updated, articles, failed, error} (ticket null; to the admin who started the import, contracts/imports.md); collab_assigned {thread_id, account_id, by, subject, actor?: {id, name}}, collab_mention {thread_id, comment_id, by, subject, preview, actor?: {id, name}} (ticket null; contracts/collab.md).
+// new_ticket {channel, contact?: {id, name}}; customer_replied {message_id?, preview?, contact?: {id, name}}; sla_breached {kind}; ai_handoff {via: "ai" | "contact", contact?: {id, name}}; ai_cap_reached {cap_usd} (ticket null; the widget agent reached `widget_monthly_cap_usd`, once a month to owners and admins); ai_balance_low {remaining_usd}, ai_balance_out {remaining_usd} (US dollars), auto_recharge_failed {reason} (ticket null; owners and admins, contracts/billing.md "Auto-recharge"); ai_key_failed {provider: "openrouter" | "openai" | "anthropic", reason: "rejected" | "no_funds"} (ticket null; the workspace's own AI key failed, at most once an hour to owners and admins, contracts/ai.md "Provider per workspace"); import_finished {import_id, source, source_name, account, status: "completed" | "failed" | "needs_credentials", tickets, updated, articles, failed, error} (ticket null; to the admin who started the import, contracts/imports.md); collab_assigned {thread_id, account_id, by, subject, actor?: {id, name}}, collab_mention {thread_id, comment_id, by, subject, preview, actor?: {id, name}} (ticket null; contracts/collab.md).
 // Mentions in note HTML: <span data-type="mention" data-id="<user_id>">@Name</span> (also data-mention="<user_id>"), or "@<full name or email>" in text.
 ```
 
@@ -296,7 +298,7 @@ type NotificationPreferences = {
 | POST | `/v1/me/notification-preferences/test` | workspace-scoped → 204. Sends a sample notification email to the caller now, whatever the preferences. 5 per hour. `422 email_unverified` |
 | POST | `/v1/notifications/unsubscribe` | public, `{token}` → `{workspace: {id, name}, email}`. Turns off every notification email from that workspace for the token's user (the `email` channel of every type). Idempotent. `400 invalid_token`. 30 per IP per hour |
 | POST | `/v1/notifications/unsubscribe/one-click?token=` | public, RFC 8058 one-click (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`, any form body) → 200 `text/plain`. Same effect as above |
-| GET | `/v1/notifications?unread=` · POST `/v1/notifications/read` | `{ids?: string[], all?: bool}` → 204. Rows are created by helpdesk (assigned, mentioned, customer_replied, sla_breached, ai_handoff) the AI area (ai_cap_reached, ai_key_failed) billing (ai_balance_low, ai_balance_out, auto_recharge_failed) and imports (import_finished) with a `notification.created` event to `user:<uid>`, and pushed to the user's phones (`contracts/native.md` "Push"). Marking read sends the phones a badge update |
+| GET | `/v1/notifications?unread=` · POST `/v1/notifications/read` | `{ids?: string[], all?: bool}` → 204. Rows are created by helpdesk (assigned, new_ticket, mentioned, customer_replied, thread_replied, sla_breached, ai_handoff, team_joined) the AI area (ai_cap_reached, ai_key_failed) billing (ai_balance_low, ai_balance_out, auto_recharge_failed) and imports (import_finished) with a `notification.created` event to `user:<uid>`, and pushed to the user's phones (`contracts/native.md` "Push"). Marking read sends the phones a badge update |
 | GET | `/v1/push/instance-key` | public, every instance → `{public_key}` (Ed25519, base64url, `Cache-Control: public, max-age=3600`): verifies this instance's relay requests |
 | POST | `/v1/push/relay/register` | relay only (`PUSH_RELAY_SERVE`), called by the app → `{token, environment, instance}` → `{relay_token}`. `instance` is the instance's https API URL. 30 per IP per hour. `404 relay_off` elsewhere |
 | POST | `/v1/push/relay/send` | relay only, signed by the instance (`OD-Push-Instance`, `OD-Push-Timestamp`, `OD-Push-Signature`) → `{relay_token, push: {kind: "alert"\|"badge", type?, notification_id?, ticket_id?, ticket_number?, workspace_id?, badge}}` → 204. Unknown members are refused (`422`), so no ticket text can be sent. `401 invalid_signature` (bad, stale or foreign signature, or a relay token of another instance), `410 gone` (APNs dropped the token), `429` (per instance), `502 push_failed` |
@@ -354,7 +356,9 @@ notifications from the desktop app, or from a browser that allowed them). A chan
 | type | group | email | push | desktop |
 | --- | --- | --- | --- | --- |
 | `assigned`, `mentioned`, `sla_breached` | tickets | on | on | on |
+| `new_ticket` (a new ticket nobody is assigned to; who gets it: "Assignment") | tickets | off | on | on |
 | `customer_replied` (tickets assigned to you) | tickets | on | on | on |
+| `thread_replied` (an answer in a side conversation on a ticket assigned to you) | tickets | on | on | on |
 | `ai_handoff` | tickets | on | on | on |
 | `team_joined` | team | off | off | on |
 | `ai_cap_reached`, `ai_key_failed`, `ai_balance_low`, `ai_balance_out`, `auto_recharge_failed` (owners and admins) | ai_billing | on | off | on |
@@ -459,7 +463,7 @@ Each value is overridable: `NOTIFY_EMAIL_DELAY`, `NOTIFY_EMAIL_COOLDOWNS` (e.g. 
 | CRUD | `/v1/views` | `{name, filters, shared, team_id?}`. `team_id` shares the view with that team's members (admins and the team's leads write it; with `shared: true` it is `422`). List `?team_id=` |
 | CRUD | `/v1/sla-policies` | body takes `business_hours?: boolean`, `team_id?` (null for every team). List `?team_id=` |
 | GET/PUT | `/v1/business-hours` | GET members → `BusinessHours`; PUT admin, full `BusinessHours` (`timezone` sets `settings.timezone`) → `BusinessHours`. Audit `business_hours.updated` |
-| GET/PATCH | `/v1/assignment` | GET members → `Assignment`; PATCH admin `{mode?, rules? /* replaces */, auto_away_minutes?}` → `Assignment`. Audit `assignment.updated` |
+| GET/PATCH | `/v1/assignment` | GET members → `Assignment`; PATCH admin `{mode?, rules? /* replaces */, auto_away_minutes?, new_ticket_notify?}` → `Assignment` (another `new_ticket_notify` is `422`). Audit `assignment.updated {mode, rules, auto_away_minutes, new_ticket_notify}` |
 | GET/PATCH | `/v1/triage` | GET members → `TriageSettings`; PATCH admin `{auto_triage?, fields?, assign_after_triage?, threshold?}` → `TriageSettings` (stored in `settings.ai`, contracts/ai.md). Audit `triage.updated` |
 | CRUD | `/v1/automations` | |
 | CRUD | `/v1/imports`, `/v1/imports/{id}` | admin users only (reads also API keys with `settings:read`). History imports from Zendesk, Help Scout, Freshdesk, Intercom and CSV files: check, CSV upload, start, pause, resume, cancel, sync, undo and credential removal; see `contracts/imports.md` |
@@ -589,6 +593,23 @@ automation is saved and skipped at run time if the field was archived or deleted
 - `presence` is `away` when `availability` is `online` but `auto_away_minutes` > 0 and the member was not seen (sign-in,
   token refresh, `POST /v1/me/heartbeat`) for that long. `auto_away_minutes`: 0 or 10..1440, default 0.
 - Rules: at most 200, one per target, targets must be the workspace's mailboxes and teams (deleting one deletes its rule).
+- New tickets nobody is assigned to are announced with a `new_ticket` notification, in the `ticket_created` trigger
+  after auto-assignment: only a ticket still unassigned, not spam, not solved or closed and not handed off by the bot
+  (`custom.ai_handoff`). The person who created it is never told. Who hears follows `settings.new_ticket_notify`, for
+  the ticket's team, else its mailbox's team (the assignment pool):
+  - `auto` (the default): the team's leads and members (not observers or viewers), or every owner, admin and agent
+    when there is no team, when that is at most 5 people; when more, the team's leads, or the owners and admins when
+    there is no team or it has no lead (at most 5).
+  - `everyone`: the team's leads and members, or every owner, admin and agent (at most 50).
+  - `leads`: the team's leads, or the owners and admins (at most 50).
+  - `off`: nobody.
+  A team with nobody to work it falls back to its leads, else the owners and admins. `hd.Notify` still skips anyone who
+  may not see a private team's ticket.
+- While the answer bot takes a new ticket on, nobody hears until it hands over (the `ai_handoff` notification): a chat
+  when the instance has AI and the workspace's `ai.enabled` and `ai.widget_answers` are on; an email to an address with
+  `ai_answers` on and `ai_answers_mode` `send` (Ollie replies itself; with `draft` people hear at once), within the
+  hours it answers (`ai_answers_outside_hours`: only while business hours are closed), unless the sender is one of the
+  workspace's members or addresses.
 
 #### Triage
 

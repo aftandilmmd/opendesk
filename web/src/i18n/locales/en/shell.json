@@ -79,6 +79,8 @@
     "type": {
       "assigned": "{{who}} assigned you a ticket",
       "assignedAnon": "A ticket was assigned to you",
+      "newTicket": "New ticket from {{who}}",
+      "newTicketAnon": "A new ticket came in",
       "mentioned": "{{who}} mentioned you",
       "mentionedAnon": "You were mentioned in a note",
       "replied": "{{who}} replied",

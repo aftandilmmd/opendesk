@@ -445,6 +445,29 @@
         "pool": "Only members of that team are picked"
       }
     },
+    "notifyTitle": "New unassigned tickets",
+    "notifyHint": "Who hears when a ticket comes in and nobody is assigned to it. While Ollie answers a chat or an email itself, people hear when it hands over. Each person picks where it reaches them in their notification settings.",
+    "notify": {
+      "label": "Notify about new unassigned tickets",
+      "options": {
+        "auto": {
+          "label": "Automatic",
+          "hint": "Everyone on small teams, only leads when more than 5 people would be notified."
+        },
+        "everyone": {
+          "label": "Everyone on the team",
+          "hint": "Everyone on the ticket's team, or everyone in the workspace when it has no team."
+        },
+        "leads": {
+          "label": "Leads and admins only",
+          "hint": "The team's leads, or the owners and admins when it has no team or no lead."
+        },
+        "off": {
+          "label": "Off",
+          "hint": "Nobody is notified. New tickets wait in Unassigned."
+        }
+      }
+    },
     "awayTitle": "Away",
     "awayHint": "Teammates who step away stop getting new tickets until they are back.",
     "away": {
