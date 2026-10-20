@@ -123,6 +123,8 @@ type Upload struct {
 	Filename          string
 	Size              int64
 	Body              io.Reader
+	// Types limits the upload to these FileTypes ids; nil takes any file but a program.
+	Types []string
 }
 
 // SaveUpload sniffs, refuses executables, stores the object under
@@ -143,6 +145,9 @@ func SaveUpload(ctx context.Context, st storage.Storage, q db.Querier, up Upload
 	head = head[:n]
 	if IsExecutable(head, filename) {
 		return domain.Attachment{}, httpx.E(422, "file_type_refused", "Executable files and scripts cannot be attached.")
+	}
+	if up.Types != nil && !FileTypeAllowed(head, filename, up.Types) {
+		return domain.Attachment{}, httpx.E(422, "file_type_not_allowed", "This type of file can't be sent here.")
 	}
 	ct := DetectType(head, filename)
 	id := ids.New()

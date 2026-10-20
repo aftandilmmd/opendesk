@@ -86,7 +86,8 @@ func (h *handler) registerAttachments(api huma.API, r chi.Router) {
 			if err := h.allowWrite(p, "upload", uploadLimit); err != nil {
 				return nil, err
 			}
-			a, err := h.save(ctx, in, hd.Upload{WorkspaceID: p.WorkspaceID, UploadedByContact: &p.ContactID})
+			a, err := h.save(ctx, in, hd.Upload{WorkspaceID: p.WorkspaceID, UploadedByContact: &p.ContactID,
+				Types: g.Settings.AttachmentTypes})
 			if err != nil {
 				return nil, httpx.Wrap(err)
 			}

@@ -24,27 +24,28 @@ import (
 )
 
 type widgetSettingsPatch struct {
-	Greeting       *string    `json:"greeting,omitempty" maxLength:"2000"`
-	RequireEmail   *bool      `json:"require_email,omitempty"`
-	Enabled        *bool      `json:"enabled,omitempty"`
-	AllowedOrigins *[]string  `json:"allowed_origins,omitempty" maxItems:"50"`
-	Color          *string    `json:"color,omitempty" maxLength:"7" doc:"#rrggbb, or empty for the workspace brand colour"`
-	Theme          *string    `json:"theme,omitempty" enum:"auto,light,dark"`
-	Position       *string    `json:"position,omitempty" enum:"right,left"`
-	OffsetX        *int       `json:"offset_x,omitempty" minimum:"0" maximum:"200"`
-	OffsetY        *int       `json:"offset_y,omitempty" minimum:"0" maximum:"200"`
-	Launcher       *string    `json:"launcher,omitempty" enum:"icon,label"`
-	LauncherLabel  *string    `json:"launcher_label,omitempty" maxLength:"200"`
-	Radius         *string    `json:"radius,omitempty" enum:"square,soft,round"`
-	Title          *string    `json:"title,omitempty" maxLength:"200"`
-	Subtitle       *string    `json:"subtitle,omitempty" maxLength:"400"`
-	ShowTeam       *bool      `json:"show_team,omitempty"`
-	Suggestions    *[]string  `json:"suggestions,omitempty" maxItems:"10"`
-	Sound          *bool      `json:"sound,omitempty"`
-	Topics         *[]topicIn `json:"topics,omitempty" maxItems:"20" doc:"At most 8; asked before the first message, the pick routes the conversation"`
-	OfflineMessage *string    `json:"offline_message,omitempty" maxLength:"1000" doc:"Up to 300 characters; \"\" = the translated default"`
-	EmailFollowUp  *bool      `json:"email_follow_up,omitempty"`
-	Attachments    *bool      `json:"attachments,omitempty"`
+	Greeting        *string    `json:"greeting,omitempty" maxLength:"2000"`
+	RequireEmail    *bool      `json:"require_email,omitempty"`
+	Enabled         *bool      `json:"enabled,omitempty"`
+	AllowedOrigins  *[]string  `json:"allowed_origins,omitempty" maxItems:"50"`
+	Color           *string    `json:"color,omitempty" maxLength:"7" doc:"#rrggbb, or empty for the workspace brand colour"`
+	Theme           *string    `json:"theme,omitempty" enum:"auto,light,dark"`
+	Position        *string    `json:"position,omitempty" enum:"right,left"`
+	OffsetX         *int       `json:"offset_x,omitempty" minimum:"0" maximum:"200"`
+	OffsetY         *int       `json:"offset_y,omitempty" minimum:"0" maximum:"200"`
+	Launcher        *string    `json:"launcher,omitempty" enum:"icon,label"`
+	LauncherLabel   *string    `json:"launcher_label,omitempty" maxLength:"200"`
+	Radius          *string    `json:"radius,omitempty" enum:"square,soft,round"`
+	Title           *string    `json:"title,omitempty" maxLength:"200"`
+	Subtitle        *string    `json:"subtitle,omitempty" maxLength:"400"`
+	ShowTeam        *bool      `json:"show_team,omitempty"`
+	Suggestions     *[]string  `json:"suggestions,omitempty" maxItems:"10"`
+	Sound           *bool      `json:"sound,omitempty"`
+	Topics          *[]topicIn `json:"topics,omitempty" maxItems:"20" doc:"At most 8; asked before the first message, the pick routes the conversation"`
+	OfflineMessage  *string    `json:"offline_message,omitempty" maxLength:"1000" doc:"Up to 300 characters; \"\" = the translated default"`
+	EmailFollowUp   *bool      `json:"email_follow_up,omitempty"`
+	Attachments     *bool      `json:"attachments,omitempty"`
+	AttachmentTypes *[]string  `json:"attachment_types,omitempty" maxItems:"50" doc:"Ids of the file type catalog (contracts/api.md); at least one"`
 }
 
 type topicIn struct {
@@ -188,6 +189,14 @@ func applyPatch(ctx context.Context, q db.Querier, wid uuid.UUID, w hd.WidgetSet
 	if b.Attachments != nil {
 		w.Attachments = *b.Attachments
 		fields = append(fields, "attachments")
+	}
+	if b.AttachmentTypes != nil {
+		types, err := hd.CleanFileTypes(*b.AttachmentTypes)
+		if err != nil {
+			return w, nil, err
+		}
+		w.AttachmentTypes = types
+		fields = append(fields, "attachment_types")
 	}
 	if b.OfflineMessage != nil {
 		m, err := cleanText("offline_message", *b.OfflineMessage, 300)

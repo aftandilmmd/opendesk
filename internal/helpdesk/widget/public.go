@@ -142,6 +142,7 @@ type widgetConfig struct {
 		Suggestions     []string      `json:"suggestions"`
 		Sound           bool          `json:"sound"`
 		Attachments     bool          `json:"attachments" doc:"Visitors may send files"`
+		AttachmentExts  []string      `json:"attachment_extensions" doc:"Extensions of the file types visitors may send; [] while attachments is off"`
 		Team            []teamFace    `json:"team" doc:"Up to 3 members of the widget's team (else of the workspace), available first; first names only"`
 		AIAnswers       bool          `json:"ai_answers" doc:"The AI agent handles new conversations"`
 		Bot             struct {
@@ -294,6 +295,10 @@ func (h *handler) registerPublic(api huma.API) {
 			b.Launcher, b.LauncherLabel, b.Radius = ws.Launcher, ws.LauncherLabel, ws.Radius
 			b.Title, b.Subtitle, b.Suggestions, b.Sound = ws.Title, ws.Subtitle, ws.Suggestions, ws.Sound
 			b.Attachments = ws.Attachments
+			b.AttachmentExts = []string{}
+			if ws.Attachments {
+				b.AttachmentExts = hd.FileTypeExtensions(ws.AttachmentTypes)
+			}
 			if b.Title == "" {
 				b.Title = g.BrandName
 			}
