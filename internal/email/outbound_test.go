@@ -239,7 +239,7 @@ func TestSendMessageSystemWithAttachments(t *testing.T) {
 	if g := env.GetHeader("From"); g != `"Anna Agent at Acme Support" <notifications@opendesk.test>` {
 		t.Errorf("From %q", g)
 	}
-	wantReply := `"Acme Support" <` + m.ForwardingToken + "+t" + itoa(tk.Number) + "@in.test>"
+	wantReply := `"Acme Support" <` + m.Email + ">"
 	if g := env.GetHeader("Reply-To"); g != wantReply {
 		t.Errorf("Reply-To %q want %q", g, wantReply)
 	}

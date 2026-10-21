@@ -886,7 +886,10 @@ at (`mailbox_id`).
   `In-Reply-To`; then our own format `<m_<message id>.t<n>@…>` when that message exists on ticket n,
   or `<a_<id>.t<n>@…>` (auto-replies and CSAT, not stored) when its id carries the MAC we made for
   this workspace and ticket n; then the `+t<n>` address tag and the `[#n]` subject tag. A ticket
-  number that is not proven so threads only when the sender is the ticket's contact.
+  number that is not proven so threads only when the sender is the ticket's contact. Mail we send
+  never names a forwarding address: it answers to the mailbox's own address, or the alias the
+  customer wrote to (`Reply-To` only when `From` is not that address), so the customer's reply comes
+  back the way their first message did and threads by `In-Reply-To` and `References`.
 - **Sender checks.** `Authentication-Results` (or `ARC-Authentication-Results`) count only from an
   authserv-id in `INBOUND_AUTHSERV_ID`, plus `mx.google.com` for Google mailboxes and Microsoft's
   for Microsoft 365 ones; the first such header from the top is the verdict. A DMARC `fail` opens a

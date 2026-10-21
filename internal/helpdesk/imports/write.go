@@ -2,13 +2,16 @@ package imports
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,13 +26,13 @@ import (
 	"github.com/useopendesk/opendesk/internal/helpdesk/imports/source"
 	"github.com/useopendesk/opendesk/internal/httpx"
 	"github.com/useopendesk/opendesk/internal/ids"
+	"github.com/useopendesk/opendesk/internal/plan"
 )
 
 // Limits on what one message brings.
 const (
 	maxBodyHTML       = 1 << 20
 	maxBodyText       = 200_000
-	maxAttachments    = 20
 	maxRecipients     = 50
 	maxMessages       = 2000
 	articleExcerptLen = 200
@@ -55,6 +58,13 @@ type writer struct {
 	tags     map[string]*uuid.UUID // lowercased name -> label id; nil = cannot be used
 	// lastPublish is when progress was last announced.
 	lastPublish time.Time
+	// limits are the plan's file limits; used is what imports already copied into the
+	// workspace, read when there is a limit on it.
+	limits fileLimits
+	used   int64
+	// copyUntil is when the run stops copying files: a ticket whose files take longer goes
+	// on in the next run. Zero is no end.
+	copyUntil time.Time
 }
 
 func (s *Service) newWriter(ctx context.Context, x *row, src source.Source, scan source.Scan) (*writer, error) {
@@ -84,6 +94,20 @@ func (s *Service) newWriter(ctx context.Context, x *row, src source.Source, scan
 	}
 	for _, id := range tids {
 		w.teams[id] = true
+	}
+	e, err := s.d.Plan.Entitlements(ctx, s.d.DB.Pool, x.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	w.limits = fileLimitsOf(e)
+	if s.fileLimits != nil {
+		w.limits = s.fileLimits(e)
+	}
+	if w.limits.total > 0 {
+		if err := s.d.DB.Pool.QueryRow(ctx, `SELECT COALESCE(sum(size_bytes), 0)::bigint FROM attachments
+			WHERE workspace_id = $1 AND imported`, x.WorkspaceID).Scan(&w.used); err != nil {
+			return nil, err
+		}
 	}
 	if x.Options.MailboxID != nil {
 		var ok bool
@@ -156,8 +180,8 @@ func (w *writer) lookup(ctx context.Context, q db.Querier, kind, externalID stri
 	return &r, nil
 }
 
-func (w *writer) remember(ctx context.Context, tx pgx.Tx, kind, externalID string, localID uuid.UUID, created bool, updatedAt *time.Time) error {
-	_, err := tx.Exec(ctx, `INSERT INTO import_records (workspace_id, source, account_key, kind, external_id, local_id, import_id, created, source_updated_at)
+func (w *writer) remember(ctx context.Context, q db.Querier, kind, externalID string, localID uuid.UUID, created bool, updatedAt *time.Time) error {
+	_, err := q.Exec(ctx, `INSERT INTO import_records (workspace_id, source, account_key, kind, external_id, local_id, import_id, created, source_updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (workspace_id, source, account_key, kind, external_id) DO UPDATE SET local_id = EXCLUDED.local_id,
 			source_updated_at = COALESCE(EXCLUDED.source_updated_at, import_records.source_updated_at)`,
@@ -216,26 +240,82 @@ type copied struct {
 	url    string // the source's link, rewritten in the body
 }
 
+// fileLimits are what imports copy of one message's files and of the workspace's in all
+// (plan.Entitlements); zero is unlimited. Every file is also within hd.MaxAttachmentBytes.
+type fileLimits struct {
+	perMessage   int
+	messageBytes int64
+	total        int64
+	// upgrade says a paid plan raises them.
+	upgrade bool
+}
+
+func fileLimitsOf(e plan.Entitlements) fileLimits {
+	return fileLimits{perMessage: e.ImportFilesPerMessage, messageBytes: e.ImportMessageBytes, total: e.ImportBytes,
+		upgrade: e.BillingEnabled && e.Plan == plan.Free}
+}
+
+// hint ends a problem about a limit a paid plan raises.
+func (l fileLimits) hint() string {
+	if l.upgrade {
+		return " A paid plan raises this limit."
+	}
+	return ""
+}
+
+var (
+	// errFull means a file does not fit in what is left of its message's or the
+	// workspace's limit.
+	errFull = errors.New("over the import's file limits")
+	// errOutOfTime means a run spent its time copying a ticket's files. The next run goes
+	// on with the files copied so far.
+	errOutOfTime = errors.New("the run is out of time")
+)
+
+// room is what is left of limit after used; unlimited when limit is zero.
+func room(limit, used int64) int64 {
+	if limit <= 0 {
+		return math.MaxInt64
+	}
+	return max(limit-used, 0)
+}
+
 // copyFiles stores the attachments of the messages that will be written, before the
 // write's transaction. A file that cannot be copied is a problem; a rate limit or a
-// refused credential stops the ticket so it is tried again.
+// refused credential stops the ticket so it is tried again, without copying again the
+// files it already has. Files past the plan's limits are left out, one problem per
+// message and limit.
 func (w *writer) copyFiles(ctx context.Context, t *source.Ticket, msgs []source.Message) (map[string][]copied, error) {
 	out := map[string][]copied{}
 	if !w.x.Options.Attachments {
 		return out, nil
 	}
 	item := "Ticket " + t.Ref
+	lim := w.limits
 	for _, m := range msgs {
-		for i, a := range m.Attachments {
-			if i >= maxAttachments {
-				w.problem(item, fmt.Sprintf("Only the first %d attachments of a message were copied.", maxAttachments))
-				break
-			}
+		files := m.Attachments
+		if extra := len(files) - lim.perMessage; lim.perMessage > 0 && extra > 0 {
+			w.problem(item, fmt.Sprintf("%d %s past a message's first %d %s left out.%s", extra, plural(extra, "file", "files"),
+				lim.perMessage, plural(extra, "was", "were"), lim.hint()))
+			files = files[:lim.perMessage]
+		}
+		var size int64 // what the message's files take so far
+		overMessage, overTotal := 0, 0
+		for i, a := range files {
 			if a.Size > hd.MaxAttachmentBytes {
 				w.problem(item, fmt.Sprintf("%s is over 25 MB, so it was left out.", hd.CleanFilename(a.Name)))
 				continue
 			}
-			id, err := w.copyFile(ctx, a)
+			msgRoom, totalRoom := room(lim.messageBytes, size), room(lim.total, w.used)
+			c, n, err := w.copyFile(ctx, m.ID+"/"+cmp.Or(a.ID, strconv.Itoa(i)), a, msgRoom, totalRoom)
+			if errors.Is(err, errFull) {
+				if msgRoom <= totalRoom {
+					overMessage++
+				} else {
+					overTotal++
+				}
+				continue
+			}
 			if err != nil {
 				if stopping(err) {
 					return nil, err
@@ -243,49 +323,124 @@ func (w *writer) copyFiles(ctx context.Context, t *source.Ticket, msgs []source.
 				w.problem(item, fmt.Sprintf("%s could not be copied: %s", hd.CleanFilename(a.Name), plain(err)))
 				continue
 			}
-			out[m.ID] = append(out[m.ID], copied{id: id, inline: a.Inline, url: a.URL})
+			size += n
+			c.inline, c.url = a.Inline, a.URL
+			out[m.ID] = append(out[m.ID], c)
 			w.x.Counts.Attachments++
+		}
+		if overMessage > 0 {
+			w.problem(item, fmt.Sprintf("%d %s left out: one message brings up to %s of files.%s",
+				overMessage, plural(overMessage, "file was", "files were"), sizeText(lim.messageBytes), lim.hint()))
+		}
+		if overTotal > 0 {
+			// Once the workspace's limit is reached every later file is left out: it is said once.
+			msg := fmt.Sprintf("Files were left out from here on: imports bring up to %s of files into a workspace.%s",
+				sizeText(lim.total), lim.hint())
+			if !slices.ContainsFunc(w.x.Problems, func(p ImportProblem) bool { return p.Message == msg }) {
+				w.problem(item, msg)
+			}
 		}
 	}
 	return out, nil
 }
 
-func (w *writer) copyFile(ctx context.Context, a source.Attachment) (uuid.UUID, error) {
+// plural is one when n is 1, else many.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// sizeText is a limit in MB, or in GB when it is whole gigabytes.
+func sizeText(n int64) string {
+	if n >= 1<<30 && n%(1<<30) == 0 {
+		return fmt.Sprintf("%d GB", n>>30)
+	}
+	return fmt.Sprintf("%d MB", n>>20)
+}
+
+// copyFile stores one file that fits in msgRoom and totalRoom, and remembers it under key
+// (the message and the file) so a ticket tried again finds it instead of copying it again.
+// It answers the file and its size.
+func (w *writer) copyFile(ctx context.Context, key string, a source.Attachment, msgRoom, totalRoom int64) (copied, int64, error) {
+	if c, n, ok, err := w.copiedBefore(ctx, key); err != nil {
+		return copied{}, 0, err
+	} else if ok {
+		// It already counts against the workspace's limit.
+		if n > msgRoom {
+			return copied{}, 0, errFull
+		}
+		return c, n, nil
+	}
+	limit := min(msgRoom, totalRoom)
+	if limit == 0 || a.Size > limit {
+		return copied{}, 0, errFull
+	}
 	var data []byte
 	if a.Data != nil {
 		data = a.Data
 	} else {
+		if !w.copyUntil.IsZero() && time.Now().After(w.copyUntil) {
+			return copied{}, 0, errOutOfTime
+		}
 		rc, err := w.src.Download(ctx, a)
 		if err != nil {
-			return uuid.Nil, err
+			return copied{}, 0, err
 		}
 		defer rc.Close()
-		if data, err = io.ReadAll(io.LimitReader(rc, hd.MaxAttachmentBytes+1)); err != nil {
-			return uuid.Nil, err
+		if data, err = io.ReadAll(io.LimitReader(rc, min(int64(hd.MaxAttachmentBytes), limit)+1)); err != nil {
+			return copied{}, 0, err
 		}
 	}
 	if len(data) > hd.MaxAttachmentBytes {
-		return uuid.Nil, errors.New("it is over 25 MB")
+		return copied{}, 0, errors.New("it is over 25 MB")
+	}
+	if int64(len(data)) > limit {
+		return copied{}, 0, errFull
 	}
 	if len(data) == 0 {
-		return uuid.Nil, errors.New("the file is empty")
+		return copied{}, 0, errors.New("the file is empty")
 	}
 	att, err := hd.SaveUpload(ctx, w.s.d.Storage, w.s.d.DB.Pool, hd.Upload{WorkspaceID: w.x.WorkspaceID, Filename: a.Name,
-		Size: int64(len(data)), Body: bytes.NewReader(data)})
+		Size: int64(len(data)), Body: bytes.NewReader(data), Imported: true})
 	if err != nil {
-		return uuid.Nil, err
+		return copied{}, 0, err
 	}
-	return att.ID, nil
+	w.used += att.SizeBytes
+	if err := w.remember(ctx, w.s.d.DB.Pool, "file", key, att.ID, true, nil); err != nil {
+		return copied{}, 0, err
+	}
+	return copied{id: att.ID}, att.SizeBytes, nil
+}
+
+// copiedBefore finds a file an earlier run copied under key and no message holds yet.
+// One that is gone (unattached uploads are purged after a day) is copied again.
+func (w *writer) copiedBefore(ctx context.Context, key string) (copied, int64, bool, error) {
+	r, err := w.lookup(ctx, w.s.d.DB.Pool, "file", key)
+	if err != nil || r == nil {
+		return copied{}, 0, false, err
+	}
+	var n int64
+	err = w.s.d.DB.Pool.QueryRow(ctx, `SELECT size_bytes FROM attachments WHERE workspace_id = $1 AND id = $2 AND message_id IS NULL`,
+		w.x.WorkspaceID, r.localID).Scan(&n)
+	if db.IsNotFound(err) {
+		return copied{}, 0, false, nil
+	}
+	if err != nil {
+		return copied{}, 0, false, err
+	}
+	return copied{id: r.localID}, n, true, nil
 }
 
 // stopping reports errors that stop the run rather than one item: the source's rate
-// limit, refused credentials, the source not answering, our own shutdown.
+// limit, refused credentials, the source not answering, our own shutdown, the run's time.
 func stopping(err error) bool {
 	var rl *source.RateLimited
 	var un *source.Unreachable
 	var re *source.RemoteError
 	return errors.As(err, &rl) || errors.Is(err, source.ErrAuth) || errors.As(err, &un) || errors.Is(err, context.Canceled) ||
-		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errStopped) || (errors.As(err, &re) && re.Status >= 500)
+		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errStopped) || errors.Is(err, errOutOfTime) || (errors.As(err, &re) && re.Status >= 500)
 }
 
 // plain is an error in words a person can read in a list of problems.
@@ -340,6 +495,7 @@ func (w *writer) writeTicket(ctx context.Context, t *source.Ticket) (outcome, er
 	if t.Skip {
 		return outcomeSkipped, nil
 	}
+	scrubTicket(t)
 	msgs := t.Messages
 	if len(msgs) > maxMessages {
 		w.problem("Ticket "+t.Ref, fmt.Sprintf("Only the first %d messages were imported.", maxMessages))
@@ -845,6 +1001,7 @@ func (w *writer) company(ctx context.Context, tx pgx.Tx, rawName, rawDomain stri
 // writeArticle writes a help center article (and its collection) unless an earlier run
 // did. Articles are not announced one by one: lists refresh from import.updated.
 func (w *writer) writeArticle(ctx context.Context, a source.Article) error {
+	scrubArticle(&a)
 	counts := w.x.Counts
 	err := w.s.d.DB.Tx(ctx, func(tx pgx.Tx) error {
 		if err := w.begin(ctx, tx); err != nil {

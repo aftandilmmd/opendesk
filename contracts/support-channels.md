@@ -11,11 +11,15 @@ The cloud and self-host use the same code. There is no plan gate.
 ## Model and API
 
 ```ts
-type Provider = { key: string; name: string; description: string;
-  fields: { name: string; label: string; secret: boolean; help?: string }[] };
+type Provider = { key: string; name: string; description: string; configures: boolean;
+  fields: { name: string; label: string; secret: boolean; generated?: boolean;
+    discovered?: boolean; help?: string }[] };
 type Connection = { id: string; provider: string; name: string;
-  external_account_id: string; external_account_name: string;
-  status: "connected"|"error"; last_error: string; webhook_url: string; created_at: string };
+  external_account_id: string; external_account_name: string; external_account_handle: string;
+  status: "connected"|"error"; last_error: string;
+  health_status: "unknown"|"healthy"|"action_required"|"error";
+  health_detail: string; health_checked_at?: string; webhook_url: string; created_at: string };
+type AvailableDestination = { id: string; name: string; kind?: string; available: boolean };
 type Destination = { id: string; connection_id: string; team_id: string|null;
   external_channel_id: string; external_channel_name: string; enabled: boolean;
   include_notes: boolean; created_at: string };
@@ -24,8 +28,12 @@ type Destination = { id: string; connection_id: string; team_id: string|null;
 | method | path | role | body → response |
 | --- | --- | --- | --- |
 | GET | `/v1/support-channels/providers` | viewer, `settings:read` | → `{data: Provider[]}` |
+| POST | `/v1/support-channels/providers/{provider}/accounts` | admin user | `{credentials}` → `{data: {id,name}[]}` for providers with selectable accounts |
 | GET | `/v1/support-channels/connections` | viewer, `settings:read` | → `{data: Connection[]}` |
 | POST | `/v1/support-channels/connections` | admin user | `{provider,name?,credentials}` → 201 `Connection` |
+| PATCH | `/v1/support-channels/connections/{id}` | admin user | `{name?,credentials}` → `Connection`, credentials must identify the same provider account |
+| POST | `/v1/support-channels/connections/{id}/test` | admin user | reconciles setup and health → `Connection` |
+| GET | `/v1/support-channels/connections/{id}/destinations` | admin user | discovers → `{data: AvailableDestination[]}` |
 | DELETE | `/v1/support-channels/connections/{id}` | admin user | → 204, including its destinations and thread mappings |
 | GET | `/v1/support-channels/destinations` | viewer, `settings:read` | → `{data: Destination[]}` |
 | POST | `/v1/support-channels/destinations` | admin user | `{connection_id,team_id?,external_channel_id,external_channel_name?,include_notes?}` → 201 `Destination` |
@@ -78,6 +86,22 @@ session. The engine reconnects after an error with backoff, except a `FatalError
 `Reason` becomes the connection's `last_error`. `Thread.ChannelID` names the channel a
 thread's messages arrive from when it isn't the destination channel.
 
+Onboarding is split into optional capabilities so providers implement only what their
+API supports: `Discoverer` lists destinations, `Configurer` registers provider-side
+webhooks or commands, and `HealthChecker` verifies that setup. Signed webhook results may
+also carry discovered destinations for providers that cannot list them. Credential
+rotation validates that the replacement credentials belong to the same external account,
+then updates the sealed value in place; destinations and ticket threads keep their ids.
+Generated and discovered fields (Telegram's webhook secret, Discord's server) keep their
+values unless replaced. Long-lived subscribers restart when `credentials_updated_at` changes.
+
+Every setup and test validates the credentials first and refreshes the account's name and
+`external_account_handle` (the bot's `@username` where people address it by one). A
+provider-wide setting, such as Discord's interactions endpoint or Telegram's webhook, is
+one per bot: `Configure` leaves it alone when it is another existing connection's webhook
+(`Setup.Foreign`) and returns `channel.ErrInUse`, and the connection shows
+`action_required` until that connection is removed or a separate bot is used.
+
 An adapter is registered in `NewRegistry` at boot. It never imports a helpdesk package or
 reads a helpdesk table. `Inbound` is the normalized command envelope and
 `WebhookResult` carries both normalized actions and the provider's immediate protocol
@@ -115,8 +139,9 @@ plain text.
 
 ## Conversations, commands and identity
 
-Linked agents can talk to Ollie inside a mapped ticket thread. The engine gives Ollie
-the visible ticket and its messages, plus a bounded per-agent conversation history.
+Linked agents can talk to Ollie inside a mapped ticket thread. They can also ask Ollie
+to create a ticket from an enabled destination's general channel or an unrelated thread.
+The engine gives Ollie the visible ticket and its messages when there is one, plus a bounded per-agent conversation history.
 Ticket content is delimited as untrusted data. Ollie may answer a question or emit one
 of the typed actions below; generated text is never executed as a command.
 
@@ -128,8 +153,9 @@ of the typed actions below; generated text is never executed as a command.
 | `assign` / `assign_self` | assigns the linked agent |
 | `status <open|pending|on_hold|solved|closed>` | changes status |
 | `priority <low|normal|high|urgent>` | changes priority |
+| Ollie `create_ticket {subject,description?}` | creates a new ticket through the normal ticket service (channel `api`); Ollie answers with its number and link. It gets no thread, since version 1 mirrors email tickets only |
 
-Natural-language customer replies and closing a ticket wait for an explicit `confirm`
+Natural-language ticket creation, customer replies and closing a ticket wait for an explicit `confirm`
 or `cancel` response and expire after ten minutes. Drafting a reply does not send it.
 Notes, self-assignment, status and priority changes can run immediately after the model
 emits their validated schema. A pending action and the ticket mutation are consumed in
@@ -138,10 +164,17 @@ runs with the linked agent's role and checks and is attributed to Ollie on their
 (`auth.Principal.Assistant`: activity actor `ai` with the agent as `user_id`, as for the
 in-app assistant); an explicit command is the agent's own.
 
-Every conversation and command runs only inside a mapped ticket thread. Before every
-action, the engine reloads the linked user, workspace membership, suspension state and
-role, then loads the ticket through `domain.LoadVisibleTicket`. Replies use
-`tickets.PostMessage`; changes use `tickets.ApplyPatch`. The normal sanitizing, mailbox,
+Ticket changes and explicit commands run only inside a mapped ticket thread. Ticket
+creation may start from a message explicitly directed at Ollie in any enabled destination
+and uses that destination's team as its routing hint. Ordinary general-channel chatter is
+ignored. A message is directed when the provider says so (a Slack or Discord mention, a
+Discord command) or when its `Inbound.Mention` is the connection's own handle (a Telegram
+message opening with the bot's `@username`, or a reply to the bot's message). While a
+ticket waits for confirmation, the same person's next message in that thread reaches Ollie
+without a mention where the provider delivers it. Before every action, the engine reloads the linked user, workspace
+membership, suspension state and role. Existing-ticket actions load the ticket through
+`domain.LoadVisibleTicket`. Replies use `tickets.PostMessage`; changes use
+`tickets.ApplyPatch`; creation uses `tickets.CreateTicket`. The normal sanitizing, mailbox,
 signature, event, automation, notification and audit behavior therefore remains the
 single implementation. If Ollie or the workspace assistant is off, explicit commands
 continue to work.
@@ -162,23 +195,30 @@ available." `/opendesk link <code>` needs no number.
 
 ## Provider setup
 
-- **Slack:** bot token and signing secret. Point Event Subscriptions and the slash
-  command request URL to `webhook_url`; subscribe the bot to `app_mention`, grant
-  `chat:write` and `app_mentions:read`, and invite it to each selected channel.
-- **Discord:** bot token, interactions public key and server ID. Set the application's
-  Interactions Endpoint URL to `webhook_url`, install the bot with thread/message access,
-  enable the privileged Message Content intent, and register the commands above plus
-  `/ask`. Worker processes maintain one leased Gateway connection per Discord connection,
+- **Slack:** bot token and signing secret. Grant `chat:write`, `app_mentions:read`,
+  `channels:read` and `groups:read`, then invite the bot to each selectable channel.
+  Slack does not let a bot token change its own app configuration, so the health state is
+  `action_required` and tells an admin to point Event Subscriptions and the `/opendesk`
+  slash command at `webhook_url`, then test them in Slack.
+- **Discord:** bot token and interactions public key. opendesk lists the servers where the
+  bot is installed, then lists text channels in the selected server. Install the bot with
+  thread/message access and enable the privileged Message Content intent. opendesk sets
+  the Interactions Endpoint URL and registers the commands above plus
+  `/ask` through Discord's API. The endpoint is one per Discord application: an endpoint
+  that is not another opendesk connection's is replaced, so a bot that also serves another
+  backend needs a bot of its own for opendesk. Only missing commands are registered; a
+  command of the same name already on the server is left as it is. Worker processes maintain one leased Gateway connection per Discord connection,
   so multiple workers do not handle the same message. A dropped connection resumes its
   session where Discord allows it; otherwise the worker reconnects with exponential
   backoff and jitter, from five seconds up to five minutes. Close codes that mean the
   provider refused the bot (4004 authentication failed, 4010 to 4014 shard, version and
   intents errors) stop the subscription and set the connection to `error` with a reason
   for the admin, instead of retrying. A successful session sets it back to `connected`.
-- **Telegram:** bot token and a webhook secret. Add the bot as an administrator to a
-  forum-enabled group, then call `setWebhook` with `webhook_url` and the same
-  `secret_token`. Disable privacy mode with BotFather so the bot receives ordinary topic
-  messages. The destination is the forum group ID.
+- **Telegram:** bot token. opendesk generates and seals the webhook secret, calls
+  `setWebhook` with `webhook_url`, and subscribes to `message` and `my_chat_member`.
+  Add the bot as an administrator to a forum-enabled group; that signed membership update
+  makes the group selectable without entering its id. Disable privacy mode with BotFather
+  so the bot receives ordinary topic messages.
 
 ## Security and operations
 
@@ -206,6 +246,8 @@ available." `/opendesk link <code>` needs no number.
   subjects and message text cannot notify an external channel or fetch arbitrary links.
 
 Events: `support_channel_connection.created {support_channel_connection}`,
+`support_channel_connection.updated {support_channel_connection}` (rotated credentials, a
+renamed account, a new health state from a test or the first signed webhook),
 `support_channel_connection.deleted {support_channel_connection_id}`,
 `support_channel_destination.created {support_channel_destination}` and
 `support_channel_destination.deleted {support_channel_destination_id}`.

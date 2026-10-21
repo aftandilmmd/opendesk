@@ -22,11 +22,13 @@ import (
 	"github.com/useopendesk/opendesk/internal/auth"
 	"github.com/useopendesk/opendesk/internal/deps"
 	"github.com/useopendesk/opendesk/internal/domain"
+	"github.com/useopendesk/opendesk/internal/helpdesk/hd"
 	"github.com/useopendesk/opendesk/internal/helpdesk/hdtest"
 	"github.com/useopendesk/opendesk/internal/helpdesk/imports/source"
 	"github.com/useopendesk/opendesk/internal/helpdesk/tickets"
 	"github.com/useopendesk/opendesk/internal/ids"
 	"github.com/useopendesk/opendesk/internal/jobs"
+	"github.com/useopendesk/opendesk/internal/plan"
 )
 
 // fake is a source answering from memory.
@@ -38,7 +40,10 @@ type fake struct {
 	skipOnLoad map[string]bool
 	articles   []source.Article
 	files      map[string][]byte // attachment contents by URL
-	pageSize   int
+	// downloadErrs are answered once by Download, by URL; downloads counts the files read.
+	downloadErrs map[string]error
+	downloads    map[string]int
+	pageSize     int
 	// errs are answered by Tickets first, one per call.
 	errs []error
 	// updatedSince is what each Tickets call was asked.
@@ -123,10 +128,18 @@ func (f *fake) Articles(_ context.Context, cursor string) (source.Page[source.Ar
 func (f *fake) Download(_ context.Context, a source.Attachment) (io.ReadCloser, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err, ok := f.downloadErrs[a.URL]; ok {
+		delete(f.downloadErrs, a.URL)
+		return nil, err
+	}
 	data, ok := f.files[a.URL]
 	if !ok {
 		return nil, &source.RemoteError{Status: 404}
 	}
+	if f.downloads == nil {
+		f.downloads = map[string]int{}
+	}
+	f.downloads[a.URL]++
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
@@ -567,6 +580,188 @@ func TestRunImport(t *testing.T) {
 	}
 	if n := e.count(t, `SELECT count(*) FROM kb_articles WHERE workspace_id = $1`, e.ws.ID); n != 2 {
 		t.Errorf("articles after undoing the second import %d", n)
+	}
+}
+
+const mb = 1 << 20
+
+// files are attachments of the given sizes in MB, downloaded from the fake.
+func (e *env) files(prefix string, sizes ...int) []source.Attachment {
+	var out []source.Attachment
+	for i, n := range sizes {
+		id := prefix + strconv.Itoa(i)
+		url := "https://files.test/" + id
+		e.f.files[url] = bytes.Repeat([]byte("x"), n*mb)
+		out = append(out, source.Attachment{ID: id, Name: id + ".txt", URL: url})
+	}
+	return out
+}
+
+// filesTicket is a loaded ticket whose messages carry the given files.
+func filesTicket(id string, at time.Time, messages ...[]source.Attachment) source.Ticket {
+	bob := source.Person{ID: "u1", Email: "bob@customer.test", Name: "Bob"}
+	t := source.Ticket{ID: id, Ref: "#" + id, Subject: "Files " + id, Status: "open", Requester: &bob, CreatedAt: at, UpdatedAt: at, Loaded: true}
+	for i, files := range messages {
+		t.Messages = append(t.Messages, source.Message{ID: id + "-" + strconv.Itoa(i), Author: bob, Text: "Files",
+			CreatedAt: at.Add(time.Duration(i) * time.Minute), Attachments: files})
+	}
+	return t
+}
+
+// filesPerMessage counts the files of each message of a ticket, oldest first.
+func (e *env) filesPerMessage(t *testing.T, ref string) []int {
+	t.Helper()
+	rows, err := e.D.DB.Pool.Query(e.Ctx, `SELECT (SELECT count(*) FROM attachments a WHERE a.message_id = m.id)::int
+		FROM messages m WHERE ticket_id = $1 ORDER BY created_at`, e.ticketByRef(t, ref))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := pgx.CollectRows(rows, pgx.RowTo[int])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// A self-hosted instance has no import file limits but the 25 MB of any one file.
+func TestImportFilesUnlimitedSelfHosted(t *testing.T) {
+	e := newEnv(t)
+	e.f.articles = nil
+	many := make([]source.Attachment, 150)
+	for i := range many {
+		name := "note-" + strconv.Itoa(i) + ".txt"
+		many[i] = source.Attachment{ID: name, Name: name, Data: []byte("x")}
+	}
+	big := e.files("big", 20, 20, 20)
+	big = append(big, source.Attachment{ID: "huge", Name: "huge.bin", URL: "https://files.test/huge", Size: hd.MaxAttachmentBytes + 1})
+	e.f.tickets = []source.Ticket{filesTicket("1", base, append(many, big...))}
+	done := e.drive(t, e.start(t, e.zendeskBody()).ID)
+	if done.Status != StatusCompleted || done.Counts.Attachments != 153 {
+		t.Fatalf("finished %s %+v problems %+v", done.Status, done.Counts, done.Problems)
+	}
+	if len(done.Problems) != 1 || done.Problems[0].Message != "huge.bin is over 25 MB, so it was left out." {
+		t.Fatalf("problems %+v", done.Problems)
+	}
+	if n := e.count(t, `SELECT count(*) FROM attachments WHERE workspace_id = $1 AND imported AND message_id IS NOT NULL`, e.ws.ID); n != 153 {
+		t.Errorf("imported files %d", n)
+	}
+}
+
+// One message keeps its first files and the files that fit in its total; each limit it
+// reaches is one problem. The next message has its own.
+func TestImportFileLimitsPerMessage(t *testing.T) {
+	e := newEnv(t)
+	e.s.fileLimits = func(plan.Entitlements) fileLimits { return fileLimits{perMessage: 5, messageBytes: 10 * mb} }
+	e.f.articles = nil
+	e.f.files = map[string][]byte{}
+	// big: 4+4 MB fit, 5 MB does not, 2 MB still does; a declared 3 MB is not downloaded.
+	big := e.files("big", 4, 4, 5, 2)
+	big = append(big, source.Attachment{ID: "declared", Name: "declared.txt", URL: "https://files.test/declared", Size: 3 * mb})
+	e.f.files["https://files.test/declared"] = bytes.Repeat([]byte("x"), 3*mb)
+	e.f.tickets = []source.Ticket{
+		filesTicket("1", base, e.files("many", 1, 1, 1, 1, 1, 1, 1)),
+		filesTicket("2", base.Add(time.Hour), big, e.files("other", 9)),
+	}
+	done := e.drive(t, e.start(t, e.zendeskBody()).ID)
+	if done.Status != StatusCompleted || done.Counts.Attachments != 5+3+1 {
+		t.Fatalf("finished %s %+v problems %+v", done.Status, done.Counts, done.Problems)
+	}
+	if got := e.filesPerMessage(t, "1"); !slices.Equal(got, []int{5}) {
+		t.Errorf("ticket 1 files per message %v", got)
+	}
+	if got := e.filesPerMessage(t, "2"); !slices.Equal(got, []int{3, 1}) {
+		t.Errorf("ticket 2 files per message %v", got)
+	}
+	if e.f.downloads["https://files.test/declared"] != 0 || e.f.downloads["https://files.test/many5"] != 0 {
+		t.Errorf("downloaded files that cannot fit: %v", e.f.downloads)
+	}
+	want := map[string]string{
+		"Ticket #1": "2 files past a message's first 5 were left out.",
+		"Ticket #2": "2 files were left out: one message brings up to 10 MB of files.",
+	}
+	if len(done.Problems) != len(want) {
+		t.Fatalf("problems %+v", done.Problems)
+	}
+	for _, p := range done.Problems {
+		if want[p.Item] != p.Message {
+			t.Errorf("problem %s: %q, want %q", p.Item, p.Message, want[p.Item])
+		}
+	}
+}
+
+// What imports copy into a workspace in all is bounded on a plan with a limit, across
+// tickets and runs, and said once. The free plan points at a paid one.
+func TestImportFileLimitInAll(t *testing.T) {
+	e := newEnv(t)
+	e.D.Plan = plan.New(true, 1)
+	e.s.fileLimits = func(en plan.Entitlements) fileLimits {
+		l := fileLimitsOf(en)
+		l.total = 12 * mb
+		return l
+	}
+	e.f.articles = nil
+	e.f.files = map[string][]byte{}
+	// 6 MB, then 4 MB and 1 MB of the next three; a declared 3 MB file is not downloaded.
+	declared := e.files("c", 3)
+	declared[0].Size = 3 * mb
+	e.f.tickets = []source.Ticket{
+		filesTicket("1", base, e.files("a", 6)),
+		filesTicket("2", base.Add(time.Hour), e.files("b", 4, 4, 1)),
+		filesTicket("3", base.Add(2*time.Hour), declared),
+	}
+	x := e.start(t, e.zendeskBody())
+	done := e.drive(t, x.ID)
+	if done.Status != StatusCompleted || done.Counts.Attachments != 3 {
+		t.Fatalf("finished %s %+v problems %+v", done.Status, done.Counts, done.Problems)
+	}
+	msg := "Files were left out from here on: imports bring up to 12 MB of files into a workspace. A paid plan raises this limit."
+	if len(done.Problems) != 1 || done.Problems[0].Message != msg || done.Problems[0].Item != "Ticket #2" {
+		t.Fatalf("problems %+v", done.Problems)
+	}
+	if e.f.downloads["https://files.test/c0"] != 0 {
+		t.Error("downloaded a file past the limit")
+	}
+
+	// A sync starts from what is already in the workspace.
+	e.f.tickets = append(e.f.tickets, filesTicket("4", base.Add(3*time.Hour), e.files("d", 2)))
+	e.Do("POST", "/v1/imports/"+x.ID.String()+"/sync", e.admin, nil).Want(t, 200)
+	synced := e.drive(t, x.ID)
+	if synced.Status != StatusCompleted || len(synced.Problems) != 1 ||
+		e.count(t, `SELECT count(*) FROM attachments WHERE workspace_id = $1 AND imported`, e.ws.ID) != 3 {
+		t.Fatalf("after the sync %s %+v problems %+v", synced.Status, synced.Counts, synced.Problems)
+	}
+	var stored int64
+	e.Scalar(`SELECT sum(size_bytes) FROM attachments WHERE workspace_id = $1 AND imported`, &stored, e.ws.ID)
+	if stored > 12*mb {
+		t.Errorf("imports stored %d bytes", stored)
+	}
+}
+
+// A ticket stopped while its files copy (a rate limit) goes on with the files it already
+// has: none is downloaded twice and none is left behind unattached.
+func TestImportFilesResumeAfterAStop(t *testing.T) {
+	e := newEnv(t)
+	e.f.articles = nil
+	e.f.files = map[string][]byte{}
+	e.f.tickets = []source.Ticket{filesTicket("1", base, e.files("f", 1, 1, 1, 1), e.files("g", 1, 1))}
+	e.f.downloadErrs = map[string]error{"https://files.test/g1": &source.RateLimited{}}
+	done := e.drive(t, e.start(t, e.zendeskBody()).ID)
+	if done.Status != StatusCompleted || done.Counts.Attachments != 6 || done.Counts.Failed != 0 || len(done.Problems) != 0 {
+		t.Fatalf("finished %s %+v problems %+v", done.Status, done.Counts, done.Problems)
+	}
+	for url, n := range e.f.downloads {
+		if n != 1 {
+			t.Errorf("%s downloaded %d times", url, n)
+		}
+	}
+	if len(e.f.downloads) != 6 {
+		t.Errorf("downloads %v", e.f.downloads)
+	}
+	if got := e.filesPerMessage(t, "1"); !slices.Equal(got, []int{4, 2}) {
+		t.Errorf("files per message %v", got)
+	}
+	if n := e.count(t, `SELECT count(*) FROM attachments WHERE workspace_id = $1 AND message_id IS NULL`, e.ws.ID); n != 0 {
+		t.Errorf("unattached files %d", n)
 	}
 }
 
@@ -1065,4 +1260,52 @@ func TestIsolationAndRoles(t *testing.T) {
 	e.Do("POST", path+"/pause", key, nil).Want(t, 403)
 	e.Do("GET", path, key, nil).Want(t, 200) // reading is settings:read
 	e.Do("GET", path, e.ws.Owner.As(e.ws), nil).Want(t, 200)
+}
+
+// NUL bytes, which Postgres text cannot hold, are dropped from what a ticket and an article
+// save: the subject, the subject taken from the first message, the people on it, tags,
+// bodies and file names. None of them fails the ticket or the article.
+func TestNULBytesDoNotFailATicket(t *testing.T) {
+	e := newEnv(t)
+	bob := &source.Person{ID: "u1", Email: "bob@customer.test", Name: "Bob\x00 Buyer", Phone: "+1 555\x00 0100", Company: "Bob\x00co"}
+	e.f.articles = []source.Article{{ID: "art9", Title: "Reset\x00 it", HTML: "<p>Steps\x00</p>", Collection: "Acc\x00ount", Published: true, CreatedAt: base, UpdatedAt: base}}
+	e.f.tickets = []source.Ticket{
+		{ID: "21", Ref: "#21", Subject: "Invoice\x00 attached", Status: "open", Requester: bob, Tags: []string{"bil\x00ling"},
+			CreatedAt: base, UpdatedAt: base, Loaded: true,
+			Messages: []source.Message{{ID: "21-1", Author: *bob, HTML: "<p>Here\x00 it is</p>", Text: "Here\x00 it is", CreatedAt: base,
+				Attachments: []source.Attachment{{ID: "f21", Name: "inv\x00oice.txt", URL: "https://files.test/f21"}}}}},
+		{ID: "22", Ref: "#22", Subject: "", Status: "open", Requester: bob, CreatedAt: base, UpdatedAt: base, Loaded: true,
+			Messages: []source.Message{{ID: "22-1", Author: *bob, Text: "Where\x00 is my order", CreatedAt: base}}},
+	}
+	e.f.files = map[string][]byte{"https://files.test/f21": []byte("total: 10")}
+	x := e.start(t, e.zendeskBody())
+	done := e.drive(t, x.ID)
+	if done.Status != StatusCompleted {
+		t.Fatalf("status %s %s", done.Status, done.LastError)
+	}
+	if done.Counts.Tickets != 2 || done.Counts.Failed != 0 || done.Counts.Messages != 2 || done.Counts.Attachments != 1 ||
+		done.Counts.Articles != 1 || len(done.Problems) != 0 {
+		t.Fatalf("counts %+v problems %+v", done.Counts, done.Problems)
+	}
+	var subject string
+	e.Scalar(`SELECT subject FROM tickets WHERE id = $1`, &subject, e.ticketByRef(t, "21"))
+	if subject != "Invoice attached" {
+		t.Errorf("subject %q", subject)
+	}
+	e.Scalar(`SELECT subject FROM tickets WHERE id = $1`, &subject, e.ticketByRef(t, "22"))
+	if !strings.HasPrefix(subject, "Where is my order") {
+		t.Errorf("subject from the first message %q", subject)
+	}
+	if n := e.count(t, `SELECT count(*) FROM contacts WHERE workspace_id = $1 AND name = 'Bob Buyer'`, e.ws.ID); n != 1 {
+		t.Errorf("contacts named Bob Buyer %d", n)
+	}
+	if got := e.labels(t, e.ticketByRef(t, "21")); !slices.Contains(got, "billing") {
+		t.Errorf("labels %v", got)
+	}
+	if n := e.count(t, `SELECT count(*) FROM kb_articles WHERE workspace_id = $1 AND title = 'Reset it'`, e.ws.ID); n != 1 {
+		t.Errorf("articles titled Reset it %d", n)
+	}
+	if bob.Name != "Bob\x00 Buyer" {
+		t.Error("the source's data was changed in place")
+	}
 }

@@ -75,7 +75,7 @@ func TestGoogleSendOnlyConnect(t *testing.T) {
 	if err := w.s.sendMessage(w.ctx, w.wid, mid, false); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(uploaded, []byte("Sent only")) || !bytes.Contains(uploaded, []byte("+t"+itoa(tk.Number)+"@in.test")) {
+	if !bytes.Contains(uploaded, []byte("Sent only")) || bytes.Contains(uploaded, []byte("@in.test")) {
 		t.Fatalf("upload %q", uploaded)
 	}
 	if msg := w.message(mid); msg.Delivery != "sent" || !strings.HasPrefix(*msg.MsgID, "<m_"+mid.String()) {

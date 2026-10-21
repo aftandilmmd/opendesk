@@ -28,6 +28,7 @@ import (
 	"github.com/useopendesk/opendesk/internal/helpdesk/imports/source/intercom"
 	"github.com/useopendesk/opendesk/internal/helpdesk/imports/source/zendesk"
 	"github.com/useopendesk/opendesk/internal/jobs"
+	"github.com/useopendesk/opendesk/internal/plan"
 )
 
 // Sources, by key.
@@ -75,6 +76,8 @@ type Service struct {
 	Factories map[string]source.Factory
 	// Options reach the sources' APIs.
 	Options source.Options
+	// fileLimits, when set, replaces the plan's file limits (tests).
+	fileLimits func(plan.Entitlements) fileLimits
 }
 
 // New returns the service for d.

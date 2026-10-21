@@ -893,18 +893,32 @@ export type SupportChannelProvider = {
   key: string;
   name: string;
   description: string;
-  fields: { name: string; label: string; secret: boolean; help?: string }[];
+  /** opendesk sets the provider up itself; otherwise an admin enters webhook_url there. */
+  configures?: boolean;
+  fields: { name: string; label: string; secret: boolean; generated?: boolean; discovered?: boolean; help?: string }[];
 };
+export type SupportChannelAccount = { id: string; name: string };
 export type SupportChannelConnection = {
   id: string;
   provider: string;
   name: string;
   external_account_id: string;
   external_account_name: string;
+  /** The bot's @username where people address it by one (Telegram). */
+  external_account_handle?: string;
   status: "connected" | "error";
   last_error: string;
+  health_status: "unknown" | "healthy" | "action_required" | "error";
+  health_detail: string;
+  health_checked_at?: string;
   webhook_url: string;
   created_at: string;
+};
+export type SupportChannelAvailableDestination = {
+  id: string;
+  name: string;
+  kind?: string;
+  available: boolean;
 };
 export type SupportChannelDestination = {
   id: string;

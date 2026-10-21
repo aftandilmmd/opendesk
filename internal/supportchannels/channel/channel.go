@@ -5,14 +5,17 @@ package channel
 
 import (
 	"context"
+	"errors"
 	"net/http"
 )
 
 type Field struct {
-	Name   string `json:"name"`
-	Label  string `json:"label"`
-	Secret bool   `json:"secret"`
-	Help   string `json:"help,omitempty"`
+	Name       string `json:"name"`
+	Label      string `json:"label"`
+	Secret     bool   `json:"secret"`
+	Generated  bool   `json:"generated,omitempty"`
+	Discovered bool   `json:"discovered,omitempty"`
+	Help       string `json:"help,omitempty"`
 }
 
 type Descriptor struct {
@@ -20,11 +23,43 @@ type Descriptor struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Fields      []Field `json:"fields"`
+	// Configures is set by the registry for adapters that set themselves up
+	// (Configurer); the others need an admin to enter webhook_url at the provider.
+	Configures bool `json:"configures"`
 }
 
 type Account struct {
-	ID   string
-	Name string
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Handle is the bot's @username where people address it by one (Telegram).
+	Handle string `json:"-"`
+}
+
+// Destination is a provider location which can receive mirrored tickets.
+// Providers may discover these live, or report them through webhook events.
+type Destination struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind,omitempty"`
+	Available bool   `json:"available"`
+}
+
+// Setup contains the public endpoints a provider may configure for a
+// connection. Credentials remain provider-owned and never cross this boundary.
+type Setup struct {
+	WebhookURL string
+	// Foreign reports whether an address is another connection's webhook on this
+	// instance, so one bot's provider-wide setting is never taken from it.
+	Foreign func(url string) bool
+}
+
+// ErrInUse is returned by Configure when the provider-wide setting it would
+// change belongs to another connection.
+var ErrInUse = errors.New("the provider setting belongs to another connection")
+
+type Health struct {
+	Status string `json:"status"` // healthy | action_required | error
+	Detail string `json:"detail"`
 }
 
 type Ticket struct {
@@ -58,6 +93,14 @@ type Inbound struct {
 	Command           string // chat | link | reply | note | assign_self | status | priority
 	Text              string
 	Value             string
+	// Directed is true when the provider says the message explicitly addressed
+	// the bot. It gates new conversations outside mapped ticket threads.
+	Directed bool `json:",omitempty"`
+	// Mention is the @handle a message opens with, for providers that cannot tell
+	// whether a handle names the bot (Telegram). The engine treats the message as
+	// directed, and drops the handle from Text, only when it is the connection's
+	// own account.
+	Mention string `json:",omitempty"`
 	// TicketNumber names the ticket when the provider can't deliver the command
 	// inside its thread (a Slack slash command). The engine resolves it to the
 	// ticket's mirrored thread on the same connection.
@@ -68,10 +111,11 @@ type Inbound struct {
 // actions. Body is returned immediately after the events and their jobs have
 // been committed.
 type WebhookResult struct {
-	Events      []Inbound
-	Status      int
-	ContentType string
-	Body        []byte
+	Events       []Inbound
+	Destinations []Destination
+	Status       int
+	ContentType  string
+	Body         []byte
 }
 
 type Adapter interface {
@@ -82,6 +126,30 @@ type Adapter interface {
 	CreateThread(context.Context, *http.Client, map[string]string, string, Ticket) (Thread, error)
 	Post(context.Context, *http.Client, map[string]string, string, string) error
 	Update(context.Context, *http.Client, map[string]string, string, Ticket) error
+}
+
+// Discoverer is an optional capability for providers which expose destinations
+// through an API. Providers without it may discover destinations from signed
+// webhook events instead (Telegram, for example).
+type Discoverer interface {
+	Discover(context.Context, *http.Client, map[string]string) ([]Destination, error)
+}
+
+// AccountDiscoverer lists provider accounts selectable during onboarding. It
+// is used when a connection is scoped to an account such as a Discord server.
+type AccountDiscoverer interface {
+	DiscoverAccounts(context.Context, *http.Client, map[string]string) ([]Account, error)
+}
+
+// Configurer is an optional capability for providers that allow opendesk to
+// register its webhook endpoint or commands with the existing credentials.
+type Configurer interface {
+	Configure(context.Context, *http.Client, map[string]string, Setup) error
+}
+
+// HealthChecker verifies the provider-side setup without changing it.
+type HealthChecker interface {
+	Health(context.Context, *http.Client, map[string]string, Setup) (Health, error)
 }
 
 // Subscriber is an optional provider capability for products which deliver chat

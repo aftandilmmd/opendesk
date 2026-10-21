@@ -14,7 +14,8 @@ Same code, same API.
 | `collab` (hidden, see "Collab") | $38 per seat per month (Stripe recurring per-seat price `STRIPE_PRICE_COLLAB`; optional yearly `STRIPE_PRICE_COLLAB_YEARLY`) | unlimited | unlimited | $20 per paid seat, pooled; plus Collab |
 | `self_hosted` | free | unlimited | unlimited | unlimited (own key) |
 
-- Every feature is on every plan. Plans differ only in the limits above. The one deliberate
+- Every feature is on every plan. Plans differ only in the limits above and the import file
+  limits below. The one deliberate
   exception is Collab (members' own mail accounts, contracts/collab.md), which only the
   `collab` plan has.
 - Seats (Stripe quantity) = members whose role is owner, admin or agent. **Viewers are free.**
@@ -28,6 +29,25 @@ Same code, same API.
   `STRIPE_PRICE_CREDITS`), a $10 price that sets the rate. They never expire and are spent
   after the monthly allowance. Available on free and pro. See "AI top-ups".
 - Constants live in `internal/plan` (single source). Prices are Stripe objects, never hard-coded.
+
+## Imports
+
+Imports (contracts/imports.md) copy a source's attachments within the plan's file limits. Every
+file is also at most 25 MB, as for any attachment, on every plan.
+
+| plan | files per message | one message's files | all imported files in the workspace |
+| --- | --- | --- | --- |
+| `free` | 100 | 100 MB | 1 GB |
+| `pro`, `collab` | 1,000 | 1 GB | 50 GB per paid seat, pooled |
+| `self_hosted` | unlimited | unlimited | unlimited |
+
+- `plan.Entitlements` carries them (`ImportFilesPerMessage`, `ImportMessageBytes`, `ImportBytes`; 0 =
+  unlimited); the numbers live in `internal/plan`. Complimentary Collab counts billed seats.
+- The workspace's total is the size of every kept file an import copied (`attachments.imported`),
+  across imports and runs; undoing an import frees what it removed. Each run reads the plan again,
+  so an upgrade applies to the next run of an import in progress.
+- Files past a limit are left out and listed in the import's `problems`; on free the problem says a
+  paid plan raises the limit.
 
 ## Collab
 

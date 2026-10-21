@@ -176,11 +176,13 @@ func threadHeaders(ctx context.Context, q db.Querier, wid, ticketID uuid.UUID, e
 	return id, refs, nil
 }
 
-// addressing picks From, Reply-To and the envelope sender for a mailbox. alias is the
-// mailbox alias the customer wrote to, or "": SMTP sends as the alias, the platform sender
-// answers to it, and Google and Microsoft, whose send-as addresses are not known here,
-// send as the mailbox with the alias as Reply-To.
-func (s *service) addressing(m *mailboxRow, name string, number int64, alias string) (from mail.Address, replyTo *mail.Address, envFrom string) {
+// addressing picks From, Reply-To and the envelope sender for a mailbox. Customers always
+// answer to the mailbox's own address (or the alias they wrote to), never the forwarding
+// address: their reply reaches opendesk the way their first message did, and threads by
+// In-Reply-To and References. alias is the mailbox alias the customer wrote to, or "":
+// SMTP sends as the alias, the platform sender answers to it, and Google and Microsoft,
+// whose send-as addresses are not known here, send as the mailbox with the alias as Reply-To.
+func (s *service) addressing(m *mailboxRow, name, alias string) (from mail.Address, replyTo *mail.Address, envFrom string) {
 	display := m.displayName()
 	if name == "" {
 		name = display
@@ -189,20 +191,14 @@ func (s *service) addressing(m *mailboxRow, name string, number int64, alias str
 	if alias != "" {
 		addr = alias
 	}
-	if m.InboundKind == InboundForwarding {
-		replyTo = &mail.Address{Name: display, Address: m.ForwardingToken + "+t" + itoa(number) + "@" + s.inboundDomain()}
-	}
 	switch m.OutboundKind {
 	case OutboundSystem:
 		sys := s.systemFrom()
-		if replyTo == nil {
-			replyTo = &mail.Address{Name: display, Address: addr}
-		}
-		return mail.Address{Name: name, Address: sys.Address}, replyTo, sys.Address
+		return mail.Address{Name: name, Address: sys.Address}, &mail.Address{Name: display, Address: addr}, sys.Address
 	case OutboundSMTP:
-		return mail.Address{Name: name, Address: addr}, replyTo, m.Email
+		return mail.Address{Name: name, Address: addr}, nil, m.Email
 	}
-	if replyTo == nil && alias != "" {
+	if alias != "" {
 		replyTo = &mail.Address{Name: display, Address: alias}
 	}
 	return mail.Address{Name: name, Address: m.Email}, replyTo, m.Email
@@ -396,7 +392,7 @@ func (s *service) composeAndSend(ctx context.Context, wid, mid, ticketID uuid.UU
 		names.agent = agentName(bot.name)
 	}
 	alias := m.alias(t.receivedAt)
-	from, replyTo, envFrom := s.addressing(m, fromName(m.FromNameFormat, names), t.number, alias)
+	from, replyTo, envFrom := s.addressing(m, fromName(m.FromNameFormat, names), alias)
 	inReplyTo, refs, err := threadHeaders(ctx, s.d.DB.Pool, wid, ticketID, mid)
 	if err != nil {
 		return "", nil, err
@@ -495,7 +491,7 @@ func (s *service) composeAndSendThread(ctx context.Context, wid, mid, ticketID, 
 			names.agent = agentName(u.Name)
 		}
 	}
-	from, replyTo, envFrom := s.addressing(m, fromName(m.FromNameFormat, names), t.number, "")
+	from, replyTo, envFrom := s.addressing(m, fromName(m.FromNameFormat, names), "")
 	inReplyTo, refs, err := threadMessageHeaders(ctx, s.d.DB.Pool, wid, threadID, mid)
 	if err != nil {
 		return "", nil, err
@@ -763,7 +759,7 @@ func (s *service) sendTicketEmail(ctx context.Context, a jobs.SendTicketEmailArg
 	names := t.names
 	names.mailbox = m.displayName()
 	alias := m.alias(t.receivedAt)
-	from, replyTo, envFrom := s.addressing(m, fromName(m.FromNameFormat, names), t.number, alias)
+	from, replyTo, envFrom := s.addressing(m, fromName(m.FromNameFormat, names), alias)
 	inReplyTo, refs, err := threadHeaders(ctx, s.d.DB.Pool, a.WorkspaceID, t.id, uuid.Nil)
 	if err != nil {
 		return err

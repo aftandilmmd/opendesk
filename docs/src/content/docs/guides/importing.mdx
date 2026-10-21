@@ -16,7 +16,7 @@ Imports run in the background. You can close the page, and an import that is int
 ## What comes over
 
 - **Tickets** with their whole conversation: every customer message, every reply and every internal note, with its author, time and formatting.
-- **Attachments**, copied into opendesk, with images in messages pointing at the copies. Files over 25 MB and programs are left out, as for any attachment, and so is anything past 20 files on one message.
+- **Attachments**, copied into opendesk, with images in messages pointing at the copies. Programs and files over 25 MB are left out, as for any attachment. On opendesk Cloud your plan sets how many files one message brings and how much imports bring in all ([limits](/guides/billing/#imported-files)); a self-host has no such limit.
 - **Requesters**, as contacts with their name, email and phone. A customer who is already a contact here is matched by email instead of added twice.
 - **Companies**, from Zendesk organizations, Freshdesk companies and Intercom companies, matched to existing companies by domain or name.
 - **Labels**, from the source's tags, plus one label on every imported ticket (`zendesk-import`, for example) so you can find them all.
@@ -223,7 +223,7 @@ Import first, then connect the mailbox. A forwarded mailbox only brings in new e
 
 ## Watch it
 
-The import's page updates live: how many tickets, messages, contacts, companies, articles and attachments have come over, how many were skipped, and a list of **problems**, the latest 50, such as a ticket that could not be read or an attachment that was too large. A problem never stops the import: that item is left out and the rest goes on.
+The import's page updates live: how many tickets, messages, contacts, companies, articles and attachments have come over, how many were skipped, and a list of **problems**, the latest 50, such as a ticket that could not be read, an attachment that was too large, or files past your plan's limits. A problem never stops the import: that item is left out and the rest goes on.
 
 When the import is done, stops, or needs new credentials, whoever started it is notified in the app, by email, on their phone and on the desktop. Turn this off under **Imports** in your [notification settings](/guides/notifications/#choose-what-reaches-you).
 
@@ -287,7 +287,7 @@ A ticket your team has written on since the import stays, with everything on it,
 
 ## Self-hosting
 
-Imports work the same on a self-host, with nothing to configure. Your server reads the source over https, so it needs outbound access to the product's API: `<subdomain>.zendesk.com`, `api.helpscout.net` and `docsapi.helpscout.net`, `<domain>.freshdesk.com`, or `api.intercom.io` (`api.eu.intercom.io`, `api.au.intercom.io`), and to the hosts their attachments are stored on. Imported attachments go to your [storage](/self-hosting/storage/) like any other.
+Imports work the same on a self-host, with nothing to configure. Your server reads the source over https, so it needs outbound access to the product's API: `<subdomain>.zendesk.com`, `api.helpscout.net` and `docsapi.helpscout.net`, `<domain>.freshdesk.com`, or `api.intercom.io` (`api.eu.intercom.io`, `api.au.intercom.io`), and to the hosts their attachments are stored on. Imported attachments go to your [storage](/self-hosting/storage/) like any other, with no limit on how many files or how much comes over, only the 25 MB of any one file.
 
 The API for imports is in [the contract](https://github.com/useopendesk/opendesk/blob/main/contracts/imports.md), and its progress arrives as [`import.updated` events](/api/events/).
 
