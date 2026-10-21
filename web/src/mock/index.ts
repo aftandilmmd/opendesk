@@ -63,6 +63,9 @@ export function installMock(): void {
   for (const w of db.workspaces) syncReceiving(w.mailboxes);
   const gate = params.get("mock_gate");
   if (gate === "mfa" || gate === "reauth") db.stepUp = gate === "mfa" ? "mfa_required" : "reauth_required";
+  // ?mock_locale=az: every workspace shows its customer pages in that language for everyone.
+  const fixed = params.get("mock_locale");
+  if (fixed) for (const w of db.workspaces) w.workspace.settings = { ...w.workspace.settings, locale: fixed, locale_fixed: true };
   registerAuth();
   registerWorkspace();
   registerTickets();

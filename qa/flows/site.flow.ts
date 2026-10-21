@@ -27,3 +27,17 @@ test("the privacy policy's Google user data terms", async ({ page, proof }) => {
   await expect(google).toBeVisible();
   await proof.shot("privacy-google", { caption: "What opendesk does with Google user data, for each kind of connection" });
 });
+
+test("the language count on the home and pricing pages", async ({ page, proof }) => {
+  await proof.open("/");
+  const tile = page.getByText("A light widget for your site in 14 languages.", { exact: false });
+  await tile.scrollIntoViewIfNeeded();
+  await expect(tile).toBeVisible();
+  await proof.shot("home-languages", { caption: "Home: the live chat tile, now 14 languages", target: tile });
+
+  await proof.open("/pricing/");
+  const row = page.getByRole("heading", { name: "14 languages", level: 3 });
+  await row.scrollIntoViewIfNeeded();
+  await expect(row).toBeVisible();
+  await proof.shot("pricing-languages", { caption: "Pricing: what every plan includes, with 14 languages", target: row.locator("../..") });
+});
