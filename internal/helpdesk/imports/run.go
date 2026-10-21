@@ -129,6 +129,9 @@ func (s *Service) run(ctx context.Context, args jobs.ImportRunArgs) error {
 		x.Options.Articles = false
 	}
 	deadline := time.Now().Add(runBudget)
+	// Copying a ticket's files may go on a minute past the budget: with one download in
+	// flight it still ends before the job's timeout.
+	w.copyUntil = deadline.Add(time.Minute)
 	for time.Now().Before(deadline) {
 		done, err := s.step(ctx, w)
 		if err != nil {
@@ -288,6 +291,8 @@ func (s *Service) trouble(ctx context.Context, x *row, cause error) error {
 	switch {
 	case errors.Is(cause, errStopped):
 		return nil
+	case errors.Is(cause, errOutOfTime):
+		return river.JobSnooze(0)
 	case ctx.Err() != nil:
 		// Shutting down: the next worker picks up at the checkpoint.
 		return river.JobSnooze(5 * time.Second)

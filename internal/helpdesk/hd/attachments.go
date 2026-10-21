@@ -171,6 +171,8 @@ type Upload struct {
 	// Accept, when set, decides whether the file is taken, by its first bytes, name and
 	// size; programs and scripts are refused before it is asked.
 	Accept Accept
+	// Imported marks a file an import copied: it counts against the plan's import limit.
+	Imported bool
 }
 
 // SaveUpload sniffs, refuses executables, stores the object under
@@ -210,8 +212,8 @@ func SaveUpload(ctx context.Context, st storage.Storage, q db.Querier, up Upload
 		return domain.Attachment{}, httpx.E(413, "too_large", "Files can be at most 25 MB.")
 	}
 	if _, err := q.Exec(ctx, `INSERT INTO attachments (id, workspace_id, filename, content_type, size_bytes, storage_key,
-		uploaded_by, uploaded_by_contact_id, uploaded_by_api_key_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		id, up.WorkspaceID, filename, ct, counter.n, key, up.UploadedBy, up.UploadedByContact, up.UploadedByAPIKey); err != nil {
+		uploaded_by, uploaded_by_contact_id, uploaded_by_api_key_id, imported) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		id, up.WorkspaceID, filename, ct, counter.n, key, up.UploadedBy, up.UploadedByContact, up.UploadedByAPIKey, up.Imported); err != nil {
 		_ = st.Delete(context.WithoutCancel(ctx), key)
 		return domain.Attachment{}, fmt.Errorf("insert attachment: %w", err)
 	}

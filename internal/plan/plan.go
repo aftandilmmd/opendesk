@@ -55,6 +55,17 @@ const (
 	MinBalance = Micro(10_000) // $0.01
 )
 
+// Import file limits (contracts/billing.md "Imports"): what imports copy of one message's
+// files, and of a workspace's in all. Every file is also at most 25 MB, as for any attachment.
+const (
+	FreeImportFilesPerMessage       = 100
+	FreeImportMessageBytes    int64 = 100 << 20 // 100 MB
+	FreeImportBytes           int64 = 1 << 30   // 1 GB per workspace
+	PaidImportFilesPerMessage       = 1000
+	PaidImportMessageBytes    int64 = 1 << 30  // 1 GB
+	PaidImportBytesPerSeat    int64 = 50 << 30 // 50 GB per paid seat, pooled
+)
+
 // Micro is an amount of US dollars in millionths of a dollar. Balances, allowances and
 // usage rows are kept in Micro; the API reports dollars as numbers with up to 6 decimals.
 type Micro int64
@@ -133,6 +144,12 @@ type Entitlements struct {
 	// MonthlyUSD is the monthly AI usage allowance; zero with UnlimitedAI.
 	MonthlyUSD  Micro `json:"-"`
 	UnlimitedAI bool  `json:"unlimited_ai"`
+	// ImportFilesPerMessage and ImportMessageBytes bound what an import copies of one
+	// message's files; ImportBytes, what imports copy into the workspace in all. Zero
+	// means unlimited.
+	ImportFilesPerMessage int   `json:"import_files_per_message"`
+	ImportMessageBytes    int64 `json:"import_message_bytes"`
+	ImportBytes           int64 `json:"import_bytes"`
 }
 
 // Service reads and enforces entitlements. A nil *Service behaves like a self-hosted
@@ -213,11 +230,14 @@ func (s *Service) Entitlements(ctx context.Context, q db.Querier, wid uuid.UUID)
 	case planName == Collab && Paid(status):
 		e.Plan, e.Collab = Collab, true
 		e.MonthlyUSD = CollabUSDPerSeat * Micro(max(seats, 1))
+		e.paidImports(seats)
 	case planName == Pro && Paid(status):
 		e.Plan = Pro
 		e.MonthlyUSD = ProUSDPerSeat * Micro(max(seats, 1))
+		e.paidImports(seats)
 	default:
 		e.MaxMailboxes, e.MaxMembers, e.MonthlyUSD = FreeMaxMailboxes, FreeMaxMembers, FreeMonthlyUSD
+		e.ImportFilesPerMessage, e.ImportMessageBytes, e.ImportBytes = FreeImportFilesPerMessage, FreeImportMessageBytes, FreeImportBytes
 	}
 	// Complimentary Collab is the collab plan without a subscription, until it ends.
 	if e.Plan != Collab && ComplimentaryActive(e.CollabAccess, e.CollabUntil, time.Now()) {
@@ -228,12 +248,19 @@ func (s *Service) Entitlements(ctx context.Context, q db.Querier, wid uuid.UUID)
 		e.Plan, e.Collab = Collab, true
 		e.MaxMailboxes, e.MaxMembers = 0, 0
 		e.MonthlyUSD = CollabUSDPerSeat * Micro(billed)
+		e.paidImports(billed)
 	}
 	if s.CollabOff {
 		e.Collab = false
 	}
 	o.apply(&e)
 	return e, nil
+}
+
+// paidImports sets the import file limits of a paid plan with seats.
+func (e *Entitlements) paidImports(seats int) {
+	e.ImportFilesPerMessage, e.ImportMessageBytes = PaidImportFilesPerMessage, PaidImportMessageBytes
+	e.ImportBytes = PaidImportBytesPerSeat * int64(max(seats, 1))
 }
 
 // ComplimentaryActive reports whether complimentary Collab access is in effect at now.

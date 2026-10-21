@@ -16,3 +16,22 @@ func TestOverrides(t *testing.T) {
 		t.Fatalf("no overrides: %+v", e)
 	}
 }
+
+// TestImportLimits: a paid plan's import file limits grow with its seats; self-hosted has none.
+func TestImportLimits(t *testing.T) {
+	var e Entitlements
+	e.paidImports(3)
+	if e.ImportFilesPerMessage != PaidImportFilesPerMessage || e.ImportMessageBytes != PaidImportMessageBytes ||
+		e.ImportBytes != 3*PaidImportBytesPerSeat {
+		t.Fatalf("paid: %+v", e)
+	}
+	e.paidImports(0)
+	if e.ImportBytes != PaidImportBytesPerSeat {
+		t.Fatalf("no seats: %+v", e)
+	}
+	var none *Service
+	self, err := none.Entitlements(t.Context(), nil, [16]byte{})
+	if err != nil || self.ImportFilesPerMessage != 0 || self.ImportMessageBytes != 0 || self.ImportBytes != 0 {
+		t.Fatalf("self-hosted: %+v %v", self, err)
+	}
+}

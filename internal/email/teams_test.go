@@ -314,12 +314,12 @@ func TestOutboundSMTPSendsAsAlias(t *testing.T) {
 		m.Aliases = []string{"team@acme.test"}
 	})
 	m.OutboundKind = OutboundSMTP
-	from, replyTo, env := w.s.addressing(m, "Anna at Support", 3, "team@acme.test")
+	from, replyTo, env := w.s.addressing(m, "Anna at Support", "team@acme.test")
 	if from.Address != "team@acme.test" || replyTo != nil || env != m.Email {
 		t.Fatalf("smtp alias: %v %v %q", from, replyTo, env)
 	}
 	m.OutboundKind = KindGoogle
-	from, replyTo, _ = w.s.addressing(m, "Anna at Support", 3, "team@acme.test")
+	from, replyTo, _ = w.s.addressing(m, "Anna at Support", "team@acme.test")
 	if from.Address != m.Email || replyTo == nil || replyTo.Address != "team@acme.test" {
 		t.Fatalf("google alias: %v %v", from, replyTo)
 	}

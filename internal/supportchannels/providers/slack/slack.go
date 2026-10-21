@@ -23,9 +23,51 @@ type Adapter struct{ BaseURL string }
 
 func (Adapter) Describe() channel.Descriptor {
 	return channel.Descriptor{Key: "slack", Name: "Slack", Description: "Mirror email tickets into Slack threads and work them by talking to Ollie.", Fields: []channel.Field{
-		{Name: "bot_token", Label: "Bot token", Secret: true, Help: "A bot token with chat:write and app_mentions:read, subscribed to app_mention events."},
+		{Name: "bot_token", Label: "Bot token", Secret: true, Help: "A bot token with chat:write, app_mentions:read, channels:read and groups:read."},
 		{Name: "signing_secret", Label: "Signing secret", Secret: true},
 	}}
+}
+
+func (a Adapter) Discover(ctx context.Context, c *http.Client, cr map[string]string) ([]channel.Destination, error) {
+	var destinations []channel.Destination
+	cursor := ""
+	for page := 0; page < 50; page++ {
+		var out struct {
+			Channels []struct {
+				ID         string `json:"id"`
+				Name       string `json:"name"`
+				IsMember   bool   `json:"is_member"`
+				IsArchived bool   `json:"is_archived"`
+			} `json:"channels"`
+			Metadata struct {
+				NextCursor string `json:"next_cursor"`
+			} `json:"response_metadata"`
+		}
+		input := map[string]any{"types": "public_channel,private_channel", "exclude_archived": true, "limit": 200}
+		if cursor != "" {
+			input["cursor"] = cursor
+		}
+		if err := a.call(ctx, c, cr["bot_token"], "conversations.list", input, &out); err != nil {
+			return nil, err
+		}
+		for _, item := range out.Channels {
+			if item.IsMember && !item.IsArchived {
+				destinations = append(destinations, channel.Destination{ID: item.ID, Name: item.Name, Kind: "channel", Available: true})
+			}
+		}
+		cursor = strings.TrimSpace(out.Metadata.NextCursor)
+		if cursor == "" {
+			return destinations, nil
+		}
+	}
+	return nil, errors.New("slack conversations.list returned too many pages")
+}
+
+func (a Adapter) Health(ctx context.Context, c *http.Client, cr map[string]string, _ channel.Setup) (channel.Health, error) {
+	if _, err := a.Validate(ctx, c, cr); err != nil {
+		return channel.Health{}, err
+	}
+	return channel.Health{Status: "action_required", Detail: "Credentials work. Verify the Events API and /opendesk request URLs in Slack."}, nil
 }
 
 func (a Adapter) endpoint(path string) string {
@@ -130,14 +172,22 @@ func (Adapter) Parse(h http.Header, body []byte) (channel.WebhookResult, error) 
 		response, _ := json.Marshal(map[string]string{"challenge": x.Challenge})
 		return channel.WebhookResult{Status: http.StatusOK, ContentType: "application/json", Body: response}, nil
 	}
-	if (x.Event.Type != "message" && x.Event.Type != "app_mention") || x.Event.BotID != "" || x.Event.ThreadTS == "" {
+	if (x.Event.Type != "message" && x.Event.Type != "app_mention") || x.Event.BotID != "" {
 		return channel.WebhookResult{}, nil
+	}
+	// A root app mention starts a new Ollie conversation in its own Slack
+	// thread. Ordinary root messages remain ignored.
+	if x.Event.ThreadTS == "" {
+		if x.Event.Type != "app_mention" {
+			return channel.WebhookResult{}, nil
+		}
+		x.Event.ThreadTS = x.Event.TS
 	}
 	cmd, text := parseCommand(x.Event.Text)
 	if cmd == "" {
 		return channel.WebhookResult{}, nil
 	}
-	return channel.WebhookResult{Events: []channel.Inbound{{EventID: x.EventID + ":" + x.Event.TS, AccountID: x.TeamID, ExternalChannelID: x.Event.Channel, ExternalThreadID: x.Event.ThreadTS, ExternalUserID: x.Event.User, Command: cmd, Text: text, Value: text}}}, nil
+	return channel.WebhookResult{Events: []channel.Inbound{{EventID: x.EventID + ":" + x.Event.TS, AccountID: x.TeamID, ExternalChannelID: x.Event.Channel, ExternalThreadID: x.Event.ThreadTS, ExternalUserID: x.Event.User, Command: cmd, Text: text, Value: text, Directed: x.Event.Type == "app_mention"}}}, nil
 }
 
 func parseCommand(s string) (string, string) {
