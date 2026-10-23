@@ -20,6 +20,7 @@ import { SaveBar } from "@/components/settings/SaveBar";
 import { templateProblems } from "@/components/settings2/MemberProfileFields";
 import { tagFor } from "@/components/templates/catalog";
 import { EmailPreview } from "@/components/templates/EmailPreview";
+import { SignatureEditor } from "@/components/templates/SignatureEditor";
 import { TemplateEditor } from "@/components/templates/TemplateEditor";
 import { VariablePicker } from "@/components/templates/VariablePicker";
 import { connectionLabel, GoogleGlyph, MailboxIcon, MailboxStatus, MicrosoftGlyph, notReceiving, TestResults } from "@/components/mailboxes/kinds";
@@ -702,22 +703,22 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
       </Section>
 
       <Section title={t("detail.signature")} description={t("detail.signatureHint", { tag: "{{ agent.signature }}" })}>
-        <div className="flex flex-col gap-3 py-3.5">
-          <TemplateEditor
-            kind="signature"
-            html
-            value={draft.signature_html}
-            onChange={(v) => {
-              set("signature_html", v);
-              setSaveProblems((p) => ({ ...p, signature: [] }));
-            }}
-            placeholder={t("detail.signaturePlaceholder")}
-            ariaLabel={t("detail.signature")}
-            minHeight={88}
-            problems={signatureProblems.length ? signatureProblems : saveProblems.signature}
-          />
-          <EmailPreview collapsible defaultOpen={false} height={420} title={t("detail.preview")} body={signatureBody} onProblems={onSignatureProblems} />
-        </div>
+        <SignatureEditor
+          className="py-3.5"
+          kind="signature"
+          value={draft.signature_html}
+          onChange={(v) => {
+            set("signature_html", v);
+            setSaveProblems((p) => ({ ...p, signature: [] }));
+          }}
+          placeholder={t("detail.signaturePlaceholder")}
+          ariaLabel={t("detail.signature")}
+          minHeight={88}
+          problems={signatureProblems.length ? signatureProblems : saveProblems.signature}
+          previewTitle={t("detail.preview")}
+          previewBody={signatureBody}
+          onProblems={onSignatureProblems}
+        />
       </Section>
 
       <Section title={t("detail.autoReply")} description={t("detail.autoReplyHint")}>

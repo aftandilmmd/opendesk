@@ -10,14 +10,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BackLink, Row, Section, SettingsPage } from "@/components/layout";
 import { ColorSwatchPicker } from "@/components/settings2/ColorSwatchPicker";
-import { RichEditor } from "@/components/editor/RichEditor";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm";
 import { EmptyState } from "@/components/ui/empty";
 import { TextInput } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
+import { SignatureEditor } from "@/components/templates/SignatureEditor";
 import { ACCOUNT_TONES, ProviderMark } from "@/components/collab/bits";
-import { editorFocused, FromNameHint, OutOfOfficeSection, SignatureSync } from "@/components/collab/AccountSettings";
+import { FromNameHint, OutOfOfficeSection, SignatureSync } from "@/components/collab/AccountSettings";
 import { ImapFields, imapValid, type ImapForm } from "@/components/collab/ConnectAccount";
 import { audienceIsEmpty, ChoiceCard, SharedAudience } from "@/components/collab/pickers";
 import { api, type CollabAccountPatch } from "@/lib/api/endpoints";
@@ -82,12 +82,12 @@ export default function MailAccountDetail() {
   const base = useMemo(() => (account ? formOf(account) : null), [account]);
   // A signature or From name that changed at the provider replaces the field while it is not being edited.
   const lastBase = useRef(base);
-  // The editor's own form of the saved signature (it writes links its way): not a change.
-  const [sigShown, setSigShown] = useState<string | null>(null);
+  // Whether the person changed the signature: only then does a save send it, so opening
+  // and saving other settings never writes a signature back to Gmail.
+  const [sigEdited, setSigEdited] = useState(false);
   useEffect(() => {
     const prev = lastBase.current;
     lastBase.current = base;
-    if (prev?.signature_html !== base?.signature_html) setSigShown(null);
     if (!prev || !base) return;
     setForm((f) => {
       if (!f) return f;
@@ -105,7 +105,7 @@ export default function MailAccountDetail() {
     if (form.name.trim() !== base.name) p.name = form.name.trim();
     if (form.display_name.trim() !== base.display_name) p.display_name = form.display_name.trim();
     if (form.color !== base.color) p.color = form.color;
-    if (form.signature_html !== base.signature_html && form.signature_html !== sigShown) p.signature_html = form.signature_html;
+    if (sigEdited && form.signature_html !== base.signature_html) p.signature_html = form.signature_html;
     if (form.visibility !== base.visibility) p.visibility = form.visibility;
     const aud = form.visibility === "shared" ? (form.shared_with.everyone ? { everyone: true, team_ids: [], user_ids: [] } : form.shared_with) : { everyone: false, team_ids: [], user_ids: [] };
     if (form.visibility === "shared" && (p.visibility || !sameAudience(aud, base.shared_with))) p.shared_with = aud;
@@ -118,7 +118,7 @@ export default function MailAccountDetail() {
       if (Object.keys(changed).length) p.imap = changed as CollabAccountPatch["imap"];
     }
     return p;
-  }, [form, base, account, imap, imapBase, sigShown]);
+  }, [form, base, account, imap, imapBase, sigEdited]);
   const dirty = Object.keys(patch).length > 0;
   const audienceOk = !form || form.visibility === "private" || !audienceIsEmpty(form.shared_with);
   const imapOk = !imap || account?.provider !== "imap" || imapValid(imap, false);
@@ -129,6 +129,7 @@ export default function MailAccountDetail() {
       storeAccount(qc, a);
       setForm(formOf(a));
       setImap(imapOf(a));
+      setSigEdited(false);
       setFailure(null);
       toast.success(t("detail.saved"));
     },
@@ -243,17 +244,17 @@ export default function MailAccountDetail() {
 
       <Section title={t("detail.signature")} description={t("detail.signatureHint")} flush>
         <SignatureSync account={account} manage={manage} onReconnect={() => void reconnect(account)} />
-        <RichEditor
-          value={form.signature_html}
-          onChange={(html) => {
-            if (!editorFocused()) setSigShown(html);
-            set({ signature_html: html });
-          }}
-          editable={manage}
-          toolbar={manage ? "full" : "none"}
-          ariaLabel={t("detail.signature")}
-          contentClassName="min-h-[96px] text-[13px]"
-        />
+        <div className="p-3">
+          <SignatureEditor
+            value={form.signature_html}
+            onChange={(html) => {
+              setSigEdited(true);
+              set({ signature_html: html });
+            }}
+            disabled={!manage}
+            ariaLabel={t("detail.signature")}
+          />
+        </div>
       </Section>
 
       <OutOfOfficeSection account={account} manage={manage} onReconnect={() => void reconnect(account)} />

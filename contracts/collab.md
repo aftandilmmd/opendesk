@@ -150,6 +150,11 @@ a reply in its conversation, a new message or a forward in a conversation of its
   written; sending or discarding it is `502` or done, and the next sync shows the provider's state.
 - The web composer saves a draft about two seconds after typing stops and when it closes, and
   sends the draft when there is one.
+- The composer puts the account's signature in as one block, `<div class="od-signature">` around
+  `signature_html` exactly as stored: drawn as designed (tables, inline styles, sized images), never
+  edited inline, removed whole, and swapped for the new account's when From changes. The stored email
+  policy keeps the class, so a saved draft opens with its signature intact; a Gmail draft's own
+  `gmail_signature` opens as a block too.
 - Mail sent over SMTP never carries a `Bcc` header (Bcc is in the envelope only); the copy in Sent
   and drafts keep it.
 
@@ -433,6 +438,11 @@ provider's answer, so what opendesk wrote (in the provider's own form) is never 
 change. The first read keeps a signature written in opendesk when Gmail has none. A failed read is
 logged with its reason only and never fails the sync. A reconnect reads the settings again on the
 next sync.
+
+A signature is never changed by being opened: the settings page edits one the rich editor cannot
+hold (tables, inline styles, sized images, divs) as HTML with a live preview, and sends
+`signature_html` in the PATCH only when the person changed it, so opening and saving other settings
+never writes a signature back to Gmail.
 
 **Automatic reply mapping.** Neither provider can reply only to people outside the organization,
 so the shared restriction is the other way round: `internal_only` replies only inside it.

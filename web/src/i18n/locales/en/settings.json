@@ -634,5 +634,12 @@
     "preview": "Preview",
     "previewOther": "The preview fills the sender's name and details with yours.",
     "saved": "Profile saved"
+  },
+  "signatureEditor": {
+    "block": "Signature",
+    "edit": "Edit signature",
+    "remove": "Remove signature",
+    "preview": "Preview",
+    "none": "No signature"
   }
 }

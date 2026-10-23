@@ -86,6 +86,29 @@ function folder(account_id: string, name: string, role: MailFolderRole | null, k
   return { id: uuid(), account_id, name, path, role, kind, unread: 0, total: 0, color, can_rename: !role };
 }
 
+// The Margin wordmark a signature carries, as Gmail would host it.
+const MARGIN_WORDMARK = `data:image/svg+xml;utf8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="64" viewBox="0 0 240 64"><rect x="4" y="4" width="56" height="56" rx="12" fill="#4f46e5"/>' +
+    '<rect x="16" y="4" width="5" height="56" fill="#ffffff" opacity="0.35"/><rect x="28" y="20" width="22" height="6" rx="3" fill="#ffffff" opacity="0.8"/><rect x="28" y="34" width="16" height="6" rx="3" fill="#ffffff" opacity="0.8"/>' +
+    '<text x="76" y="44" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#111827" letter-spacing="-1">Margin</text></svg>',
+)}`;
+
+/** A signature as Gmail keeps one made with a signature generator: a layout table, inline styles, a sized logo. */
+function gmailSignature(name: string, email: string): string {
+  const grey = "color:#6b7280";
+  return (
+    `<div dir="ltr"><div>Thanks,</div><br>` +
+    `<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#1f2328"><tbody>` +
+    `<tr><td style="font-size:14px"><b>${escapeHtml(name)}</b></td></tr>` +
+    `<tr><td style="${grey}">Customer success &amp; onboarding</td></tr>` +
+    `<tr><td style="padding:10px 0 8px"><img src="${MARGIN_WORDMARK}" width="120" height="32" alt="Margin"></td></tr>` +
+    `<tr><td><a href="mailto:${email}" style="color:#4f46e5;text-decoration:none">${email}</a> <span style="color:#d1d5db">·</span> <a href="https://margin.app" style="color:#4f46e5;text-decoration:none">margin.app</a></td></tr>` +
+    `<tr><td style="${grey}">+1 415 555 0134</td></tr>` +
+    `<tr><td style="padding-top:10px;color:#9ca3af;font-size:11px;line-height:15px">Margin Labs, Inc. · 548 Market St, San Francisco, CA 94104 · Registered in Delaware No. 7700001</td></tr>` +
+    `</tbody></table></div>`
+  );
+}
+
 function seedState(ws: WsData): State {
   const me = db.meId;
   const memberIds = ws.members.map((m) => m.user_id);
@@ -121,7 +144,7 @@ function seedState(ws: WsData): State {
     visibility: "private",
     ownerId: me,
     // Synced with Gmail both ways (contracts/collab.md "Account settings").
-    signature_html: `<p><strong>${escapeHtml(meUser?.name ?? "")}</strong><br>Customer success, Margin<br><a href="https://margin.app">margin.app</a> · +1 415 555 0134</p>`,
+    signature_html: gmailSignature(meUser?.name ?? "", `${local}@margin.app`),
     signature_sync: "two_way",
     signature_synced_at: new Date(now - 6 * MIN).toISOString(),
     display_name_sync: "two_way",
@@ -266,7 +289,7 @@ function seedState(ws: WsData): State {
       reply_to: [],
       subject: `Re: ${workThreads[0].subject}`,
       snippet: text,
-      body_html: `<p>${escapeHtml(text)}</p><p></p>${work.signature_html}`,
+      body_html: `<p>${escapeHtml(text)}</p><p></p><div class="od-signature">${work.signature_html}</div>`,
       body_text: text,
       sent_at: new Date(now - 25 * MIN).toISOString(),
       unread: false,
@@ -297,7 +320,7 @@ function seedState(ws: WsData): State {
       reply_to: [],
       subject,
       snippet: text.slice(0, 140),
-      body_html: `<p>${escapeHtml(text)}</p><p></p>${work.signature_html}`,
+      body_html: `<p>${escapeHtml(text)}</p><p></p><div class="od-signature">${work.signature_html}</div>`,
       body_text: text,
       sent_at: new Date(now - 3 * HOUR).toISOString(),
       unread: false,

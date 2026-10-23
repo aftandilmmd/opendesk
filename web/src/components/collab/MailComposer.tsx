@@ -7,6 +7,7 @@
 // draft, and Discard deletes it. A draft made anywhere (Gmail, Outlook) opens here too.
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Paperclip, Send, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,6 +22,7 @@ import { bytes, fullDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { qk } from "@/lib/queries";
 import { RichEditor, type RichEditorHandle } from "@/components/editor/RichEditor";
+import { replaceSignature, SignatureBlock, signatureBlockHtml, withoutSignature } from "@/components/editor/signature";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm";
 import { Select } from "@/components/ui/select";
@@ -50,9 +52,9 @@ export type ComposerDraft = {
 // Inline drafts survive moving between conversations (memory only).
 const useDrafts = create<Record<string, ComposerDraft>>(() => ({}));
 
-/** What the account adds under what you write. */
+/** What the account adds under what you write: its signature, as one block sent as stored. */
 function withSignature(signature: string | undefined) {
-  return signature && !isBlankHtml(signature) ? `<p></p><p></p>${signature}` : "<p></p>";
+  return signature && !isBlankHtml(signature) ? `<p></p><p></p>${signatureBlockHtml(signature)}` : "<p></p>";
 }
 
 /** A fresh draft for a mode: who it goes to, its subject, and the signature (and the original, forwarding). */
@@ -118,6 +120,14 @@ export function MailComposer({ variant, threadId, accounts, accountId, onAccount
   const editor = useRef<RichEditorHandle>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const account = accounts.find((a) => a.id === accountId);
+  const navigate = useNavigate();
+  const accountIdRef = useRef(accountId);
+  accountIdRef.current = accountId;
+  // The signature block's settings button opens the account's signature.
+  const extensions = useMemo(
+    () => [SignatureBlock.configure({ onSettings: () => void navigate({ to: "/settings/mail-accounts/$accountId", params: { accountId: accountIdRef.current } }) })],
+    [navigate],
+  );
 
   const setDraft = (patch: Partial<ComposerDraft>) =>
     setDraftState((d) => {
@@ -249,11 +259,10 @@ export function MailComposer({ variant, threadId, accounts, accountId, onAccount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Switching the From account swaps the signature, when the text still ends with the old one.
+  // Switching the From account swaps the signature block for the new account's (unless it was taken out).
   const prevAccount = useRef(accountId);
   useEffect(() => {
     if (prevAccount.current === accountId) return;
-    const before = accounts.find((a) => a.id === prevAccount.current)?.signature_html ?? "";
     prevAccount.current = accountId;
     // A draft belongs to its account: the one made in the old account goes, the next save makes it in this one.
     const old = draftIdRef.current;
@@ -267,10 +276,10 @@ export function MailComposer({ variant, threadId, accounts, accountId, onAccount
     }
     const after = account?.signature_html ?? "";
     setDraftState((d) => {
-      const html = before && d.html.includes(before) ? d.html.replace(before, after) : isBlankHtml(d.html) ? withSignature(after) : d.html;
+      const html = replaceSignature(d.html, after) ?? (isBlankHtml(d.html) ? withSignature(after) : d.html);
       return { ...d, html };
     });
-  }, [accountId, account, accounts, changed]);
+  }, [accountId, account, changed]);
 
   const upload = (files: FileList | File[]) => {
     for (const file of Array.from(files)) {
@@ -367,7 +376,7 @@ export function MailComposer({ variant, threadId, accounts, accountId, onAccount
       }
       onDiscard?.();
     };
-    const dirty = !!draftIdRef.current || !isBlankHtml(draft.html.replace(account?.signature_html ?? "\u0000", "")) || uploads.length > 0;
+    const dirty = !!draftIdRef.current || !isBlankHtml(withoutSignature(draft.html)) || uploads.length > 0;
     if (!dirty) return clear();
     confirm.show(draftIdRef.current ? t("composer.discardDraftConfirm") : t("composer.discardConfirm"), clear, {
       title: draftIdRef.current ? t("composer.discardDraftTitle") : t("composer.discardTitle"),
@@ -475,6 +484,7 @@ export function MailComposer({ variant, threadId, accounts, accountId, onAccount
         placeholder={draft.mode === "new" ? t("composer.newPlaceholder") : t("composer.placeholder")}
         ariaLabel={draft.mode === "new" ? t("composer.newPlaceholder") : t("composer.placeholder")}
         onSubmit={() => void submit()}
+        extensions={extensions}
         className={variant === "floating" ? "min-h-[200px] flex-1" : undefined}
         contentClassName={cn("text-[13px]", variant === "floating" ? "min-h-[180px]" : "min-h-[96px] max-h-[360px]")}
         toolbar="compact"

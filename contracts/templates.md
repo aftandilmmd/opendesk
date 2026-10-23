@@ -119,6 +119,11 @@ else the author's personal signature. Team and address signatures can place the 
 `{{ agent.signature }}`, so a company signature can wrap each person's own lines. Signatures take
 every variable; the personal signature cannot contain `{{ agent.signature }}`.
 
+Every signature is edited in one editor: a designed one (tables, inline styles, sized images) opens
+as HTML, its tags kept as typed, and is never simplified unless the person chooses to; a save sends
+it only when it changed. Wherever the app shows a signature (the reply composer's preview, the
+editors' previews) it shows it as recipients get it, its layout and image sizes kept.
+
 Each member has a profile per workspace that feeds `agent.*`:
 
 ```ts
