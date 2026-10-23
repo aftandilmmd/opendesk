@@ -53,8 +53,8 @@
   --inverse: #0a0a0a;
   --inverse-hover: #262626;
   --inverse-fg: #ffffff;
-  --note: #fffbeb;
-  --note-line: #ead9a6;
+  --note: #fafafa;
+  --note-line: #d4d4d4;
   --focus: rgb(10 10 10 / 0.14);
   --focus-line: #a3a3a3;
   --ok: #16a34a;
@@ -151,8 +151,8 @@
   --inverse: #f7f7f7;
   --inverse-hover: #e4e4e4;
   --inverse-fg: #0a0a0a;
-  --note: #24221b;
-  --note-line: #4d4632;
+  --note: #1f2023;
+  --note-line: #45464b;
   --focus: rgb(255 255 255 / 0.16);
   --focus-line: #6b6b6b;
   --ok: #22c55e;
