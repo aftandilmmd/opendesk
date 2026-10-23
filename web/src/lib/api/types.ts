@@ -42,9 +42,11 @@ export type WorkspaceSettings = {
   ai?: AISettings;
   /** "admins": only admins may create labels by applying a new name. Default "anyone". */
   label_creation?: "anyone" | "admins";
-  /** Seconds an agent's reply waits in the app, with a way to take it back, before it is sent. Default 5; 0 sends at once. */
+  /** Seconds an agent's email (or other non-chat) reply waits in the app, with a way to take it back, before it is sent. Default 5; 0 sends at once. */
   undo_send_seconds?: number;
-  /** Which messages agents may delete: none, their own, or any agent's. Admins may delete any. Default "own". */
+  /** The same for chat replies. Default 0: a chat reply goes at once. */
+  undo_send_chat_seconds?: number;
+  /** Which messages agents may delete: none, their own internal notes, or any agent's notes and replies. Admins may delete any. Default "own". */
   message_delete?: "off" | "own" | "all";
   /** Display-only names and colours for the fixed statuses and priorities. */
   status_labels?: Partial<Record<TicketStatus, DisplayOverride>>;
@@ -463,7 +465,7 @@ export type Message = {
   deleted_by?: UserRef | null;
   /** Set once an admin removed a deleted message's content for good. */
   purged_at?: string | null;
-  /** A note sent as a reply: it stays, empty, pointing at the reply that holds its words. */
+  /** A note sent as a reply: a marker pointing at the reply (deleted_at says when). Only admins get what it said. */
   sent_as_reply_id?: string | null;
 };
 /** A third-party thread: an email conversation on a ticket with someone outside the team (contracts/api.md "Threads"). */

@@ -570,7 +570,9 @@
     "purged": "Content removed for good",
     "sentAsReply": "{{name}}’s note was sent as a reply",
     "sentAsReplyLabel": "Note from {{name}}, sent as a reply",
-    "showReply": "Show reply"
+    "showReply": "Show reply",
+    "showNote": "Show note",
+    "hideNote": "Hide note"
   },
   "merge": {
     "title": "Merge #{{number}} into another ticket",
@@ -801,6 +803,9 @@
     "undo": "Undo",
     "asNote": "Turn into internal note",
     "sendingIn": "Sending in {{n}}s",
-    "sendNow": "Send now"
+    "sendNow": "Send now",
+    "notSent": "A reply you were sending was not sent. Open its ticket to send it again.",
+    "tooLongToHold": "Sent at once: this reply is too long to hold for undo.",
+    "noteNotSaved": "Couldn’t update the note"
   }
 }

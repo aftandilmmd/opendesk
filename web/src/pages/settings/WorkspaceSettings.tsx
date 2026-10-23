@@ -18,7 +18,7 @@ import { TextInput } from "@/components/ui/input";
 import { Picker } from "@/components/ui/picker";
 import { Switch } from "@/components/ui/switch";
 import { Segmented } from "@/components/ui/tabs";
-import { UNDO_SEND_CHOICES, UNDO_SEND_DEFAULT } from "@/components/tickets/detail/outbox";
+import { UNDO_SEND_CHAT_DEFAULT, UNDO_SEND_CHOICES, UNDO_SEND_DEFAULT } from "@/components/tickets/detail/outbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { ReauthNotice } from "@/components/settings/ReauthNotice";
@@ -34,7 +34,7 @@ import { LOCALE_NAMES, matchLocale, SUPPORTED } from "@/i18n";
 type DisplaySettings = { status_labels?: Overrides<TicketStatus>; priority_labels?: Overrides<Priority> };
 type Draft = {
   name: string;
-  settings: Required<Pick<WS, "timezone" | "help_center_enabled" | "help_center_title" | "csat_enabled" | "gravatar" | "domain_logos" | "undo_send_seconds" | "message_delete">> & {
+  settings: Required<Pick<WS, "timezone" | "help_center_enabled" | "help_center_title" | "csat_enabled" | "gravatar" | "domain_logos" | "undo_send_seconds" | "undo_send_chat_seconds" | "message_delete">> & {
     brand_color: string;
     locale: string;
     locale_fixed: boolean;
@@ -58,6 +58,7 @@ function toDraft(w: Workspace): Draft {
       locale: matchLocale(w.settings.locale) ?? "en",
       locale_fixed: w.settings.locale_fixed ?? false,
       undo_send_seconds: w.settings.undo_send_seconds ?? UNDO_SEND_DEFAULT,
+      undo_send_chat_seconds: w.settings.undo_send_chat_seconds ?? UNDO_SEND_CHAT_DEFAULT,
       message_delete: w.settings.message_delete ?? "own",
     },
   };
@@ -265,6 +266,13 @@ export default function WorkspaceSettings() {
             <Segmented
               value={String(draft.settings.undo_send_seconds)}
               onChange={(v) => set("undo_send_seconds", Number(v))}
+              options={UNDO_SEND_CHOICES.map((n) => ({ value: String(n), label: n ? t("workspace.undoSeconds", { n }) : t("workspace.undoOff") }))}
+            />
+          </Row>
+          <Row label={t("workspace.undoSendChat")} description={t("workspace.undoSendChatHint")}>
+            <Segmented
+              value={String(draft.settings.undo_send_chat_seconds)}
+              onChange={(v) => set("undo_send_chat_seconds", Number(v))}
               options={UNDO_SEND_CHOICES.map((n) => ({ value: String(n), label: n ? t("workspace.undoSeconds", { n }) : t("workspace.undoOff") }))}
             />
           </Row>

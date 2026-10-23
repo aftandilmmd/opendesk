@@ -484,8 +484,8 @@ export class Controller {
   }
 
   onEvent(e: Envelope) {
-    // A reply the team took back leaves the conversation.
-    if (e.type === "message.deleted") {
+    // A reply the team took back (deleted, or turned into a note) leaves the conversation.
+    if (e.type === "message.withdrawn") {
       const tid = e.data.ticket_id as string | undefined;
       const mid = e.data.message_id as string | undefined;
       if (tid && mid && this.s.messages[tid]) this.set((s) => ({ messages: { ...s.messages, [tid]: s.messages[tid].filter((m) => m.id !== mid) } }));

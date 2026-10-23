@@ -165,7 +165,7 @@ describe("controller with a reply taken back", () => {
     expect(before.length).toBeGreaterThan(0);
     const gone = before[before.length - 1].id;
 
-    c.onEvent({ type: "message.deleted", data: { ticket_id: id, message_id: gone } } as unknown as Parameters<Controller["onEvent"]>[0]);
+    c.onEvent({ type: "message.withdrawn", data: { ticket_id: id, message_id: gone } } as unknown as Parameters<Controller["onEvent"]>[0]);
     const after = c.store.get().messages[id];
     expect(after).toHaveLength(before.length - 1);
     expect(after.some((m) => m.id === gone)).toBe(false);

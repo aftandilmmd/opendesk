@@ -170,9 +170,17 @@ export function Attachments({ items }: { items: Attachment[] }) {
   );
 }
 
-/** A note sent as a reply: it stays where it was written, pointing at the reply below. */
-function SentAsReply({ m, name }: { m: Message; name: string }) {
+/** A note sent as a reply: it stays where it was written, pointing at the reply below. What it
+ * said is kept for admins, who can read it (the reply may have been edited before it went). */
+function SentAsReply({ m, name, admin }: { m: Message; name: string; admin: boolean }) {
   const { t } = useTranslation("inbox");
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const show = () => {
+    // A marker that arrived live carries no text; an admin's copy is a refetch away.
+    if (!open && !m.body_text && !m.body_html) void qc.invalidateQueries({ queryKey: qk.messages(m.ticket_id), exact: true });
+    setOpen(!open);
+  };
   return (
     <article id={`m-${m.id}`} aria-label={t("message.sentAsReplyLabel", { name })} className="rounded-lg border border-dashed border-note-line bg-note px-4 py-2">
       <div className="flex items-center gap-2 text-[12px] text-fg-3">
@@ -183,10 +191,20 @@ function SentAsReply({ m, name }: { m: Message; name: string }) {
             {clock(m.created_at)}
           </time>
         </Tooltip>
+        {admin && !m.purged_at && (
+          <Button size="xs" variant="ghost" onClick={show} aria-expanded={open}>
+            {open ? t("message.hideNote") : t("message.showNote")}
+          </Button>
+        )}
         <Button size="xs" variant="ghost" iconRight={<ArrowDown className="size-3" />} onClick={() => showInTimeline(m.sent_as_reply_id!)}>
           {t("message.showReply")}
         </Button>
       </div>
+      {admin && open && !m.purged_at && (
+        <p className="mt-2 whitespace-pre-wrap border-t border-note-line pt-2 text-[13px] text-fg-2 animate-fade-in motion-reduce:animate-none">
+          {m.body_text || t("message.loadingDeleted")}
+        </p>
+      )}
     </article>
   );
 }
@@ -221,8 +239,8 @@ function DeletedMessage({ m, name, admin }: { m: Message; name: string; admin: b
   const who = m.deleted_by?.name ?? t("message.someone");
   const own = !!m.deleted_by && m.deleted_by.id === m.author.user?.id;
   const show = () => {
-    // A marker that arrived live carries no text; an admin's copy is a refetch away.
-    if (!open && !m.body_text && !m.body_html) void qc.invalidateQueries({ queryKey: qk.messages(m.ticket_id), exact: true });
+    // A marker that arrived live carries no text or files; an admin's copy is a refetch away.
+    if (!open && !m.body_text && !m.body_html && !m.attachments.length) void qc.invalidateQueries({ queryKey: qk.messages(m.ticket_id), exact: true });
     setOpen(!open);
   };
   return (
@@ -257,9 +275,13 @@ function DeletedMessage({ m, name, admin }: { m: Message; name: string; admin: b
         )}
       </div>
       {admin && open && !purged && (
-        <p className="mt-2 whitespace-pre-wrap border-t border-line-soft pt-2 text-[13px] text-fg-2 animate-fade-in motion-reduce:animate-none">
-          {m.body_text || t("message.loadingDeleted")}
-        </p>
+        <div className="mt-2 border-t border-line-soft pt-2 animate-fade-in motion-reduce:animate-none">
+          {(m.body_text || !m.attachments.length) && (
+            <p className="whitespace-pre-wrap text-[13px] text-fg-2">{m.body_text || t("message.loadingDeleted")}</p>
+          )}
+          {/* Its files open for admins alone, through links signed for the deleted message. */}
+          {m.attachments.length > 0 && <Attachments items={m.attachments} />}
+        </div>
       )}
     </article>
   );
@@ -501,8 +523,10 @@ export const MessageItem = memo(function MessageItem({
   const { data: members } = useQuery(q.members());
   // An agent's own rule, set by an admin, wins over the workspace's.
   const rule = members?.find((x) => x.user.id === me)?.message_delete ?? ws?.settings.message_delete ?? "own";
-  const deletable = !inThread && (admin || (m.author.type === "user" && (rule === "all" || (rule === "own" && mine))));
-  const retractable = !!onRetract && outbound && m.author.type === "user" && !m.ai && (mine || admin) && m.delivery_status !== "scheduled";
+  // "own" (the default) is an agent's own internal notes; "all" any agent's notes and replies.
+  const deletable = !inThread && (admin || (m.author.type === "user" && (rule === "all" || (rule === "own" && mine && note))));
+  // Only a chat reply that was not emailed as a follow-up (delivery "none") can be taken back.
+  const retractable = !!onRetract && outbound && m.author.type === "user" && !m.ai && (mine || admin) && m.delivery_status === "none";
   const [editing, setEditing] = useState(false);
   const remove = () =>
     confirm.show(
@@ -518,6 +542,8 @@ export const MessageItem = memo(function MessageItem({
           ),
         );
         qc.invalidateQueries({ queryKey: qk.activities(m.ticket_id) });
+        // An admin's copy comes back with its files' links signed for the deleted message.
+        if (admin) void qc.invalidateQueries({ queryKey: qk.messages(m.ticket_id), exact: true });
       },
       { title: t(note ? "message.deleteTitle" : "message.deleteMessageTitle"), confirmLabel: t("message.deleteLabel"), danger: true },
     );
@@ -528,8 +554,9 @@ export const MessageItem = memo(function MessageItem({
   const body = useBody(translated ? tr.html! : m.body_html || `<p>${m.body_text}</p>`, inbound, inbound && !translated, remote);
   const replyTo = inbound && m.reply_to && m.reply_to.toLowerCase() !== m.from_email.toLowerCase() ? m.reply_to : null;
 
+  // A note sent as a reply is hidden like a deleted message, and says where its words went.
+  if (m.sent_as_reply_id) return <SentAsReply m={m} name={name} admin={admin} />;
   if (m.deleted_at) return <DeletedMessage m={m} name={name} admin={admin} />;
-  if (m.sent_as_reply_id) return <SentAsReply m={m} name={name} />;
 
   return (
     <article

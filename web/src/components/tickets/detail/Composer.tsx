@@ -36,7 +36,7 @@ import { useUpdateTicket } from "../useTicketActions";
 import { ComposerAiMenu, ComposerAiStatus, ComposerSources, useComposerAi } from "@/components/ai/ticket/ComposerAi";
 import { SuggestedReplyCard } from "./SuggestedReply";
 import { SharedDraftBar } from "./SharedDraft";
-import { deliver, hold, UNDO_SEND_DEFAULT, useUnsent, type Upload } from "./outbox";
+import { backToNote, deliver, hold, undoSeconds as undoSecondsFor, useUnsent, type Upload } from "./outbox";
 import { addressLabel, fromLine, replyAddresses, TeamDot, useTeamsCtx, type TeamsCtx } from "../teams";
 
 type Mode = "reply" | "note" | "thread";
@@ -326,7 +326,8 @@ export const Composer = forwardRef<ComposerHandle, { ticket: Ticket; disabled?: 
   const tempMessage = useTempMessage(ticket, teams);
   const me = useSession((s) => s.user!.id);
   const { data: workspace } = useQuery(q.workspace());
-  const undoSeconds = workspace?.settings.undo_send_seconds ?? UNDO_SEND_DEFAULT;
+  // Email replies wait a few seconds by default, chat replies go at once (settings).
+  const undoSeconds = undoSecondsFor(workspace?.settings, ticket.channel);
   const sendThread = useSendThread(ticket);
   // Switching to a side conversation fills in a subject to edit, so what goes out is visible.
   const toMode = useCallback(
@@ -497,6 +498,19 @@ export const Composer = forwardRef<ComposerHandle, { ticket: Ticket; disabled?: 
       if (names.length) return setMentionWarn({ names, status });
     }
     setMentionWarn(null);
+    if (opts.as === "note" && draft.fromNote) {
+      // A reply written from a note, kept as a note: it goes back into that note (edited if
+      // the words changed) rather than adding the same words twice. Its status went with
+      // answering the customer.
+      const attachments = uploads.filter((u) => u.attachment).map((u) => u.attachment!.id);
+      void backToNote(tempMessage({ kind: "note", body_html: draft.html }, `tmp-${Date.now().toString(36)}`), draft.fromNote, draft.html, attachments, me);
+      uploads.forEach((u) => u.preview && URL.revokeObjectURL(u.preview));
+      setUploads([]);
+      setDraft({ html: "", cc: [], bcc: [], showCc: false, mailboxId: undefined, fromNote: undefined, mode: "reply" });
+      editor.current?.clear();
+      ai.dismissSources();
+      return;
+    }
     const body: SendMessageBody = {
       kind,
       body_html: draft.html,

@@ -527,7 +527,7 @@ export function createMock(o: MockOptions = {}): Mock {
       const [gone] = list.splice(i, 1);
       const last = list[list.length - 1];
       latest.last_message_preview = last ? last.body_text.slice(0, 140) : "";
-      broadcast("event", { id: uid(), seq: n, type: "message.deleted", data: { ticket_id: latest.id, message_id: gone.id }, topics: [] });
+      broadcast("event", { id: uid(), seq: n, type: "message.withdrawn", data: { ticket_id: latest.id, message_id: gone.id }, topics: [] });
       return true;
     },
     playShowcase() {

@@ -386,7 +386,7 @@ export function registerTickets() {
     if (status && !STATUSES.includes(status)) throw invalid("Unknown status");
     if ((status === "solved" || status === "closed") && t.status !== "solved" && t.status !== "closed") checkRequiredOnSolve(ctx.ws, t.fields);
     const myRef = userRef(db.meId);
-    // A reply written from the agent's own note replaces it.
+    // A reply written from the agent's own note: the note stays as a marker pointing at it.
     const fromNote = kind === "reply" ? s(ctx, "from_note_id") : undefined;
     const noteIndex = fromNote ? ctx.ws.messages.findIndex((m) => m.id === fromNote && m.ticket_id === t.id && m.kind === "note" && !m.deleted_at && !m.sent_as_reply_id) : -1;
     if (fromNote && noteIndex < 0) throw notFound("Message");
@@ -408,9 +408,10 @@ export function registerTickets() {
     if (msg.delivery_status === "pending") simulateDelivery(ctx.ws, t, msg.id);
     if (fromNote) {
       const note = ctx.ws.messages[noteIndex];
-      Object.assign(note, { body_html: "", body_text: "", sent_as_reply_id: msg.id });
+      // Its words are kept, hidden like a deleted message's: only admins read them.
+      Object.assign(note, { sent_as_reply_id: msg.id, deleted_at: nowIso(), deleted_by: myRef });
       addActivity(ctx.ws, t, "note_sent_as_reply", { message_id: fromNote, reply_id: msg.id }, myRef);
-      publish(ctx.ws, "message.updated", { ticket_id: t.id, message: note });
+      publish(ctx.ws, "message.updated", { ticket_id: t.id, message: tombstone(note) });
     }
     // A reply going out ends the ticket's shared draft, whoever sends it.
     if (kind === "reply") clearDraft(ctx.ws, t);
@@ -438,16 +439,20 @@ export function registerTickets() {
     const t = ticket(ctx);
     const message = ctx.ws.messages.find((m) => m.id === ctx.params.messageId && m.ticket_id === t.id);
     if (!message) throw notFound("Message");
+    if (message.sent_as_reply_id) throw invalid("this note was sent as a reply; delete the reply instead");
     if (message.deleted_at) return undefined;
     if (message.thread_id) throw invalid("a side conversation's messages can't be deleted");
     const role = ctx.ws.members.find((m) => m.user_id === db.meId)?.role;
     const admin = role === "admin" || role === "owner";
     const rule = ctx.ws.members.find((m) => m.user_id === db.meId)?.message_delete ?? ctx.ws.workspace.settings.message_delete ?? "own";
     const agentMsg = message.author.type === "user";
-    const allowed = admin || (agentMsg && (rule === "all" || (rule === "own" && message.author.user?.id === db.meId)));
+    // "own": an agent's own internal notes; "all": any agent's notes and replies.
+    const allowed = admin || (agentMsg && (rule === "all" || (rule === "own" && message.kind === "note" && message.author.user?.id === db.meId)));
     if (!allowed) throw forbidden();
     message.deleted_at = nowIso();
     message.deleted_by = userRef(db.meId);
+    // Not gone out yet: it is not sent.
+    if (message.delivery_status === "pending") Object.assign(message, { delivery_status: "failed", delivery_error: "Deleted before it was sent." });
     addActivity(ctx.ws, t, message.kind === "note" ? "note_deleted" : "message_deleted", { message_id: message.id }, userRef(db.meId));
     publish(ctx.ws, "message.updated", { ticket_id: t.id, message: tombstone(message) });
     if (message.kind === "reply") {
@@ -467,7 +472,7 @@ export function registerTickets() {
       Object.assign(message, { body_html: "", body_text: "", has_quoted: false, subject: "", attachments: [], ai_action: null, purged_at: nowIso() });
       delete ctx.ws.originals[message.id];
       addActivity(ctx.ws, t, "message_purged", { message_id: message.id }, userRef(db.meId));
-      publish(ctx.ws, "message.updated", { ticket_id: t.id, message });
+      publish(ctx.ws, "message.updated", { ticket_id: t.id, message: tombstone(message) });
     }
     return message;
   });
@@ -477,6 +482,7 @@ export function registerTickets() {
     if (role !== "admin" && role !== "owner") throw forbidden();
     const message = ctx.ws.messages.find((m) => m.id === ctx.params.messageId && m.ticket_id === t.id);
     if (!message) throw notFound("Message");
+    if (message.sent_as_reply_id) throw invalid("this note was sent as a reply; it can't be restored");
     if (!message.deleted_at) throw invalid("this message is not deleted");
     if (message.purged_at) throw invalid("this message's content was removed for good");
     message.deleted_at = null;
@@ -495,6 +501,7 @@ export function registerTickets() {
     if (!message) throw notFound("Message");
     if (message.kind !== "reply" || message.direction !== "outbound" || message.author.type !== "user") throw invalid("only an agent's reply can be taken back");
     if (t.channel !== "chat") throw invalid("only a chat reply can be taken back; email is delivered when it is sent");
+    if (message.delivery_status !== "none") throw invalid("this reply was also sent by email; it can't be taken back");
     const role = ctx.ws.members.find((m) => m.user_id === db.meId)?.role;
     if (message.author.user?.id !== db.meId && role !== "admin" && role !== "owner") throw forbidden();
     message.kind = "note";
@@ -671,7 +678,7 @@ export function meRef() {
   return userRef(me().id);
 }
 
-/** A deleted message as agents see it: who deleted it, not what it said. */
+/** A deleted message (or a note sent as a reply) as agents see it: who deleted it, not what it said. */
 function tombstone(m: Message): Message {
   return m.deleted_at ? { ...m, body_html: "", body_text: "", has_quoted: false, attachments: [], ai_action: null } : m;
 }

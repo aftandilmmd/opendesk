@@ -120,8 +120,16 @@ function mergeMessage(qc: QueryClient, ticketId: string, m: Message) {
   const old = qc.getQueryData<Message[]>(key);
   if (!old) return;
   const defined = Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined && v !== null)) as Partial<Message>;
-  // A restored message clears its deleted marker.
-  if ("deleted_at" in m) Object.assign(defined, { deleted_at: m.deleted_at ?? null, deleted_by: m.deleted_by ?? null });
+  // A marker (deleted, purged, or a note sent as a reply) and a restore set these, null included.
+  if ("deleted_at" in m)
+    Object.assign(defined, {
+      deleted_at: m.deleted_at ?? null,
+      deleted_by: m.deleted_by ?? null,
+      purged_at: m.purged_at ?? null,
+      sent_as_reply_id: m.sent_as_reply_id ?? null,
+    });
+  // A marker carries no action card: the one cached goes with it.
+  if (m.deleted_at) defined.ai_action = null;
   const i = old.findIndex((x) => x.id === m.id);
   if (i >= 0) {
     qc.setQueryData<Message[]>(key, old.map((x, j) => (j === i ? { ...x, ...defined, author: { ...x.author, ...(m.author ?? {}) } } : x)));
@@ -232,6 +240,8 @@ export function applyEnvelope(qc: QueryClient, env: Envelope, ctx: ApplyContext)
       }
       return;
     }
+    // message.withdrawn: a chat reply left the visitor's widget. The team keeps it (a marker
+    // or a note, which message.updated brings), so there is nothing to drop here.
     case "message.deleted": {
       const tid = d.ticket_id as string | undefined;
       const id = d.message_id as string | undefined;

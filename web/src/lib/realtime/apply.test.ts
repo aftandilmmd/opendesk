@@ -102,6 +102,35 @@ describe("ticket message events", () => {
     applyEnvelope(qc, env(13, { type: "message.deleted", data: { ticket_id: "t1", message_id: "m1" } }), { me: "u1" });
     expect(qc.getQueryData<Message[]>(qk.messages("t1"))?.map((m) => m.id)).toEqual(["m2"]);
   });
+
+  it("keeps a deleted chat reply's marker, without its action card, when it leaves the visitor's widget", () => {
+    const qc = new QueryClient();
+    const card = { id: "a1", status: "pending" } as unknown as Message["ai_action"];
+    qc.setQueryData<Message[]>(qk.messages("t1"), [
+      { id: "m1", ticket_id: "t1", kind: "reply", body_text: "Wrong answer", ai_action: card } as Message,
+      { id: "m2", ticket_id: "t1" } as Message,
+    ]);
+    const marker = { id: "m1", ticket_id: "t1", kind: "reply", body_html: "", body_text: "", attachments: [], ai_action: null, deleted_at: "2026-10-23T10:00:00Z", deleted_by: { id: "u2", name: "Ana" } };
+    applyEnvelope(qc, env(14, { type: "message.updated", data: { ticket_id: "t1", message: marker } }), { me: "u1" });
+    applyEnvelope(qc, env(15, { type: "message.withdrawn", data: { ticket_id: "t1", message_id: "m1" }, visibility: "public" }), { me: "u1" });
+    const list = qc.getQueryData<Message[]>(qk.messages("t1"));
+    expect(list?.map((m) => m.id)).toEqual(["m1", "m2"]);
+    expect(list?.[0]).toMatchObject({ deleted_at: "2026-10-23T10:00:00Z", body_text: "", ai_action: null });
+  });
+
+  it("turns a reply taken back into a note where it was", () => {
+    const qc = new QueryClient();
+    qc.setQueryData<Message[]>(qk.messages("t1"), [
+      { id: "m1", ticket_id: "t1", kind: "reply" } as Message,
+      { id: "m2", ticket_id: "t1", kind: "reply" } as Message,
+    ]);
+    applyEnvelope(qc, env(16, { type: "message.withdrawn", data: { ticket_id: "t1", message_id: "m1" }, visibility: "public" }), { me: "u1" });
+    applyEnvelope(qc, env(17, { type: "message.updated", data: { ticket_id: "t1", message: { id: "m1", ticket_id: "t1", kind: "note" } } }), { me: "u1" });
+    expect(qc.getQueryData<Message[]>(qk.messages("t1"))?.map((m) => [m.id, m.kind])).toEqual([
+      ["m1", "note"],
+      ["m2", "reply"],
+    ]);
+  });
 });
 
 describe("third-party threads", () => {

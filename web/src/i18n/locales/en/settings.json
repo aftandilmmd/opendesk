@@ -197,8 +197,8 @@
     "deleteDefault": "Workspace default ({{rule}})",
     "deletes": {
       "off": "Deletes no messages",
-      "own": "Deletes their own messages",
-      "all": "Deletes any agent’s messages"
+      "own": "Deletes their own notes",
+      "all": "Deletes any agent’s notes and replies"
     }
   },
   "teams": {
@@ -330,14 +330,16 @@
     "gravatarHint": "Sends a hash of contact email addresses to Gravatar to look up their pictures.",
     "domainLogos": "Company logos",
     "domainLogosHint": "Fetches each company's logo from its website.",
-    "undoSend": "Undo send",
-    "undoSendHint": "Replies wait this long before they go out, so they can be taken back or made a note.",
+    "undoSend": "Undo send for email",
+    "undoSendHint": "Email replies wait this long before they go out, so they can be taken back or made a note.",
+    "undoSendChat": "Undo send for chat",
+    "undoSendChatHint": "Chat replies wait this long before the customer sees them. Off by default, so chat stays live.",
     "undoOff": "Off",
     "undoSeconds": "{{n}}s",
     "messageDelete": "Agents can delete messages",
-    "messageDeleteHint": "A deleted message stays as a marker. Admins can delete any message, read deleted ones and restore them, and set another rule for an agent in Members.",
+    "messageDeleteHint": "Own notes: agents delete their own internal notes. Any agent’s: also every agent’s notes and replies. A deleted message stays as a marker. Admins can delete any message, read deleted ones and restore them, and give an agent another rule in Members.",
     "messageDeleteOff": "Off",
-    "messageDeleteOwn": "Their own",
+    "messageDeleteOwn": "Own notes",
     "messageDeleteAll": "Any agent’s"
   },
   "display": {
