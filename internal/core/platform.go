@@ -239,6 +239,10 @@ func (s *svc) registerPlatform(api huma.API) {
 			if err != nil {
 				return nil, httpx.Wrap(err)
 			}
+			// What messages deleted since said is not replayed.
+			if err := domain.RedactReplay(ctx, s.d.DB.Pool, p.WorkspaceID, evs); err != nil {
+				return nil, httpx.Wrap(err)
+			}
 			for i := range evs {
 				evs[i].OccurredAt = evs[i].OccurredAt.UTC()
 			}

@@ -17,7 +17,7 @@ func TestResignAttachmentLinks(t *testing.T) {
 	}
 	src := strings.TrimSuffix(strings.TrimPrefix(out, `<img src="https://api.example.com/v1/attachments/`+id.String()+`?exp=`), `">`)
 	exp, sig, _ := strings.Cut(src, "&amp;sig=")
-	if !VerifyAttachmentSig(id, exp, sig) {
+	if !VerifyAttachmentSig(id, exp, sig, false) {
 		t.Fatalf("fresh link does not verify: %s", out)
 	}
 }
@@ -28,5 +28,25 @@ func TestResignAttachmentLinksOnlyOwn(t *testing.T) {
 	in := `<img src="https://api.example.com/v1/attachments/` + other.String() + `?exp=1&amp;sig=00">`
 	if out := ResignAttachmentLinks(in, []Attachment{{ID: uuid.New()}}); out != in {
 		t.Fatalf("signed a link to another message's file: %s", out)
+	}
+}
+
+// TestDeletedAttachmentLinks checks a deleted message's files are signed apart: a link
+// handed out before it was deleted does not open them, and theirs opens nothing else.
+func TestDeletedAttachmentLinks(t *testing.T) {
+	Configure("https://api.example.com", []byte(strings.Repeat("k", 32)))
+	id := uuid.New()
+	parts := func(u string) (string, string) {
+		q := strings.SplitN(u, "?exp=", 2)[1]
+		exp, sig, _ := strings.Cut(q, "&sig=")
+		return exp, sig
+	}
+	exp, sig := parts(AttachmentURL(id))
+	if !VerifyAttachmentSig(id, exp, sig, false) || VerifyAttachmentSig(id, exp, sig, true) {
+		t.Fatal("a plain link must open only a file of a message that is not deleted")
+	}
+	exp, sig = parts(DeletedAttachmentURL(id))
+	if !VerifyAttachmentSig(id, exp, sig, true) || VerifyAttachmentSig(id, exp, sig, false) {
+		t.Fatal("a deleted message's link must open only that file while it is deleted")
 	}
 }

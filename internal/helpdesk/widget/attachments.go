@@ -146,11 +146,12 @@ func loadStored(ctx context.Context, q db.Querier, id uuid.UUID) (storedAttachme
 // mayRead decides access: a signed link, a member or key of the owning workspace who may
 // see the ticket carrying it (contracts/teams.md "Visibility") or who uploaded it while it
 // is not sent yet, or the visitor who uploaded the file or whose conversation carries it
-// in a public reply. A deleted message's files are an admin's alone, as its text is: a
-// signed link handed out before it was deleted no longer opens them.
+// in a public reply. A deleted message's files are an admin's alone, as its text is: only
+// links signed for the deleted message (handed to admins with it) open them, and a link
+// handed out before it was deleted no longer does.
 func mayRead(r *http.Request, q db.Querier, id uuid.UUID, a storedAttachment) (bool, error) {
 	query := r.URL.Query()
-	if exp, sig := query.Get("exp"), query.Get("sig"); !a.MessageDeleted && exp != "" && sig != "" && domain.VerifyAttachmentSig(id, exp, sig) {
+	if exp, sig := query.Get("exp"), query.Get("sig"); exp != "" && sig != "" && domain.VerifyAttachmentSig(id, exp, sig, a.MessageDeleted) {
 		return true, nil
 	}
 	p := auth.FromContext(r.Context())

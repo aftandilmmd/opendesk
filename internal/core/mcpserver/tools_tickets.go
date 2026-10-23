@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -330,6 +331,9 @@ type apiMessage struct {
 	DeliveryStatus string    `json:"delivery_status"`
 	AI             bool      `json:"ai"`
 	CreatedAt      time.Time `json:"created_at"`
+	// A deleted message, or a note sent as a reply: a marker the model never reads.
+	DeletedAt     *time.Time `json:"deleted_at"`
+	SentAsReplyID *string    `json:"sent_as_reply_id"`
 }
 
 type outMessage struct {
@@ -384,7 +388,9 @@ func getTicket(ctx context.Context, c *caller, raw json.RawMessage) (any, error)
 	out := threadOut{Ticket: compactTicket(t, true), Messages: []outMessage{}}
 	c.name(ctx, &out.Ticket)
 	c.replyAddress(ctx, &out.Ticket)
-	list := msgs.Data
+	// Deleted messages and notes sent as replies stay out, whoever asks (admins read
+	// them in the app, never through a model).
+	list := slices.DeleteFunc(msgs.Data, func(m apiMessage) bool { return m.DeletedAt != nil || m.SentAsReplyID != nil })
 	if len(list) > threadMessages {
 		out.EarlierOmitted = len(list) - threadMessages
 		list = list[len(list)-threadMessages:]

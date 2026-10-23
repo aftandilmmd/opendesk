@@ -33,7 +33,7 @@ type MessageInput struct {
 	AttachmentIDs []string `json:"attachment_ids,omitempty" maxItems:"20"`
 	Status        *string  `json:"status,omitempty" enum:"open,pending,on_hold,solved,closed" doc:"Applied after the message is added"`
 	MailboxID     string   `json:"mailbox_id,omitempty" doc:"Replies: send from this address of the ticket's brand (the caller must be allowed to send from it); it becomes the ticket's reply address"`
-	FromNoteID    string   `json:"from_note_id,omitempty" doc:"Replies: an internal note of yours, without files, this reply is written from. The note is removed as the reply is added"`
+	FromNoteID    string   `json:"from_note_id,omitempty" doc:"Replies: an internal note of yours, without files, this reply is written from. The note stays as a marker pointing at the reply; only admins read what it said"`
 }
 
 const activitySelect = `SELECT a.id, a.ticket_id, a.actor_type, a.type, a.data, a.created_at, u.id, u.name, u.email, u.avatar_url
@@ -331,14 +331,14 @@ func PostMessage(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principal
 		return domain.Message{}, err
 	}
 	if fromNote != nil {
-		// The note's words are the reply now: the note stays where it was, empty, pointing at
-		// the reply, and its mentions go.
-		if _, err := tx.Exec(ctx, `UPDATE messages SET body_html = '', body_text = '', sent_as_reply_id = $4
-			WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`, wid, tid, *fromNote, msg.ID); err != nil {
+		// The reply carries the note's words now: the note stays where it was as a marker
+		// pointing at the reply. What it said is kept, hidden like a deleted message's (only
+		// admins read it), so words edited out before sending are not lost; its mentions go.
+		if _, err := tx.Exec(ctx, `UPDATE messages SET sent_as_reply_id = $4, deleted_at = now(), deleted_by = $5
+			WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`, wid, tid, *fromNote, msg.ID, p.UserID); err != nil {
 			return domain.Message{}, err
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM notifications WHERE workspace_id = $1 AND ticket_id = $2 AND type = $3 AND data->>'message_id' = $4`,
-			wid, tid, hd.NotifyMentioned, fromNote.String()); err != nil {
+		if err := hideMessage(ctx, tx, d, wid, tid, *fromNote); err != nil {
 			return domain.Message{}, err
 		}
 		if _, err := domain.LogActivity(ctx, tx, wid, tid, actor.Type, actor.UserID, "note_sent_as_reply",

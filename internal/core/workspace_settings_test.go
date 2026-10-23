@@ -2,7 +2,8 @@ package core
 
 import "testing"
 
-// TestUndoSendSeconds checks the undo window takes only the offered lengths, off included.
+// TestUndoSendSeconds checks both undo windows (email and chat) take only the offered
+// lengths, off included.
 func TestUndoSendSeconds(t *testing.T) {
 	for _, n := range []int{0, 5, 10, 20, 30} {
 		out, err := validateSettings(&CoreWorkspaceSettings{UndoSendSeconds: &n})
@@ -12,10 +13,20 @@ func TestUndoSendSeconds(t *testing.T) {
 		if out["undo_send_seconds"] != n {
 			t.Fatalf("%d: stored %v", n, out["undo_send_seconds"])
 		}
+		out, err = validateSettings(&CoreWorkspaceSettings{UndoSendChatSecs: &n})
+		if err != nil {
+			t.Fatalf("chat %d: %v", n, err)
+		}
+		if out["undo_send_chat_seconds"] != n {
+			t.Fatalf("chat %d: stored %v", n, out["undo_send_chat_seconds"])
+		}
 	}
 	for _, n := range []int{-1, 3, 31, 600} {
 		if _, err := validateSettings(&CoreWorkspaceSettings{UndoSendSeconds: &n}); err == nil {
 			t.Fatalf("%d: accepted", n)
+		}
+		if _, err := validateSettings(&CoreWorkspaceSettings{UndoSendChatSecs: &n}); err == nil {
+			t.Fatalf("chat %d: accepted", n)
 		}
 	}
 }

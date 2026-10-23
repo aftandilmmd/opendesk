@@ -568,6 +568,13 @@ func TestAgentAttachments(t *testing.T) {
 	e.Do("GET", "/v1/attachments/"+img.ID.String(), ws.Agent.As(ws), nil).Want(t, 404)
 	e.Do("GET", "/v1/attachments/"+img.ID.String(), hdtest.Auth{Bearer: key}, nil).Want(t, 404)
 	e.Do("GET", "/v1/attachments/"+img.ID.String(), ws.Admin.As(ws), nil).Want(t, 200)
+	// The links an admin is handed with the deleted message open it, in a browser tab too.
+	d, _ := url.Parse(domain.DeletedAttachmentURL(img.ID))
+	e.Do("GET", "/v1/attachments/"+img.ID.String()+"?"+d.RawQuery, hdtest.Auth{}, nil).Want(t, 200)
+	// Restored, the message's files go back to the plain links.
+	e.Exec(`UPDATE messages SET deleted_at = NULL WHERE id = (SELECT message_id FROM attachments WHERE id = $1)`, img.ID)
+	e.Do("GET", "/v1/attachments/"+img.ID.String()+"?"+d.RawQuery, hdtest.Auth{}, nil).Want(t, 404)
+	e.Do("GET", "/v1/attachments/"+img.ID.String()+"?"+u.RawQuery, hdtest.Auth{}, nil).Want(t, 200)
 }
 
 func TestUploadTooLarge(t *testing.T) {

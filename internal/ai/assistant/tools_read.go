@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -150,7 +151,9 @@ func getTicket(ctx context.Context, rc *runCtx, in json.RawMessage) (output, err
 			b.WriteString("stored summary: " + clip(text, 600) + "\n")
 		}
 	}
-	list := msgs.Data
+	// Deleted messages and notes sent as replies stay out, whoever asks (admins read them
+	// in the app, never through Ollie).
+	list := slices.DeleteFunc(msgs.Data, func(m domain.Message) bool { return m.DeletedAt != nil || m.SentAsReplyID != nil })
 	if len(list) > 12 {
 		fmt.Fprintf(&b, "(%d earlier messages not shown)\n", len(list)-12)
 		list = list[len(list)-12:]

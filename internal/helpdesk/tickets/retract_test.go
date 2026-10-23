@@ -9,8 +9,9 @@ import (
 )
 
 // TestRetractChatReply checks a chat reply taken back becomes a note, leaves the visitor's
-// widget (a public message.deleted) and the conversation's preview, and that only its author
-// or an admin may take back only an agent's chat reply.
+// widget (a public message.withdrawn, never message.deleted: the team keeps it as a note),
+// the conversation's preview and its first response, and that only its author or an admin
+// may take back only an agent's chat reply that was not emailed as a follow-up.
 func TestRetractChatReply(t *testing.T) {
 	e, ws := newEnv(t)
 	tk := createTicket(t, e, ws, map[string]any{"kind": "note", "contact": map[string]any{"email": "visitor@example.com"}})
@@ -33,11 +34,17 @@ func TestRetractChatReply(t *testing.T) {
 	}
 	var public int
 	if err := e.D.DB.Pool.QueryRow(e.Ctx, `SELECT count(*) FROM events WHERE workspace_id = $1 AND seq > $2
-		AND type = 'message.deleted' AND visibility = 'public' AND data->>'message_id' = $3`, ws.ID, seq, reply.ID.String()).Scan(&public); err != nil {
+		AND type = 'message.withdrawn' AND visibility = 'public' AND data->>'message_id' = $3`, ws.ID, seq, reply.ID.String()).Scan(&public); err != nil {
 		t.Fatal(err)
 	}
 	if public != 1 {
-		t.Fatalf("public message.deleted events %d", public)
+		t.Fatalf("public message.withdrawn events %d", public)
+	}
+	if n := countRows(t, e, `SELECT count(*) FROM events WHERE workspace_id = $1 AND seq > $2 AND type = 'message.deleted'`, ws.ID, seq); n != 0 {
+		t.Fatalf("message.deleted events %d: the team keeps the note", n)
+	}
+	if n := countRows(t, e, `SELECT count(*) FROM tickets WHERE id = $1 AND first_responded_at IS NULL`, tk.ID); n != 1 {
+		t.Fatal("a reply taken back still counts as the first response")
 	}
 	if types, _ := e.Events(ws.ID, seq); !slices.Contains(types, "message.updated") || !slices.Contains(types, "activity.created") {
 		t.Fatalf("retract events %v", types)
@@ -68,4 +75,22 @@ func TestRetractChatReply(t *testing.T) {
 	e.Do("POST", "/v1/tickets/"+mail.ID.String()+"/messages", ws.Agent.As(ws),
 		map[string]any{"kind": "reply", "body_html": "<p>Hello</p>"}).Want(t, 201).JSON(t, &sent)
 	e.Do("POST", "/v1/tickets/"+mail.ID.String()+"/messages/"+sent.ID.String()+"/retract", ws.Admin.As(ws), nil).Want(t, 422)
+
+	// A chat reply the visitor missed, emailed to them as a follow-up (queued or sent), is theirs.
+	var missed domain.Message
+	e.Do("POST", "/v1/tickets/"+tk.ID.String()+"/messages", ws.Agent.As(ws),
+		map[string]any{"kind": "reply", "body_html": "<p>Are you still there?</p>"}).Want(t, 201).JSON(t, &missed)
+	for _, status := range []string{"pending", "sent"} {
+		e.Exec(`UPDATE messages SET delivery_status = $2 WHERE id = $1`, missed.ID, status)
+		e.Do("POST", "/v1/tickets/"+tk.ID.String()+"/messages/"+missed.ID.String()+"/retract", ws.Agent.As(ws), nil).Want(t, 422)
+	}
+	// An earlier reply stays the first response when a later one is taken back.
+	e.Exec(`UPDATE messages SET delivery_status = 'none' WHERE id = $1`, missed.ID)
+	var later domain.Message
+	e.Do("POST", "/v1/tickets/"+tk.ID.String()+"/messages", ws.Agent.As(ws),
+		map[string]any{"kind": "reply", "body_html": "<p>One more thing</p>"}).Want(t, 201).JSON(t, &later)
+	e.Do("POST", "/v1/tickets/"+tk.ID.String()+"/messages/"+later.ID.String()+"/retract", ws.Agent.As(ws), nil).Want(t, 200)
+	if n := countRows(t, e, `SELECT count(*) FROM tickets WHERE id = $1 AND first_responded_at = $2`, tk.ID, missed.CreatedAt); n != 1 {
+		t.Fatal("the first response moved when a later reply was taken back")
+	}
 }

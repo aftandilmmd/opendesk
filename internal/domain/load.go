@@ -39,12 +39,31 @@ func ConfigureSending(system bool) { systemSending = system }
 // without a bearer token. The expiry is rounded to the hour, so a body renders with the
 // same links for a while (browser cache); loading a message signs its links again.
 func AttachmentURL(id uuid.UUID) string {
-	exp := strconv.FormatInt(time.Now().Add(2*time.Hour).Truncate(time.Hour).Unix(), 10)
-	return apiURL + "/v1/attachments/" + id.String() + "?exp=" + exp + "&sig=" + crypto.HMACHex(attachmentKey, id.String()+":"+exp)
+	return attachmentURL(id, false)
 }
 
-// VerifyAttachmentSig checks a link made by AttachmentURL.
-func VerifyAttachmentSig(id uuid.UUID, exp, sig string) bool {
+// DeletedAttachmentURL is AttachmentURL for a file of a deleted message. It is signed apart,
+// so a link handed out before the message was deleted no longer opens the file, and it is
+// handed out only to those who may read the deleted message (admins).
+func DeletedAttachmentURL(id uuid.UUID) string {
+	return attachmentURL(id, true)
+}
+
+func attachmentURL(id uuid.UUID, deleted bool) string {
+	exp := strconv.FormatInt(time.Now().Add(2*time.Hour).Truncate(time.Hour).Unix(), 10)
+	return apiURL + "/v1/attachments/" + id.String() + "?exp=" + exp + "&sig=" + crypto.HMACHex(attachmentKey, attachmentSigned(id, exp, deleted))
+}
+
+func attachmentSigned(id uuid.UUID, exp string, deleted bool) string {
+	if deleted {
+		return id.String() + ":" + exp + ":deleted"
+	}
+	return id.String() + ":" + exp
+}
+
+// VerifyAttachmentSig checks a link made by AttachmentURL, or by DeletedAttachmentURL when
+// deleted (the file's message is deleted): each opens only its own kind.
+func VerifyAttachmentSig(id uuid.UUID, exp, sig string, deleted bool) bool {
 	n, err := strconv.ParseInt(exp, 10, 64)
 	if err != nil || time.Now().Unix() > n {
 		return false
@@ -52,7 +71,7 @@ func VerifyAttachmentSig(id uuid.UUID, exp, sig string) bool {
 	if _, err := hex.DecodeString(sig); err != nil {
 		return false
 	}
-	return crypto.EqualHex(crypto.HMACHex(attachmentKey, id.String()+":"+exp), sig)
+	return crypto.EqualHex(crypto.HMACHex(attachmentKey, attachmentSigned(id, exp, deleted)), sig)
 }
 
 // TicketSelect is the column list ScanTicket reads. Append WHERE/ORDER clauses using alias t.
@@ -176,10 +195,12 @@ func ScanMessage(row pgx.Row) (Message, error) {
 	if err := json.Unmarshal(atts, &m.Attachments); err != nil {
 		return m, err
 	}
+	// A deleted message's files open only with links signed for it (admins read it).
+	deleted := m.DeletedAt != nil
 	for i := range m.Attachments {
-		m.Attachments[i].URL = AttachmentURL(m.Attachments[i].ID)
+		m.Attachments[i].URL = attachmentURL(m.Attachments[i].ID, deleted)
 	}
-	m.BodyHTML = ResignAttachmentLinks(m.BodyHTML, m.Attachments)
+	m.BodyHTML = resignAttachmentLinks(m.BodyHTML, m.Attachments, deleted)
 	for _, s := range []*[]string{&m.To, &m.Cc, &m.Bcc} {
 		if *s == nil {
 			*s = []string{}
@@ -192,7 +213,6 @@ func LoadMessage(ctx context.Context, q db.Querier, wid, id uuid.UUID) (Message,
 	return ScanMessage(q.QueryRow(ctx, MessageSelect+` WHERE m.workspace_id = $1 AND m.id = $2`, wid, id))
 }
 
-// ListMessages returns a ticket's messages oldest first. publicOnly drops internal notes.
 // ListMessages lists a ticket's messages, oldest first, without deleted ones: what a
 // customer, a channel or the AI may read.
 func ListMessages(ctx context.Context, q db.Querier, wid, ticketID uuid.UUID, publicOnly bool) ([]Message, error) {
@@ -226,7 +246,8 @@ func listMessages(ctx context.Context, q db.Querier, wid, ticketID uuid.UUID, pu
 }
 
 // Tombstone is a deleted message as everyone but an admin sees it: who wrote it and who
-// deleted it, without what it said. A message that is not deleted is returned as it is.
+// deleted it, without what it said. A note sent as a reply is one too (its deleted_at is
+// when it was sent). A message that is not deleted is returned as it is.
 func Tombstone(m Message) Message {
 	if m.DeletedAt == nil {
 		return m
@@ -236,6 +257,10 @@ func Tombstone(m Message) Message {
 	m.AIAction = nil
 	return m
 }
+
+// HiddenMessageSQL is true for a message that only admins read: deleted, or a note sent as a
+// reply (alias m). Readers that feed customers, channels or the AI skip it.
+const HiddenMessageSQL = `(m.deleted_at IS NOT NULL OR m.sent_as_reply_id IS NOT NULL)`
 
 var ContactSelect = `SELECT ct.id, ct.email, ct.name, ct.phone, ct.avatar_url, ct.avatar_source, ct.external_id, ct.notes, ct.custom,
 	ct.blocked, ct.created_at, ct.updated_at, co.id, co.name, co.domain, co.avatar_url,
@@ -313,6 +338,10 @@ var attachmentLink = regexp.MustCompile(`/v1/attachments/([0-9a-f-]{36})\?exp=\d
 // expire. Only links to the message's own attachments are signed again: a stored body is
 // not a way to sign links to other files.
 func ResignAttachmentLinks(html string, own []Attachment) string {
+	return resignAttachmentLinks(html, own, false)
+}
+
+func resignAttachmentLinks(html string, own []Attachment, deleted bool) string {
 	if !strings.Contains(html, "/v1/attachments/") {
 		return html
 	}
@@ -322,7 +351,7 @@ func ResignAttachmentLinks(html string, own []Attachment) string {
 		if err != nil || !slices.ContainsFunc(own, func(a Attachment) bool { return a.ID == id }) {
 			return m
 		}
-		fresh := strings.TrimPrefix(AttachmentURL(id), apiURL)
+		fresh := strings.TrimPrefix(attachmentURL(id, deleted), apiURL)
 		if sub[2] == "&amp;" {
 			fresh = strings.Replace(fresh, "&", "&amp;", 1)
 		}

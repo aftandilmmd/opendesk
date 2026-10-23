@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -44,6 +45,9 @@ type messageMutationTarget struct {
 	threadID    *uuid.UUID
 	bodyHTML    string
 	bodyText    string
+	// delivery is the reply's email delivery_status (a chat reply's follow-up email too).
+	delivery  string
+	createdAt time.Time
 }
 
 func registerMessageMutations(d *deps.Deps, api huma.API, tags []string) {
@@ -72,10 +76,13 @@ func registerMessageMutations(d *deps.Deps, api huma.API, tags []string) {
 				if err != nil {
 					return err
 				}
+				if target.sentAsReply {
+					return httpx.Validation("this note was sent as a reply; it can't be edited")
+				}
 				if target.deleted {
 					return httpx.NotFound("Message")
 				}
-				if target.kind != "note" || target.threadID != nil || target.sentAsReply {
+				if target.kind != "note" || target.threadID != nil {
 					return httpx.Validation("only internal notes can be edited")
 				}
 				if target.authorType != "user" || target.authorID == nil || *target.authorID != p.UserID || p.Kind != auth.KindUser {
@@ -142,14 +149,14 @@ func registerMessageMutations(d *deps.Deps, api huma.API, tags []string) {
 				if err != nil {
 					return err
 				}
+				if target.sentAsReply {
+					return httpx.Validation("this note was sent as a reply; delete the reply instead")
+				}
 				if target.deleted {
 					return nil
 				}
 				if target.threadID != nil {
 					return httpx.Validation("a side conversation's messages can't be deleted")
-				}
-				if target.sentAsReply {
-					return httpx.Validation("this note was sent as a reply; delete the reply instead")
 				}
 				rule, err := messageDeleteRule(ctx, tx, p.WorkspaceID, p.UserID)
 				if err != nil {
@@ -162,9 +169,14 @@ func registerMessageMutations(d *deps.Deps, api huma.API, tags []string) {
 					WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`, p.WorkspaceID, tid, mid, p.UserID); err != nil {
 					return err
 				}
-				// Its mentions go with it, before their emails quote it.
-				if _, err := tx.Exec(ctx, `DELETE FROM notifications WHERE workspace_id = $1 AND ticket_id = $2 AND type = $3 AND data->>'message_id' = $4`,
-					p.WorkspaceID, tid, hd.NotifyMentioned, mid.String()); err != nil {
+				// A reply that has not gone out yet is not sent: it says so, also once restored.
+				if target.delivery == "pending" {
+					if _, err := tx.Exec(ctx, `UPDATE messages SET delivery_status = 'failed', delivery_error = $4
+						WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3 AND delivery_status = 'pending'`, p.WorkspaceID, tid, mid, domain.DeletedBeforeSent); err != nil {
+						return err
+					}
+				}
+				if err := hideMessage(ctx, tx, d, p.WorkspaceID, tid, mid); err != nil {
 					return err
 				}
 				typ := "message_deleted"
@@ -207,6 +219,9 @@ func registerMessageMutations(d *deps.Deps, api huma.API, tags []string) {
 				if err != nil {
 					return err
 				}
+				if target.sentAsReply {
+					return httpx.Validation("this note was sent as a reply; it can't be restored")
+				}
 				if !target.deleted {
 					return httpx.Validation("this message is not deleted")
 				}
@@ -215,6 +230,9 @@ func registerMessageMutations(d *deps.Deps, api huma.API, tags []string) {
 				}
 				if _, err := tx.Exec(ctx, `UPDATE messages SET deleted_at = NULL, deleted_by = NULL
 					WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`, p.WorkspaceID, tid, mid); err != nil {
+					return err
+				}
+				if err := hd.EnqueueAIEmbed(ctx, tx, d.Jobs, d.Cfg, p.WorkspaceID, "ticket", tid); err != nil {
 					return err
 				}
 				actor := actorOf(p)
@@ -275,7 +293,7 @@ func registerPurge(d *deps.Deps, api huma.API, tags []string) {
 					return httpx.Validation("delete the message before removing it for good")
 				}
 				if !target.purged {
-					if keys, err = purgeMessage(ctx, tx, p.WorkspaceID, tid, mid); err != nil {
+					if keys, err = purgeMessage(ctx, tx, d, p.WorkspaceID, tid, mid); err != nil {
 						return err
 					}
 					actor := actorOf(p)
@@ -306,7 +324,9 @@ func registerPurge(d *deps.Deps, api huma.API, tags []string) {
 
 // purgeMessage empties a message and removes its files and its original email, returning
 // the stored objects no other record still uses, to delete once the transaction commits.
-func purgeMessage(ctx context.Context, tx pgx.Tx, wid, tid, mid uuid.UUID) ([]string, error) {
+// What was made from it goes too: notifications, Ollie's suggested reply to it or sent as
+// it, an action card's summary and arguments, the ticket's AI summary and its search index.
+func purgeMessage(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, tid, mid uuid.UUID) ([]string, error) {
 	rows, err := tx.Query(ctx, `SELECT DISTINCT storage_key FROM attachments WHERE workspace_id = $1 AND message_id = $2`, wid, mid)
 	if err != nil {
 		return nil, err
@@ -346,6 +366,31 @@ func purgeMessage(ctx context.Context, tx pgx.Tx, wid, tid, mid uuid.UUID) ([]st
 		wid, tid, mid.String()); err != nil {
 		return nil, err
 	}
+	// Ollie's reply to it, or the one it was sent as, may quote it.
+	if _, err := tx.Exec(ctx, `UPDATE ai_suggested_replies SET body_html = '',
+		status = CASE WHEN status = 'pending' THEN 'superseded' ELSE status END
+		WHERE workspace_id = $1 AND ticket_id = $2 AND (message_id = $3 OR reply_id = $3)`, wid, tid, mid); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE ai_widget_actions SET summary = '', args = ''::bytea,
+		status = CASE WHEN status IN ('pending', 'running') THEN 'expired' ELSE status END
+		WHERE workspace_id = $1 AND ticket_id = $2 AND message_id = $3`, wid, tid, mid); err != nil {
+		return nil, err
+	}
+	// The ticket's AI summary was written from the conversation it was part of.
+	tag, err := tx.Exec(ctx, `UPDATE tickets SET custom = custom - 'ai_summary', updated_at = now()
+		WHERE workspace_id = $1 AND id = $2 AND custom ? 'ai_summary'`, wid, tid)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() > 0 {
+		if err := domain.PublishTicketUpdated(ctx, tx, wid, tid, []string{"custom"}); err != nil {
+			return nil, err
+		}
+	}
+	if err := hd.EnqueueAIEmbed(ctx, tx, d.Jobs, d.Cfg, wid, "ticket", tid); err != nil {
+		return nil, err
+	}
 	var keys []string
 	for _, key := range files {
 		var shared bool
@@ -362,6 +407,26 @@ func purgeMessage(ctx context.Context, tx pgx.Tx, wid, tid, mid uuid.UUID) ([]st
 	return keys, nil
 }
 
+// hideMessage takes what a message said out of what was made from it when it is deleted or
+// a note is sent as a reply: its mention notifications go (before their emails quote it),
+// other notifications lose their preview, an action card waiting on the visitor expires,
+// and the ticket's search index is rebuilt without it.
+func hideMessage(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, tid, mid uuid.UUID) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM notifications WHERE workspace_id = $1 AND ticket_id = $2 AND type = $3 AND data->>'message_id' = $4`,
+		wid, tid, hd.NotifyMentioned, mid.String()); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE notifications SET data = data - 'preview'
+		WHERE workspace_id = $1 AND ticket_id = $2 AND data->>'message_id' = $3 AND data ? 'preview'`, wid, tid, mid.String()); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE ai_widget_actions SET status = 'expired', decided_at = COALESCE(decided_at, now())
+		WHERE workspace_id = $1 AND ticket_id = $2 AND message_id = $3 AND status = 'pending'`, wid, tid, mid); err != nil {
+		return err
+	}
+	return hd.EnqueueAIEmbed(ctx, tx, d.Jobs, d.Cfg, wid, "ticket", tid)
+}
+
 // messageDeleteRule is which messages an agent may delete: their own rule if an admin set
 // one, else the workspace's (settings.message_delete).
 func messageDeleteRule(ctx context.Context, tx pgx.Tx, wid, uid uuid.UUID) (string, error) {
@@ -371,8 +436,9 @@ func messageDeleteRule(ctx context.Context, tx pgx.Tx, wid, uid uuid.UUID) (stri
 	return rule, err
 }
 
-// mayDelete: an admin any message; an agent, as the workspace allows, their own or any
-// agent's (never a customer's, a bot's or an automation's).
+// mayDelete: an admin any message; an agent, as their rule allows: "own" (the default)
+// their own internal notes, "all" any agent's notes and replies, "off" none. Never a
+// customer's, a bot's or an automation's message.
 func mayDelete(p *auth.Principal, rule string, t messageMutationTarget) bool {
 	if p.Kind != auth.KindUser {
 		return false
@@ -387,7 +453,7 @@ func mayDelete(p *auth.Principal, rule string, t messageMutationTarget) bool {
 	case "all":
 		return true
 	case "own":
-		return t.authorID != nil && *t.authorID == p.UserID
+		return t.kind == "note" && t.authorID != nil && *t.authorID == p.UserID
 	}
 	return false
 }
@@ -395,12 +461,7 @@ func mayDelete(p *auth.Principal, rule string, t messageMutationTarget) bool {
 // publishDeletion tells the team a message is now a marker (without what it said) and,
 // for a reply, takes it out of the visitor's widget and the ticket's count and preview.
 func publishDeletion(ctx context.Context, tx pgx.Tx, wid, tid, mid uuid.UUID, reply bool) error {
-	msg, err := domain.LoadMessage(ctx, tx, wid, mid)
-	if err != nil {
-		return err
-	}
-	if _, err := events.Publish(ctx, tx, events.Event{WorkspaceID: wid, Type: "message.updated", TicketID: &tid,
-		Data: map[string]any{"ticket_id": tid, "message": domain.Tombstone(msg)}}); err != nil {
+	if err := domain.PublishMessageUpdated(ctx, tx, wid, mid); err != nil {
 		return err
 	}
 	if !reply {
@@ -415,7 +476,9 @@ func publishDeletion(ctx context.Context, tx pgx.Tx, wid, tid, mid uuid.UUID, re
 	return domain.PublishTicketUpdated(ctx, tx, wid, tid, []string{"last_message_preview"})
 }
 
-// withdrawFromVisitor removes a reply from the visitor's widget on a chat ticket.
+// withdrawFromVisitor removes a reply from the visitor's widget on a chat ticket
+// (message.withdrawn). The team keeps it, as a marker or a note, so the event is the
+// visitor's alone in meaning: the agent app leaves its copy as it is.
 func withdrawFromVisitor(ctx context.Context, tx pgx.Tx, wid, tid, mid uuid.UUID) error {
 	var channel string
 	var contactID *uuid.UUID
@@ -427,7 +490,7 @@ func withdrawFromVisitor(ctx context.Context, tx pgx.Tx, wid, tid, mid uuid.UUID
 	if channel != domain.ChannelChat || contactID == nil {
 		return nil
 	}
-	_, err := events.Publish(ctx, tx, events.Event{WorkspaceID: wid, Type: "message.deleted", TicketID: &tid,
+	_, err := events.Publish(ctx, tx, events.Event{WorkspaceID: wid, Type: "message.withdrawn", TicketID: &tid,
 		Visibility: events.VisibilityPublic, Topics: []string{events.ContactTopic(wid, *contactID, brandID)},
 		Data: map[string]any{"ticket_id": tid, "message_id": mid}})
 	return err
@@ -482,6 +545,11 @@ func registerRetract(d *deps.Deps, api huma.API, tags []string) {
 				if channel != domain.ChannelChat {
 					return httpx.Validation("only a chat reply can be taken back; email is delivered when it is sent")
 				}
+				// A chat reply the visitor missed goes out by email (chat follow-up): once that
+				// is queued or sent, it is theirs.
+				if target.delivery != "none" {
+					return httpx.Validation("this reply was also sent by email; it can't be taken back")
+				}
 				isAuthor := p.Kind == auth.KindUser && target.authorID != nil && *target.authorID == p.UserID
 				isAdmin := p.Kind == auth.KindUser && p.Role.AtLeast(auth.RoleAdmin)
 				if !isAuthor && !isAdmin {
@@ -491,8 +559,15 @@ func registerRetract(d *deps.Deps, api huma.API, tags []string) {
 					p.WorkspaceID, tid, mid); err != nil {
 					return err
 				}
-				// The conversation reads as if the reply was never there.
+				// The conversation reads as if the reply was never there, and it is not the
+				// ticket's first response.
 				if err := recountTicket(ctx, tx, p.WorkspaceID, tid); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(ctx, `UPDATE tickets t SET first_responded_at = (SELECT min(m.created_at) FROM messages m
+					WHERE m.workspace_id = t.workspace_id AND m.ticket_id = t.id AND m.kind = 'reply' AND m.direction = 'outbound'
+					AND m.author_type = 'user' AND m.deleted_at IS NULL)
+					WHERE t.workspace_id = $1 AND t.id = $2 AND t.first_responded_at = $3`, p.WorkspaceID, tid, target.createdAt); err != nil {
 					return err
 				}
 				actor := actorOf(p)
@@ -521,10 +596,10 @@ func registerRetract(d *deps.Deps, api huma.API, tags []string) {
 func lockMessageMutationTarget(ctx context.Context, tx pgx.Tx, wid, ticketID, messageID uuid.UUID) (messageMutationTarget, error) {
 	var target messageMutationTarget
 	err := tx.QueryRow(ctx, `SELECT author_type, author_user_id, kind, direction, thread_id, body_html, body_text, deleted_at IS NOT NULL, purged_at IS NOT NULL,
-		sent_as_reply_id IS NOT NULL FROM messages
+		sent_as_reply_id IS NOT NULL, delivery_status, created_at FROM messages
 		WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3 FOR UPDATE`, wid, ticketID, messageID).
 		Scan(&target.authorType, &target.authorID, &target.kind, &target.direction, &target.threadID, &target.bodyHTML, &target.bodyText,
-			&target.deleted, &target.purged, &target.sentAsReply)
+			&target.deleted, &target.purged, &target.sentAsReply, &target.delivery, &target.createdAt)
 	if db.IsNotFound(err) {
 		return target, httpx.NotFound("Message")
 	}

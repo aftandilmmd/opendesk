@@ -276,7 +276,7 @@ func (r *triggerRun) facts(ctx context.Context, messageID *uuid.UUID) (facts, er
 	}
 	// The body and sender are the triggering message's, else the latest customer message.
 	var body, from string
-	q := `SELECT body_text, from_email FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`
+	q := `SELECT CASE WHEN deleted_at IS NULL THEN body_text ELSE '' END, from_email FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`
 	args := []any{r.wid, r.tid, messageID}
 	if messageID == nil {
 		q = `SELECT body_text, from_email FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND kind = 'reply' AND deleted_at IS NULL
@@ -747,7 +747,8 @@ func notifyCustomerReplied(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, ti
 	data := map[string]any{}
 	if messageID != nil {
 		var preview string
-		if err := tx.QueryRow(ctx, `SELECT body_text FROM messages WHERE workspace_id = $1 AND id = $2`, wid, *messageID).Scan(&preview); err == nil {
+		// A message deleted before this ran is announced without what it said.
+		if err := tx.QueryRow(ctx, `SELECT CASE WHEN deleted_at IS NULL THEN body_text ELSE '' END FROM messages WHERE workspace_id = $1 AND id = $2`, wid, *messageID).Scan(&preview); err == nil {
 			data["message_id"] = messageID.String()
 			data["preview"] = hd.Excerpt(preview, 140)
 		}

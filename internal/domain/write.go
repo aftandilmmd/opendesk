@@ -506,28 +506,43 @@ func truncateRunes(s string, n int) string {
 }
 
 // PublishMessageUpdated publishes message.updated for a message in tx. A reply on a chat
-// ticket is public and reaches the visitor's widget too, like message.created.
+// ticket is public and reaches the visitor's widget too, like message.created. A deleted
+// message (or a note sent as a reply) goes to the team alone, as its marker, without what it
+// said: the visitor's widget no longer has it.
 func PublishMessageUpdated(ctx context.Context, tx pgx.Tx, wid, messageID uuid.UUID) error {
 	msg, err := LoadMessage(ctx, tx, wid, messageID)
 	if err != nil {
 		return err
 	}
-	var channel string
-	var contactID *uuid.UUID
-	var brandID uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT channel, contact_id, brand_id FROM tickets WHERE workspace_id = $1 AND id = $2`, wid, msg.TicketID).
-		Scan(&channel, &contactID, &brandID); err != nil {
-		return err
-	}
-	ev := events.Event{WorkspaceID: wid, Type: "message.updated", TicketID: &msg.TicketID,
-		Data: map[string]any{"ticket_id": msg.TicketID, "message": msg}}
-	if msg.Kind == "reply" && channel == ChannelChat && contactID != nil {
-		ev.Visibility = events.VisibilityPublic
-		ev.Topics = []string{events.ContactTopic(wid, *contactID, brandID)}
-		ev.Data = map[string]any{"ticket_id": msg.TicketID, "message": PublicMessage(msg)}
+	ev := MessageUpdatedEvent(wid, msg)
+	if msg.DeletedAt == nil && msg.Kind == "reply" {
+		var channel string
+		var contactID *uuid.UUID
+		var brandID uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT channel, contact_id, brand_id FROM tickets WHERE workspace_id = $1 AND id = $2`, wid, msg.TicketID).
+			Scan(&channel, &contactID, &brandID); err != nil {
+			return err
+		}
+		if channel == ChannelChat && contactID != nil {
+			ev.Visibility = events.VisibilityPublic
+			ev.Topics = []string{events.ContactTopic(wid, *contactID, brandID)}
+			ev.Data = map[string]any{"ticket_id": msg.TicketID, "message": PublicMessage(msg)}
+		}
 	}
 	_, err = events.Publish(ctx, tx, ev)
 	return err
+}
+
+// DeletedBeforeSent is the delivery error of a reply deleted before it went out: it is
+// marked failed then, and sending it skips it. One already being handed to the mailbox goes
+// out and is recorded as sent.
+const DeletedBeforeSent = "Deleted before it was sent."
+
+// MessageUpdatedEvent is message.updated for the team: a deleted message as its marker
+// (Tombstone), never what it said.
+func MessageUpdatedEvent(wid uuid.UUID, msg Message) events.Event {
+	return events.Event{WorkspaceID: wid, Type: "message.updated", TicketID: &msg.TicketID,
+		Data: map[string]any{"ticket_id": msg.TicketID, "message": Tombstone(msg)}}
 }
 
 // ClearTicketDraft removes the ticket's shared draft (contracts/api.md "Drafts"), if any, and

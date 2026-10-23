@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/useopendesk/opendesk/internal/auth"
 	"github.com/useopendesk/opendesk/internal/domain"
@@ -136,20 +137,27 @@ func TestInternalNoteMutationPermissionsAndKinds(t *testing.T) {
 	e.Do("DELETE", replyPath, ws.Admin.As(ws), nil).Want(t, 204)
 }
 
-// TestMessageDeleteRule checks settings.message_delete: agents delete none, their own, or any
-// agent's messages; admins any message whatever the rule.
+// TestMessageDeleteRule checks settings.message_delete: agents delete none, their own
+// internal notes (the default), or any agent's notes and replies; admins any message
+// whatever the rule.
 func TestMessageDeleteRule(t *testing.T) {
 	e, ws := newEnv(t)
 	tk := createTicket(t, e, ws, map[string]any{"channel": "api", "kind": "note"})
 	other := e.AddUser(ws, auth.RoleAgent, "Other Agent")
-	note := func(u hdtest.User) string {
+	post := func(u hdtest.User, kind string) string {
 		var m domain.Message
-		e.Do("POST", "/v1/tickets/"+tk.ID.String()+"/messages", u.As(ws), map[string]any{"kind": "note", "body_html": "<p>n</p>"}).Want(t, 201).JSON(t, &m)
+		e.Do("POST", "/v1/tickets/"+tk.ID.String()+"/messages", u.As(ws), map[string]any{"kind": kind, "body_html": "<p>n</p>"}).Want(t, 201).JSON(t, &m)
 		return "/v1/tickets/" + tk.ID.String() + "/messages/" + m.ID.String()
 	}
+	note := func(u hdtest.User) string { return post(u, "note") }
 	rule := func(r string) {
 		e.Exec(`UPDATE workspaces SET settings = settings || jsonb_build_object('message_delete', $2::text) WHERE id = $1`, ws.ID, r)
 	}
+
+	// Unset, the rule is "own": an agent's own notes, never their replies.
+	e.Do("DELETE", note(ws.Agent), ws.Agent.As(ws), nil).Want(t, 204)
+	e.Do("DELETE", post(ws.Agent, "reply"), ws.Agent.As(ws), nil).Want(t, 403)
+	e.Do("DELETE", post(ws.Agent, "reply"), ws.Admin.As(ws), nil).Want(t, 204)
 
 	rule("off")
 	e.Do("DELETE", note(ws.Agent), ws.Agent.As(ws), nil).Want(t, 403)
@@ -158,9 +166,11 @@ func TestMessageDeleteRule(t *testing.T) {
 	rule("own")
 	e.Do("DELETE", note(ws.Agent), ws.Agent.As(ws), nil).Want(t, 204)
 	e.Do("DELETE", note(other), ws.Agent.As(ws), nil).Want(t, 403)
+	e.Do("DELETE", post(ws.Agent, "reply"), ws.Agent.As(ws), nil).Want(t, 403)
 
 	rule("all")
 	e.Do("DELETE", note(other), ws.Agent.As(ws), nil).Want(t, 204)
+	e.Do("DELETE", post(other, "reply"), ws.Agent.As(ws), nil).Want(t, 204)
 
 	// An agent's own rule wins over the workspace's, both ways; NULL follows it again.
 	e.Exec(`UPDATE members SET message_delete = 'off' WHERE workspace_id = $1 AND user_id = $2`, ws.ID, ws.Agent.ID)
@@ -168,6 +178,7 @@ func TestMessageDeleteRule(t *testing.T) {
 	rule("off")
 	e.Exec(`UPDATE members SET message_delete = 'all' WHERE workspace_id = $1 AND user_id = $2`, ws.ID, ws.Agent.ID)
 	e.Do("DELETE", note(other), ws.Agent.As(ws), nil).Want(t, 204)
+	e.Do("DELETE", post(ws.Agent, "reply"), ws.Agent.As(ws), nil).Want(t, 204)
 	e.Exec(`UPDATE members SET message_delete = NULL WHERE workspace_id = $1 AND user_id = $2`, ws.ID, ws.Agent.ID)
 	e.Do("DELETE", note(ws.Agent), ws.Agent.As(ws), nil).Want(t, 403)
 }
@@ -183,11 +194,25 @@ func TestDeletingAReplyHidesItFromTheCustomer(t *testing.T) {
 	e.Do("POST", "/v1/tickets/"+tk.ID.String()+"/messages", ws.Agent.As(ws),
 		map[string]any{"kind": "reply", "body_html": "<p>Wrong answer</p>"}).Want(t, 201).JSON(t, &reply)
 	_, seq := e.Events(ws.ID, 0)
-	e.Do("DELETE", "/v1/tickets/"+tk.ID.String()+"/messages/"+reply.ID.String(), ws.Agent.As(ws), nil).Want(t, 204)
+	e.Do("DELETE", "/v1/tickets/"+tk.ID.String()+"/messages/"+reply.ID.String(), ws.Admin.As(ws), nil).Want(t, 204)
 
-	if n := countRows(t, e, `SELECT count(*) FROM events WHERE workspace_id = $1 AND seq > $2 AND type = 'message.deleted' AND visibility = 'public'`,
+	if n := countRows(t, e, `SELECT count(*) FROM events WHERE workspace_id = $1 AND seq > $2 AND type = 'message.withdrawn' AND visibility = 'public'`,
 		ws.ID, seq); n != 1 {
-		t.Fatalf("public message.deleted %d", n)
+		t.Fatalf("public message.withdrawn %d", n)
+	}
+	// The team keeps the marker: nothing tells the agent app to drop it, and nothing public carries it.
+	if n := countRows(t, e, `SELECT count(*) FROM events WHERE workspace_id = $1 AND seq > $2 AND (type = 'message.deleted'
+		OR visibility = 'public' AND type <> 'message.withdrawn')`, ws.ID, seq); n != 0 {
+		t.Fatalf("message.deleted or other public events %d", n)
+	}
+	// Later changes to it (an action card expiring, a bounce) reach the team alone, without its text.
+	_, seq = e.Events(ws.ID, seq)
+	if err := e.D.DB.Tx(e.Ctx, func(tx pgx.Tx) error { return domain.PublishMessageUpdated(e.Ctx, tx, ws.ID, reply.ID) }); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, e, `SELECT count(*) FROM events WHERE workspace_id = $1 AND seq > $2 AND (visibility = 'public' OR data::text LIKE '%Wrong answer%')`,
+		ws.ID, seq); n != 0 {
+		t.Fatal("message.updated of a deleted reply is public or carries its text")
 	}
 	msgs, err := domain.ListMessages(e.Ctx, e.D.DB.Pool, ws.ID, tk.ID, true)
 	if err != nil {
@@ -220,18 +245,38 @@ func TestReplyFromNote(t *testing.T) {
 	post(ws.Agent, map[string]any{"kind": "note", "body_html": "<p>x</p>", "from_note_id": note.ID.String()}).Want(t, 422)
 
 	var reply domain.Message
-	post(ws.Agent, map[string]any{"kind": "reply", "body_html": "<p>Original note</p>", "from_note_id": note.ID.String()}).Want(t, 201).JSON(t, &reply)
-	// The note stays where it was, empty, pointing at the reply that holds its words.
-	if n := countRows(t, e, `SELECT count(*) FROM messages WHERE id = $1 AND sent_as_reply_id = $2 AND body_text = '' AND body_html = ''`, note.ID, reply.ID); n != 1 {
+	post(ws.Agent, map[string]any{"kind": "reply", "body_html": "<p>Edited before sending</p>", "from_note_id": note.ID.String()}).Want(t, 201).JSON(t, &reply)
+	// The note stays where it was, pointing at the reply. Its own words are kept, hidden like
+	// a deleted message's: the reply may say something else.
+	if n := countRows(t, e, `SELECT count(*) FROM messages WHERE id = $1 AND sent_as_reply_id = $2 AND body_text = 'Original note'
+		AND deleted_at IS NOT NULL AND deleted_by = $3`, note.ID, reply.ID, ws.Agent.ID); n != 1 {
 		t.Fatalf("note marker rows %d", n)
 	}
 	if n := countRows(t, e, `SELECT count(*) FROM activities WHERE ticket_id = $1 AND type = 'note_sent_as_reply'`, tk.ID); n != 1 {
 		t.Fatalf("note_sent_as_reply activities %d", n)
 	}
+	read := func(u hdtest.User) domain.Message {
+		var out struct{ Data []domain.Message }
+		e.Do("GET", "/v1/tickets/"+tk.ID.String()+"/messages", u.As(ws), nil).Want(t, 200).JSON(t, &out)
+		for _, m := range out.Data {
+			if m.ID == note.ID {
+				return m
+			}
+		}
+		t.Fatal("the note's marker is missing")
+		return domain.Message{}
+	}
+	if m := read(ws.Agent); m.SentAsReplyID == nil || *m.SentAsReplyID != reply.ID || m.BodyText != "" || m.BodyHTML != "" {
+		t.Fatalf("agent's view of a note sent as a reply %+v", m)
+	}
+	if m := read(ws.Admin); m.BodyText != "Original note" {
+		t.Fatalf("admin's view of a note sent as a reply %+v", m)
+	}
 	path := "/v1/tickets/" + tk.ID.String() + "/messages/" + note.ID.String()
 	post(ws.Agent, map[string]any{"kind": "reply", "body_html": "<p>again</p>", "from_note_id": note.ID.String()}).Want(t, 422)
 	e.Do("PATCH", path, ws.Agent.As(ws), map[string]string{"body_html": "<p>Changed</p>"}).Want(t, 422)
 	e.Do("DELETE", path, ws.Admin.As(ws), nil).Want(t, 422)
+	e.Do("POST", path+"/restore", ws.Admin.As(ws), nil).Want(t, 422)
 	// Nothing of it reaches the AI or a channel; the team's timeline keeps the marker.
 	public, err := domain.ListMessages(e.Ctx, e.D.DB.Pool, ws.ID, tk.ID, false)
 	if err != nil {
@@ -241,82 +286,6 @@ func TestReplyFromNote(t *testing.T) {
 		if m.ID == note.ID {
 			t.Fatal("the marker is in the AI's and channels' list")
 		}
-	}
-}
-
-func TestDeleteNoteKeepsSharedAttachmentObject(t *testing.T) {
-	e, ws := newEnv(t)
-	tk := createTicket(t, e, ws, map[string]any{"channel": "api", "kind": "note"})
-	note := createInternalNote(t, e, ws, tk.ID.String())
-	otherTicket := createTicket(t, e, ws, map[string]any{"channel": "api", "kind": "note"})
-	otherNote := createInternalNote(t, e, ws, otherTicket.ID.String())
-	key := "workspaces/" + ws.ID.String() + "/attachments/shared-note-test"
-	if err := e.D.Storage.Put(e.Ctx, key, strings.NewReader("shared"), int64(len("shared")), "text/plain"); err != nil {
-		t.Fatal(err)
-	}
-	e.Exec(`INSERT INTO attachments (workspace_id, message_id, filename, size_bytes, storage_key) VALUES ($1, $2, 'one.txt', 6, $3)`, ws.ID, note.ID, key)
-	e.Exec(`INSERT INTO attachments (workspace_id, message_id, filename, size_bytes, storage_key) VALUES ($1, $2, 'two.txt', 6, $3)`, ws.ID, otherNote.ID, key)
-	e.Do("DELETE", "/v1/tickets/"+tk.ID.String()+"/messages/"+note.ID.String(), ws.Agent.As(ws), nil).Want(t, 204)
-	if _, err := e.D.Storage.Get(e.Ctx, key); err != nil {
-		t.Fatalf("shared attachment object removed: %v", err)
-	}
-}
-
-func TestInternalNoteMutationRefusals(t *testing.T) {
-	e, ws := newEnv(t)
-	tk := createTicket(t, e, ws, map[string]any{"channel": "api", "kind": "note"})
-	note := createInternalNote(t, e, ws, tk.ID.String())
-	path := "/v1/tickets/" + tk.ID.String() + "/messages/" + note.ID.String()
-
-	// An admin deletes any note, but edits only their own.
-	e.Do("PATCH", path, ws.Admin.As(ws), map[string]string{"body_html": "<p>Changed</p>"}).Want(t, 403)
-	// The routes are for signed-in members, whatever the key's scopes.
-	key := e.APIKey(ws, "tickets:write", "tickets:read")
-	e.Do("PATCH", path, hdtest.Auth{Bearer: key}, map[string]string{"body_html": "<p>Changed</p>"}).Want(t, 403)
-	e.Do("DELETE", path, hdtest.Auth{Bearer: key}, nil).Want(t, 403)
-	// A note is reached through its own ticket only.
-	other := createTicket(t, e, ws, map[string]any{"channel": "api", "kind": "note"})
-	e.Do("DELETE", "/v1/tickets/"+other.ID.String()+"/messages/"+note.ID.String(), ws.Agent.As(ws), nil).Want(t, 404)
-	e.Do("PATCH", path, ws.Agent.As(ws), map[string]string{"body_html": "<p> </p>"}).Want(t, 422)
-
-	// A ticket of a private team the caller is not on is not there at all.
-	hidden, _ := privateTicket(t, e, ws)
-	var secret domain.Message
-	e.Do("POST", "/v1/tickets/"+hidden.ID.String()+"/messages", ws.Admin.As(ws),
-		map[string]any{"kind": "note", "body_html": "<p>Team only</p>"}).Want(t, 201).JSON(t, &secret)
-	e.Do("DELETE", "/v1/tickets/"+hidden.ID.String()+"/messages/"+secret.ID.String(), ws.Agent.As(ws), nil).Want(t, 404)
-}
-
-func TestEditingANoteNotifiesOnlyNewMentions(t *testing.T) {
-	e, ws := newEnv(t)
-	tk := createTicket(t, e, ws, map[string]any{"channel": "api", "kind": "note"})
-	note := createInternalNote(t, e, ws, tk.ID.String())
-	path := "/v1/tickets/" + tk.ID.String() + "/messages/" + note.ID.String()
-	mention := func(u hdtest.User, name string) string {
-		return fmt.Sprintf(`<span data-type="mention" data-id="%s" data-mention="%s">@%s</span>`, u.ID, u.ID, name)
-	}
-	count := func(uid any) int {
-		return countRows(t, e, `SELECT count(*) FROM notifications WHERE ticket_id = $1 AND type = 'mentioned' AND user_id = $2`, tk.ID, uid)
-	}
-
-	e.Do("PATCH", path, ws.Agent.As(ws), map[string]string{"body_html": "<p>Ask " + mention(ws.Admin, "Adam") + "</p>"}).Want(t, 200)
-	if count(ws.Admin.ID) != 1 {
-		t.Fatalf("admin mentions %d", count(ws.Admin.ID))
-	}
-	e.Do("PATCH", path, ws.Agent.As(ws), map[string]string{"body_html": "<p>Ask " + mention(ws.Admin, "Adam") + " and " + mention(ws.Owner, "Olivia") + " today</p>"}).
-		Want(t, 200)
-	if count(ws.Admin.ID) != 1 || count(ws.Owner.ID) != 1 {
-		t.Fatalf("mentions admin %d owner %d", count(ws.Admin.ID), count(ws.Owner.ID))
-	}
-	var preview string
-	e.Scalar(`SELECT data->>'preview' FROM notifications WHERE ticket_id = $1 AND user_id = $2`, &preview, tk.ID, ws.Admin.ID)
-	if !strings.Contains(preview, "today") {
-		t.Fatalf("admin's mention still reads %q", preview)
-	}
-
-	e.Do("DELETE", path, ws.Agent.As(ws), nil).Want(t, 204)
-	if n := countRows(t, e, `SELECT count(*) FROM notifications WHERE ticket_id = $1 AND type = 'mentioned'`, tk.ID); n != 0 {
-		t.Fatalf("mentions left after delete %d", n)
 	}
 }
 

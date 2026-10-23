@@ -768,8 +768,7 @@ func (s *service) recordBounce(ctx context.Context, wid, mailboxID uuid.UUID, pm
 			if err != nil {
 				return err
 			}
-			if _, err := events.Publish(ctx, tx, events.Event{WorkspaceID: wid, Type: "message.updated", TicketID: &h.ticket,
-				Data: map[string]any{"ticket_id": h.ticket, "message": msg}}); err != nil {
+			if _, err := events.Publish(ctx, tx, domain.MessageUpdatedEvent(wid, msg)); err != nil {
 				return err
 			}
 		}

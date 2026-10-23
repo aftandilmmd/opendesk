@@ -331,6 +331,13 @@ func TestReadTools(t *testing.T) {
 	if strings.Contains(text(call(t, s, "get_ticket", map[string]any{"ticket": other.ID.String()}, nil)), "<p>") {
 		t.Fatal("thread carries HTML")
 	}
+	// A deleted message and a note sent as a reply are left out entirely, never an empty entry.
+	e.Exec(`INSERT INTO messages (workspace_id, ticket_id, kind, direction, author_type, body_html, body_text, deleted_at)
+		VALUES ($1, $2, 'note', 'outbound', 'user', '<p>Deleted secret</p>', 'Deleted secret', now())`, e.WS.ID, tk.ID)
+	res0 := call(t, s, "get_ticket", map[string]any{"ticket": fmt.Sprintf("#%d", tk.Number)}, &th)
+	if len(th.Messages) != 1 || strings.Contains(text(res0), "Deleted secret") {
+		t.Fatalf("get_ticket with a deleted message: %+v", th)
+	}
 
 	// Bad arguments and other workspaces' tickets are tool errors, not protocol errors.
 	if res := call(t, s, "get_ticket", map[string]any{"ticket": "DROP TABLE"}, nil); !res.IsError {

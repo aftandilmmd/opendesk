@@ -277,6 +277,27 @@ func TestReadToolsAndContainment(t *testing.T) {
 	}
 }
 
+// TestReadToolsSkipHiddenMessages checks Ollie never reads a deleted message or a note sent
+// as a reply, even for an admin, who reads them in the app.
+func TestReadToolsSkipHiddenMessages(t *testing.T) {
+	e := newEnv(t, false)
+	tk := e.ticket("Card on file", "Please update my card.")
+	e.Exec(`INSERT INTO messages (workspace_id, ticket_id, kind, direction, author_type, body_html, body_text, deleted_at)
+		VALUES ($1, $2, 'reply', 'inbound', 'contact', '<p>Card 4242 4242 4242 4242</p>', 'Card 4242 4242 4242 4242', now())`, e.WS.ID, tk.ID)
+	sid := e.session(e.WS.Admin.As(e.WS))
+	e.M.queue(step{text: "Reading.", tool: "get_ticket", args: map[string]any{"ticket": fmt.Sprintf("#%d", tk.Number)}},
+		step{text: "Done."})
+	st, _, body := e.stream("/v1/assistant/sessions/"+sid+"/messages", e.WS.Admin.As(e.WS),
+		map[string]any{"text": "Read it", "context": map[string]any{"page": "ticket", "ticket_id": tk.ID.String()}})
+	if st != 200 {
+		t.Fatalf("status %d: %s", st, body)
+	}
+	raw, _ := json.Marshal(e.M.last()["messages"])
+	if s := string(raw); strings.Contains(s, "4242") || !strings.Contains(s, "Please update my card") {
+		t.Fatalf("the model read a deleted message, or not the thread: %s", s)
+	}
+}
+
 func TestApprovalRunsOnceAsTheUser(t *testing.T) {
 	e := newEnv(t, false)
 	tk := e.ticket("Login broken", "I cannot sign in.")
