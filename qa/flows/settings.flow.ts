@@ -182,6 +182,8 @@ test("set how long replies wait before they go out, and which messages agents ma
 
   await page.getByRole("menuitemcheckbox", { name: "Deletes any agent\u2019s messages" }).click();
   await expect(page.getByText("Deletes any agent\u2019s messages")).toBeVisible();
+  const notice = page.getByRole("button", { name: "Not now" });
+  if (await notice.isVisible()) await notice.click();
   await proof.dwell();
   await proof.shot("member-rule-set", { caption: "Priya may delete any agent's messages, shown on her row" });
 });

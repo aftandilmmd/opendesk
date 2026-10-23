@@ -481,7 +481,7 @@
     "mentionWarn": "This reply mentions {{names}}. The customer will read it.",
     "mentionAsNote": "Turn into internal note",
     "mentionSend": "Send anyway",
-    "fromNote": "This note goes to the customer as a reply. The note is removed once the reply is sent.",
+    "fromNote": "This note goes to the customer as a reply. Where the note was, a marker points to it.",
     "fromNoteCancel": "Keep as a note"
   },
   "sharedDraft": {

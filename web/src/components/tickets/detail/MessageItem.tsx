@@ -177,7 +177,7 @@ function SentAsReply({ m, name }: { m: Message; name: string }) {
     <article id={`m-${m.id}`} aria-label={t("message.sentAsReplyLabel", { name })} className="rounded-lg border border-dashed border-note-line bg-note px-4 py-2">
       <div className="flex items-center gap-2 text-[12px] text-fg-3">
         <Lock className="size-3.5 shrink-0 text-fg-4" />
-        <span className="min-w-0 flex-1 truncate">{t("message.sentAsReply", { name })}</span>
+        <span className="min-w-0 flex-1">{t("message.sentAsReply", { name })}</span>
         <Tooltip content={fullDate(m.created_at)}>
           <time dateTime={m.created_at} className="mono shrink-0 text-[11px] text-fg-4">
             {clock(m.created_at)}
@@ -229,7 +229,7 @@ function DeletedMessage({ m, name, admin }: { m: Message; name: string; admin: b
     <article id={`m-${m.id}`} aria-label={t("message.deletedLabel", { name })} className="rounded-lg border border-dashed border-line px-4 py-2.5">
       <div className="flex items-center gap-2 text-[12px] text-fg-3">
         <Trash2 className="size-3.5 shrink-0 text-fg-4" />
-        <span className="min-w-0 flex-1 truncate">
+        <span className="min-w-0 flex-1">
           {own
             ? t(m.kind === "note" ? "message.deletedOwnNote" : "message.deletedOwnMessage", { who })
             : t(m.kind === "note" ? "message.deletedNote" : "message.deletedMessage", { who, name })}
