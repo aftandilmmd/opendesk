@@ -47,7 +47,7 @@ type Message = {
   deleted_at: string | null;  // a deleted message stays as a marker
   deleted_by: UserRef | null;
   purged_at: string | null;   // its content was removed for good
-  sent_as_reply_id: string | null; // a note sent as a reply, kept as a marker
+  sent_as_reply_id: string | null; // a note sent as a reply, kept as a marker (deleted_at says when)
 };
 ```
 
@@ -97,21 +97,22 @@ Agents can edit their own plain internal notes. Editing takes sanitized `body_ht
 
 ## Turn a note into a reply
 
-Send the reply with `from_note_id`, the id of your own internal note without files. The reply is sent now, at the end of the conversation. In the same step the note is emptied and stays where it was as a marker, with `sent_as_reply_id` pointing at the reply, so its words exist once.
+Send the reply with `from_note_id`, the id of your own internal note without files. The reply is sent now, at the end of the conversation. In the same step the note becomes a marker where it was, with `sent_as_reply_id` pointing at the reply. The note's own words are kept and hidden like a deleted message's, since the reply may have been edited before it went: teammates see the marker, admins can read the note.
 
 ## Turn a chat reply into a note
 
-`POST .../retract` turns a reply you sent on a chat ticket into an internal note: it leaves the customer's chat, but they may already have read it. Admins can do it for any agent's reply. Email is delivered when it is sent, so an email reply returns `422`.
+`POST .../retract` turns a reply you sent on a chat ticket into an internal note: it leaves the customer's chat (`message.withdrawn`), but they may already have read it. It no longer counts as the ticket's first response. Admins can do it for any agent's reply. Email is delivered when it is sent, so an email reply returns `422`, and so does a chat reply already emailed to the customer as a follow-up.
 
 ## Delete, restore and purge
 
 Deleting leaves a marker in the conversation with who deleted it and when. Teammates see only the marker; admins can still read the message, restore it or remove its content for good.
 
-- **Who may delete**: admins any message, a customer's included. Agents follow the workspace's `settings.message_delete`: `off`, `own` (the default, their own messages) or `all` (any agent's), unless an admin set a rule of their own (`PATCH /v1/members/{user_id}/permissions`). Agents never delete a customer's, a bot's or an automation's message.
-- **What a deleted reply leaves**: the customer's chat, search, AI context, the quoted history of later emails, the ticket's count and preview. A reply not yet sent is not sent. An email already delivered stays in the customer's inbox.
-- **Purge** (admins, after deleting) removes the text, the subject, the files and the original email for good, for what should never have been written down. It cannot be restored and is recorded in the audit log.
+- **Who may delete**: admins any message, a customer's included. Agents follow the workspace's `settings.message_delete`: `own` (the default: their own internal notes), `all` (any agent's notes and replies) or `off`, unless an admin set a rule of their own (`PATCH /v1/members/{user_id}/permissions`). So deleting a reply the customer saw is an admin's, unless an admin grants `all`. Agents never delete a customer's, a bot's or an automation's message.
+- **What a deleted message leaves**: the customer's chat, search, AI and MCP context, the quoted history of later emails, the ticket's count and preview, and the preview of notifications about it. A reply not yet sent is not sent and is marked `failed` ("Deleted before it was sent."). An email already delivered stays in the customer's inbox.
+- **Files** of a deleted message open for admins only, through links signed for it while it is deleted; links handed out before stop working.
+- **Purge** (admins, after deleting) removes the text, the subject, the files and the original email for good, for what should never have been written down, with what was made from it: notification previews, the text of Ollie's suggested reply and action card, and the ticket's AI summary. The ticket's subject stays, even when it came from that email: rename the ticket if it must change. Events already delivered to webhooks and copies posted to Slack, Discord or Telegram are not recalled. A purge cannot be undone and is recorded in the audit log.
 
-These routes are for teammates signed in to the app: an API key gets `403`. Deleting returns `204` and publishes `message.updated` with the marker, never the text.
+These routes are for teammates signed in to the app: an API key gets `403`. Deleting returns `204` and publishes `message.updated` with the marker, never the text; replaying events (`GET /v1/events`) shows earlier events about it as the marker too.
 
 
 ## Attachments

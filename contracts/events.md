@@ -57,7 +57,9 @@ view to its owner.
    outside the outbox: no `seq`, not stored, not replayed, not sent to webhooks (`contracts/realtime.md`).
 4. Control messages on **`od.control.disconnect`**: `{"user_id": "...", "session_id": "..."?}`
    tells the gateway to close that user's sockets (logout, password change, removal).
-5. Rows are kept 7 days for replay, then pruned.
+5. Rows are kept 7 days for replay, then pruned. A replay (`GET /v1/events`) shows a message deleted since (or a
+   note since sent as a reply) as its marker in every event about it, notifications about it without their preview,
+   and a ticket with a deleted reply with its current preview (`domain.RedactReplay`).
 
 ## Catalog
 
@@ -69,8 +71,9 @@ view to its owner.
 | `ticket.updated`         | agents     | `user:<assignee>` when assignee changes | `{ "ticket": Ticket, "changes": ["status","assignee_id","tags","fields",...] }` |
 | `ticket.deleted`         | agents     | —                                     | `{ "ticket_id": "..." }` |
 | `message.created`        | agents (note) / public (reply on chat ticket) / agents (reply on email ticket) | `contact:<wid>:<cid>:<brand_id>` when public | `{ "ticket_id": "...", "message": Message }` |
-| `message.updated`        | agents (public on chat tickets) | `contact:<wid>:<cid>:<brand_id>` when public | `{ "ticket_id": "...", "message": Message }` (delivery status; an internal note's edit; a message deleted, restored or purged, as a marker without its text until restored; a note sent as a reply, kept as a marker with `sent_as_reply_id`; the widget agent's action card status and visitor rating, `contracts/agent.md`) |
-| `message.deleted`        | agents; public when a chat reply leaves the visitor | `contact:<wid>:<cid>:<brand_id>` when public | `{ "ticket_id": "...", "message_id": "..." }` (a chat reply was deleted or turned into an internal note, and leaves the visitor's widget). A deleted message itself stays as a marker, sent to agents as `message.updated` without its text |
+| `message.updated`        | agents (public on chat tickets, never for a marker) | `contact:<wid>:<cid>:<brand_id>` when public | `{ "ticket_id": "...", "message": Message }` (delivery status; an internal note's edit; a message deleted, restored or purged; a note sent as a reply; the widget agent's action card status and visitor rating, `contracts/agent.md`). A deleted message, or a note sent as a reply, is always its marker (`domain.Tombstone`: no text, files or action card) and goes to the team alone, whoever publishes it (delivery, bounce, action card) |
+| `message.withdrawn`      | public     | `contact:<wid>:<cid>:<brand_id>`      | `{ "ticket_id": "...", "message_id": "..." }`: a chat reply left the visitor's widget (deleted, or turned back into an internal note). The team keeps it, as a marker or a note (`message.updated`), so the agent app leaves its copy; the widget drops it |
+| `message.deleted`        | agents     | —                                     | `{ "ticket_id": "...", "message_id": "..." }`. No longer published: a deleted message stays as a marker (`message.updated`) |
 | `activity.created`       | agents     | —                                     | `{ "ticket_id": "...", "activity": Activity }` |
 | `thread.created` / `thread.updated` | agents | — | `{ "ticket_id": "...", "thread": Thread }` (contracts/api.md "Threads"): started; a message written or answered, closed or reopened |
 | `ticket_draft.updated` | agents | — | `{ "ticket_id": "...", "draft": Draft \| null }` (contracts/api.md "Drafts"): the ticket's shared draft was staged or replaced; `null` once it was sent, discarded or replaced by a reply going out |

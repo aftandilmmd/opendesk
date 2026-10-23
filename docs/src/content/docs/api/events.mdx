@@ -44,8 +44,9 @@ Every state change that someone else should see is written as an event, in the s
 | `ticket.updated` | agents | `user:<assignee>` when the assignee changes | `{ ticket, changes: ["status", "contact_id", "assignee_id", "fields", ...] }` |
 | `ticket.deleted` | agents | | `{ ticket_id }` |
 | `message.created` | see below | `contact:<wid>:<cid>` when public | `{ ticket_id, message }` |
-| `message.updated` | agents | | `{ ticket_id, message }`, for delivery status changes and note edits |
-| `message.deleted` | agents | | `{ ticket_id, message_id }`, when an internal note is deleted |
+| `message.updated` | agents | | `{ ticket_id, message }`: delivery status, note edits, and a message deleted, restored or purged or a note sent as a reply. A deleted message always comes as its marker, without its text |
+| `message.withdrawn` | public | `contact:<wid>:<cid>` | `{ ticket_id, message_id }`: a chat reply left the customer's chat (deleted, or turned into a note). The team keeps it |
+| `message.deleted` | agents | | `{ ticket_id, message_id }`. No longer sent: deleted messages stay as markers |
 | `activity.created` | agents | | `{ ticket_id, activity }` |
 | `contact.created`, `contact.updated` | agents | | `{ contact }` |
 | `contact.deleted` | agents | | `{ contact_id }` |

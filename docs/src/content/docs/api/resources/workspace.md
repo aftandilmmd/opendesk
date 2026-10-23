@@ -43,8 +43,9 @@ type WorkspaceSettings = {
   auto_assign?: "none" | "round_robin" | "load_balanced";
   gravatar?: boolean;     // default false
   domain_logos?: boolean; // default true
-  undo_send_seconds?: 0 | 5 | 10 | 20 | 30; // default 5: how long the app holds a reply before sending it
-  message_delete?: "off" | "own" | "all";   // default "own": which messages agents may delete; admins any
+  undo_send_seconds?: 0 | 5 | 10 | 20 | 30;      // default 5: how long the app holds an email reply before sending it
+  undo_send_chat_seconds?: 0 | 5 | 10 | 20 | 30; // default 0: the same for chat replies, which go at once
+  message_delete?: "off" | "own" | "all";        // default "own" (own internal notes); "all": any agent's notes and replies; admins any
 };
 type Member = {
   user: UserRef & { avatar_source: AvatarSource | null }; role: "owner" | "admin" | "agent" | "viewer";
