@@ -482,7 +482,8 @@
     "mentionAsNote": "Turn into internal note",
     "mentionSend": "Send anyway",
     "fromNote": "This note goes to the customer as a reply. Where the note was, a marker points to it.",
-    "fromNoteCancel": "Keep as a note"
+    "fromNoteCancel": "Keep as a note",
+    "repliesTo": "answers to {{address}}"
   },
   "sharedDraft": {
     "label": "Shared draft",

@@ -43,10 +43,10 @@ import {
 import { SmtpPresets } from "@/components/mailboxes/smtpPresets";
 import { MailboxOllieSection } from "@/components/mailboxes/MailboxOllie";
 import { quietFor } from "@/components/mailboxes/quiet";
+import { AliasIdentities, aliasDraftsFor, aliasSettingsPatch, GmailSuggestions, type AliasDraft } from "@/components/mailboxes/AliasIdentities";
 import {
   AliasesField,
   aliasTeamsFor,
-  AliasTeamsField,
   FromNameField,
   fromNameProblem,
   MailboxBrandField,
@@ -72,6 +72,7 @@ type Draft = {
   brand_id: string;
   aliases: string[];
   alias_teams: Record<string, string>;
+  alias_settings: Record<string, AliasDraft>;
   trusted_form_senders: string[];
   from_name_format: string;
   signature_html: string;
@@ -113,6 +114,7 @@ function toDraft(m: Mailbox): Draft {
     brand_id: m.brand_id ?? "",
     aliases: [...(m.aliases ?? [])],
     alias_teams: { ...(m.alias_teams ?? {}) },
+    alias_settings: aliasDraftsFor(m),
     trusted_form_senders: [...(m.trusted_form_senders ?? [])],
     from_name_format: m.from_name_format ?? "",
     signature_html: m.signature_html,
@@ -207,7 +209,7 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
   // What the server found wrong with the signature and the auto-reply: in the previews' check, or a refused save.
   const [signatureProblems, setSignatureProblems] = useState<TemplateProblem[]>([]);
   const [autoReplyProblems, setAutoReplyProblems] = useState<TemplateProblem[]>([]);
-  const [saveProblems, setSaveProblems] = useState<{ signature: TemplateProblem[]; autoReply: TemplateProblem[] }>({ signature: [], autoReply: [] });
+  const [saveProblems, setSaveProblems] = useState<{ signature: TemplateProblem[]; autoReply: TemplateProblem[]; aliases: unknown }>({ signature: [], autoReply: [], aliases: null });
   const onSignatureProblems = useCallback((p: TemplateProblem[]) => setSignatureProblems(p), []);
   const onAutoReplyProblems = useCallback((p: TemplateProblem[]) => setAutoReplyProblems(p), []);
   const signatureHtml = draft.signature_html;
@@ -233,6 +235,8 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
   };
 
   const aliasTeams = aliasTeamsFor(draft.alias_teams, draft.aliases, !!teams.find((x) => x.id === draft.team_id)?.private);
+  const aliasSettings = aliasSettingsPatch(draft.alias_settings, draft.aliases, base.alias_settings);
+  const setAlias = (alias: string, d: AliasDraft) => setDraft((x) => ({ ...x, alias_settings: { ...x.alias_settings, [alias]: d } }));
   const dirty = JSON.stringify(draft) !== JSON.stringify(base);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const setCfg = <K extends keyof MailboxConfig>(k: K, v: MailboxConfig[K]) => setDraft((d) => ({ ...d, config: { ...d.config, [k]: v } }));
@@ -282,6 +286,7 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
         ...(draft.brand_id && draft.brand_id !== base.brand_id ? { brand_id: draft.brand_id } : {}),
         ...(JSON.stringify(draft.aliases) !== JSON.stringify(base.aliases) ? { aliases: draft.aliases } : {}),
         ...(sameAliasTeams(aliasTeams, base.alias_teams) ? {} : { alias_teams: aliasTeams }),
+        ...(aliasSettings ? { alias_settings: aliasSettings } : {}),
         ...(JSON.stringify(draft.trusted_form_senders) !== JSON.stringify(base.trusted_form_senders) ? { trusted_form_senders: draft.trusted_form_senders } : {}),
         ...(draft.from_name_format !== base.from_name_format ? { from_name_format: draft.from_name_format.trim() } : {}),
         signature_html: draft.signature_html,
@@ -311,7 +316,7 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
       }),
     onMutate: () => {
       setRefused(null);
-      setSaveProblems({ signature: [], autoReply: [] });
+      setSaveProblems({ signature: [], autoReply: [], aliases: null });
     },
     onSuccess: (m) => {
       upsertInList(qc, qk.mailboxes, m);
@@ -323,7 +328,7 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
       const failed = connectFailure(e);
       if (failed) setRefused(failed);
       else {
-        setSaveProblems({ signature: templateProblems(e, "signature"), autoReply: templateProblems(e, "auto_reply") });
+        setSaveProblems({ signature: templateProblems(e, "body.signature_html"), autoReply: templateProblems(e, "auto_reply"), aliases: e });
         toast.error(e);
       }
     },
@@ -688,12 +693,34 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
             brandId={draft.brand_id}
           />
         </Row>
-        <Row label={t("addressing.aliases")} description={t("addressing.aliasesHint")} stack>
-          <div className="flex flex-col gap-3">
-            <AliasesField value={draft.aliases} onChange={(v) => set("aliases", v)} email={mailbox.email} />
-            <AliasTeamsField aliases={draft.aliases} value={draft.alias_teams} onChange={(v) => set("alias_teams", v)} teamId={draft.team_id} />
-          </div>
-        </Row>
+      </Section>
+
+      <Section title={t("aliases.title")} description={t("aliases.hint")}>
+        <div className="flex flex-col gap-3 py-3.5">
+          <AliasesField value={draft.aliases} onChange={(v) => set("aliases", v)} email={mailbox.email} />
+          <GmailSuggestions
+            mailbox={mailbox}
+            aliases={draft.aliases}
+            onAdd={(alias, name) =>
+              setDraft((d) => ({
+                ...d,
+                aliases: [...d.aliases, alias],
+                alias_settings: { ...d.alias_settings, [alias]: { display_name: name, signature_html: "", brand_id: null, send_as: "unknown" } },
+              }))
+            }
+          />
+          <AliasIdentities
+            mailbox={mailbox}
+            aliases={draft.aliases}
+            drafts={draft.alias_settings}
+            onChange={setAlias}
+            aliasTeams={draft.alias_teams}
+            onAliasTeams={(v) => set("alias_teams", v)}
+            teamId={draft.team_id}
+            systemSender={opts?.system_sender || "opendesk"}
+            problems={(a) => templateProblems(saveProblems.aliases, `alias_settings.${a}.`)}
+          />
+        </div>
       </Section>
 
       <Section title={t("forms.title")} description={t("forms.hint")}>

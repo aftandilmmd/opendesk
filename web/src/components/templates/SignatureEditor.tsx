@@ -3,7 +3,8 @@
 // editor can hold opens there, a designed one (tables, inline styles, sized images) opens
 // as HTML and says why, and onChange runs only for the person's own edits, so a page sends
 // a signature only when it was changed. Its preview shows it as recipients get it: the
-// server's, filled, for signatures that take variables; drawn live otherwise.
+// server's, filled, for signatures that take variables (a Collab signature brings its own,
+// filled for the person writing); drawn live otherwise.
 
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -20,10 +21,12 @@ export type SignatureEditorProps = {
   ariaLabel: string;
   placeholder?: string;
   disabled?: boolean;
-  /** A signature that takes template variables; without it, HTML sent as written (a mail account's). */
-  kind?: "signature" | "personal_signature";
+  /** A signature that takes template variables; without it, HTML sent as written. */
+  kind?: "signature" | "personal_signature" | "collab_signature";
   /** The server's preview of a templated signature. */
   previewBody?: TemplatePreviewBody;
+  /** A preview drawn by the caller in place of the email preview (a Collab signature's). */
+  preview?: ReactNode;
   previewTitle?: string;
   previewHeight?: number;
   onProblems?: (p: TemplateProblem[]) => void;
@@ -42,6 +45,7 @@ export function SignatureEditor({
   disabled,
   kind,
   previewBody,
+  preview,
   previewTitle,
   previewHeight = 420,
   onProblems,
@@ -96,9 +100,10 @@ export function SignatureEditor({
               </div>
             </div>
           )
-        : previewBody && (
+        : (preview ??
+          (previewBody && (
             <EmailPreview collapsible defaultOpen={startsHtml} height={previewHeight} title={previewTitle ?? t("signatureEditor.preview")} body={previewBody} onProblems={onProblems} />
-          )}
+          )))}
       {footer}
     </div>
   );

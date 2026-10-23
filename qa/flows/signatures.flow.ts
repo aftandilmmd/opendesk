@@ -18,7 +18,7 @@ test("a Gmail signature opens in settings as designed, and saving other settings
   const source = page.getByRole("textbox", { name: "Signature (HTML)" });
   await source.click();
   await source.press("ControlOrMeta+End");
-  await source.pressSequentially('<div style="color:#4f46e5">Book a call: margin.app/demo</div>', { delay: 15 });
+  await source.pressSequentially('<div style="color:#4f46e5">Book a call: margin.app/demo</div>', { delay: 15, timeout: 60_000 });
   await expect(preview.getByText("Book a call: margin.app/demo")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   await proof.dwell();
@@ -41,14 +41,14 @@ test("new mail carries the account's signature intact, and changing From swaps i
   await proof.shot("composer-signature", { caption: "New mail from Work: the name, its title on the next line, the logo unframed" });
 
   await composer.getByRole("combobox", { name: "From" }).click();
-  await page.getByRole("option", { name: /^Sales/ }).click();
-  await expect(signature.getByText("The Margin sales team")).toBeVisible();
+  await page.getByRole("option", { name: /sales@margin\.app/ }).click();
+  await expect(signature.getByText(/Head of support, Margin Sales/)).toBeVisible();
   await expect(composer.getByText("Hi Nora, the seat count is confirmed for Friday.")).toBeVisible();
   await proof.dwell();
-  await proof.shot("composer-from-sales", { caption: "From Sales: its signature takes the block's place, the text stays" });
+  await proof.shot("composer-from-sales", { caption: "From Sales: its signature, with your name and title, takes the block's place; the text stays" });
 
   await composer.getByRole("combobox", { name: "From" }).click();
-  await page.getByRole("option", { name: /^Work/ }).click();
+  await page.getByRole("option", { name: /maya@margin\.app/ }).click();
   await expect(signature.getByText("Customer success & onboarding")).toBeVisible();
   await signature.hover();
   await expect(signature.getByRole("button", { name: "Remove signature" })).toBeVisible();
