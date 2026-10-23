@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, CheckCheck, Download, FileText, Globe, ImageOff, Lock, MessagesSquare, MoreHorizontal, Pencil, Quote, Reply, RotateCcw, RotateCw, ShieldAlert, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowDown, Check, CheckCheck, Download, FileText, Globe, ImageOff, Lock, MessagesSquare, MoreHorizontal, Pencil, Quote, Reply, RotateCcw, RotateCw, Send, ShieldAlert, Trash2, Undo2 } from "lucide-react";
 import { memo, useMemo, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { tone } from "@/lib/tones";
@@ -27,6 +27,9 @@ import { mentionExtension, useSuggest } from "./suggestions";
 import { useConfirm } from "@/components/ui/confirm";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { toast } from "@/components/ui/toast";
+import { useNow } from "@/lib/useNow";
+import { asNote, release, undo, useHeld } from "./outbox";
+import { showInTimeline } from "./Timeline";
 
 function authorName(m: Message): string {
   if (m.author.user) return m.author.user.name;
@@ -167,10 +170,129 @@ export function Attachments({ items }: { items: Attachment[] }) {
   );
 }
 
+/** A note sent as a reply: it stays where it was written, pointing at the reply below. */
+function SentAsReply({ m, name }: { m: Message; name: string }) {
+  const { t } = useTranslation("inbox");
+  return (
+    <article id={`m-${m.id}`} aria-label={t("message.sentAsReplyLabel", { name })} className="rounded-lg border border-dashed border-note-line bg-note px-4 py-2">
+      <div className="flex items-center gap-2 text-[12px] text-fg-3">
+        <Lock className="size-3.5 shrink-0 text-fg-4" />
+        <span className="min-w-0 flex-1 truncate">{t("message.sentAsReply", { name })}</span>
+        <Tooltip content={fullDate(m.created_at)}>
+          <time dateTime={m.created_at} className="mono shrink-0 text-[11px] text-fg-4">
+            {clock(m.created_at)}
+          </time>
+        </Tooltip>
+        <Button size="xs" variant="ghost" iconRight={<ArrowDown className="size-3" />} onClick={() => showInTimeline(m.sent_as_reply_id!)}>
+          {t("message.showReply")}
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+/** A deleted message: a marker saying who deleted it. An admin can read it and bring it back. */
+function DeletedMessage({ m, name, admin }: { m: Message; name: string; admin: boolean }) {
+  const { t } = useTranslation("inbox");
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const [open, setOpen] = useState(false);
+  const purged = !!m.purged_at;
+  const purge = () =>
+    confirm.show(
+      t("message.purgeConfirm"),
+      async () => {
+        const gone = await api.tickets.purgeMessage(m.ticket_id, m.id);
+        qc.setQueryData<Message[]>(qk.messages(m.ticket_id), (old) => old?.map((x) => (x.id === gone.id ? gone : x)));
+        void qc.invalidateQueries({ queryKey: qk.activities(m.ticket_id) });
+        setOpen(false);
+      },
+      { title: t("message.purgeTitle"), confirmLabel: t("message.purgeLabel"), danger: true },
+    );
+  const restore = useMutation({
+    mutationFn: () => api.tickets.restoreMessage(m.ticket_id, m.id),
+    onSuccess: (back) => {
+      qc.setQueryData<Message[]>(qk.messages(m.ticket_id), (old) => old?.map((x) => (x.id === back.id ? back : x)));
+      void qc.invalidateQueries({ queryKey: qk.activities(m.ticket_id) });
+      toast.success(t("message.restored"));
+    },
+    onError: (e) => toast.error(e),
+  });
+  const who = m.deleted_by?.name ?? t("message.someone");
+  const own = !!m.deleted_by && m.deleted_by.id === m.author.user?.id;
+  const show = () => {
+    // A marker that arrived live carries no text; an admin's copy is a refetch away.
+    if (!open && !m.body_text && !m.body_html) void qc.invalidateQueries({ queryKey: qk.messages(m.ticket_id), exact: true });
+    setOpen(!open);
+  };
+  return (
+    <article id={`m-${m.id}`} aria-label={t("message.deletedLabel", { name })} className="rounded-lg border border-dashed border-line px-4 py-2.5">
+      <div className="flex items-center gap-2 text-[12px] text-fg-3">
+        <Trash2 className="size-3.5 shrink-0 text-fg-4" />
+        <span className="min-w-0 flex-1 truncate">
+          {own
+            ? t(m.kind === "note" ? "message.deletedOwnNote" : "message.deletedOwnMessage", { who })
+            : t(m.kind === "note" ? "message.deletedNote" : "message.deletedMessage", { who, name })}
+        </span>
+        {m.deleted_at && (
+          <Tooltip content={fullDate(m.deleted_at)}>
+            <time dateTime={m.deleted_at} className="mono shrink-0 text-[11px] text-fg-4">
+              {clock(m.deleted_at)}
+            </time>
+          </Tooltip>
+        )}
+        {purged && <span className="shrink-0 text-[11px] text-fg-4">{t("message.purged")}</span>}
+        {admin && !purged && (
+          <>
+            <Button size="xs" variant="ghost" onClick={show} aria-expanded={open}>
+              {open ? t("message.hideDeleted") : t("message.showDeleted")}
+            </Button>
+            <Tooltip content={t("message.purgeHint")}>
+              <Button size="xs" variant="ghost" square aria-label={t("message.purgeLabel")} icon={<Trash2 className={cn("size-3", tone.red.text)} />} onClick={purge} />
+            </Tooltip>
+            <Button size="xs" variant="secondary" icon={<RotateCcw className="size-3" />} disabled={restore.isPending} onClick={() => restore.mutate()}>
+              {t("message.restore")}
+            </Button>
+          </>
+        )}
+      </div>
+      {admin && open && !purged && (
+        <p className="mt-2 whitespace-pre-wrap border-t border-line-soft pt-2 text-[13px] text-fg-2 animate-fade-in motion-reduce:animate-none">
+          {m.body_text || t("message.loadingDeleted")}
+        </p>
+      )}
+    </article>
+  );
+}
+
+/** A reply on hold for the undo window: when it goes out, and the ways out of sending it. */
+function HeldDelivery({ id }: { id: string }) {
+  const { t } = useTranslation("inbox");
+  const at = useHeld((s) => s[id]);
+  const now = useNow(!!at);
+  if (!at) return null;
+  const left = Math.max(1, Math.ceil((at - now) / 1000));
+  return (
+    <span className="flex items-center gap-0.5">
+      <span className="mono mr-1 text-[11px] text-fg-4 tabular-nums">{t("outbox.sendingIn", { n: left })}</span>
+      <Tooltip content={t("outbox.asNote")}>
+        <Button size="xs" variant="ghost" square aria-label={t("outbox.asNote")} icon={<Lock className="size-3" />} onClick={() => asNote(id)} />
+      </Tooltip>
+      <Tooltip content={t("outbox.undo")}>
+        <Button size="xs" variant="ghost" square aria-label={t("outbox.undo")} icon={<Undo2 className="size-3" />} onClick={() => undo(id)} />
+      </Tooltip>
+      <Tooltip content={t("outbox.sendNow")}>
+        <Button size="xs" variant="ghost" square aria-label={t("outbox.sendNow")} icon={<Send className="size-3" />} onClick={() => release(id)} />
+      </Tooltip>
+    </span>
+  );
+}
+
 function Delivery({ m, onRetry }: { m: Message; onRetry?: () => void }) {
   const { t } = useTranslation("inbox");
   // A thread message is a note that is emailed to the third party, so it reports delivery.
   if ((m.kind === "note" && !m.thread_id) || m.direction === "inbound" || m.delivery_status === "none") return null;
+  if (m.delivery_status === "scheduled") return <HeldDelivery id={m.id} />;
   if (m.delivery_status === "pending")
     return (
       <span className="flex items-center gap-1 text-[11px] text-fg-4">
@@ -329,6 +451,8 @@ function NoteEditor({ m, onDone }: { m: Message; onDone: () => void }) {
 export const MessageItem = memo(function MessageItem({
   m,
   onRetry,
+  onToReply,
+  onRetract,
   highlight,
   receivedAt,
   thread,
@@ -337,6 +461,10 @@ export const MessageItem = memo(function MessageItem({
 }: {
   m: Message;
   onRetry?: (m: Message) => void;
+  /** Puts a note in the reply box, to go to the customer instead (it is removed once sent). */
+  onToReply?: (m: Message) => void;
+  /** Takes a sent chat reply back from the customer, as an internal note. */
+  onRetract?: (m: Message) => void;
   highlight?: boolean;
   /** The ticket's first address, for inbound messages that don't record one; null when the ticket isn't email. */
   receivedAt?: string | null;
@@ -363,21 +491,35 @@ export const MessageItem = memo(function MessageItem({
   const { t } = useTranslation("inbox");
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const me = useSession((s) => s.user?.id);
+  const meUser = useSession((s) => s.user);
+  const me = meUser?.id;
   const admin = atLeast(useRole(), "admin");
   const mine = !!me && m.author.user?.id === me;
   const editableNote = note && mine;
-  const deletableNote = note && (mine || admin);
+  // Who may delete what is the workspace's rule for agents (settings.message_delete); admins any message.
+  const { data: ws } = useQuery(q.workspace());
+  const { data: members } = useQuery(q.members());
+  // An agent's own rule, set by an admin, wins over the workspace's.
+  const rule = members?.find((x) => x.user.id === me)?.message_delete ?? ws?.settings.message_delete ?? "own";
+  const deletable = !inThread && (admin || (m.author.type === "user" && (rule === "all" || (rule === "own" && mine))));
+  const retractable = !!onRetract && outbound && m.author.type === "user" && !m.ai && (mine || admin) && m.delivery_status !== "scheduled";
   const [editing, setEditing] = useState(false);
   const remove = () =>
     confirm.show(
-      t("message.deleteConfirm"),
+      t(note ? "message.deleteConfirm" : m.direction === "inbound" ? "message.deleteInboundConfirm" : "message.deleteReplyConfirm"),
       async () => {
         await api.tickets.deleteMessage(m.ticket_id, m.id);
-        qc.setQueryData<Message[]>(qk.messages(m.ticket_id), (old) => old?.filter((item) => item.id !== m.id));
+        const by = meUser ? { id: meUser.id, name: meUser.name, email: meUser.email, avatar_url: meUser.avatar_url } : null;
+        qc.setQueryData<Message[]>(qk.messages(m.ticket_id), (old) =>
+          old?.map((item) =>
+            item.id === m.id
+              ? { ...item, deleted_at: new Date().toISOString(), deleted_by: by, ...(admin ? {} : { body_html: "", body_text: "", attachments: [] }) }
+              : item,
+          ),
+        );
         qc.invalidateQueries({ queryKey: qk.activities(m.ticket_id) });
       },
-      { title: t("message.deleteTitle"), confirmLabel: t("message.delete"), danger: true },
+      { title: t(note ? "message.deleteTitle" : "message.deleteMessageTitle"), confirmLabel: t("message.deleteLabel"), danger: true },
     );
   const address = useMessageAddress(m, receivedAt);
   const inbound = m.direction === "inbound" && !note;
@@ -385,6 +527,9 @@ export const MessageItem = memo(function MessageItem({
   const translated = !!(tr.showing && tr.html);
   const body = useBody(translated ? tr.html! : m.body_html || `<p>${m.body_text}</p>`, inbound, inbound && !translated, remote);
   const replyTo = inbound && m.reply_to && m.reply_to.toLowerCase() !== m.from_email.toLowerCase() ? m.reply_to : null;
+
+  if (m.deleted_at) return <DeletedMessage m={m} name={name} admin={admin} />;
+  if (m.sent_as_reply_id) return <SentAsReply m={m} name={name} />;
 
   return (
     <article
@@ -442,18 +587,24 @@ export const MessageItem = memo(function MessageItem({
           </time>
         </Tooltip>
         {note && m.edited_at && <span className="shrink-0 text-[10.5px] text-fg-4">{t("message.edited")}</span>}
-        {deletableNote && !editing && !m.id.startsWith("tmp-") && (
+        {(deletable || retractable || (editableNote && onToReply)) && !editing && !m.id.startsWith("tmp-") && (
           <Menu>
             <MenuTrigger asChild>
               <button
                 type="button"
-                aria-label={t("message.menu")}
+                aria-label={t(note ? "message.menu" : "message.replyMenu")}
                 className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-fg-4 opacity-0 transition-opacity hover:bg-hover hover:text-fg focus-visible:opacity-100 group-hover/msg:opacity-100 data-[state=open]:opacity-100"
               >
                 <MoreHorizontal className="size-3.5" />
               </button>
             </MenuTrigger>
             <MenuContent>
+              {/* Its files belong to the note, so only a note without any becomes a reply. */}
+              {editableNote && onToReply && m.attachments.length === 0 && (
+                <MenuItem icon={<Reply />} onSelect={() => onToReply(m)}>
+                  {t("message.toReply")}
+                </MenuItem>
+              )}
               {editableNote && (
                 <MenuItem
                   icon={<Pencil />}
@@ -462,9 +613,16 @@ export const MessageItem = memo(function MessageItem({
                   {t("message.edit")}
                 </MenuItem>
               )}
-              <MenuItem icon={<Trash2 />} danger onSelect={remove}>
-                {t("message.delete")}
-              </MenuItem>
+              {retractable && (
+                <MenuItem icon={<Lock />} onSelect={() => onRetract(m)}>
+                  {t("message.retract")}
+                </MenuItem>
+              )}
+              {deletable && (
+                <MenuItem icon={<Trash2 />} danger onSelect={remove}>
+                  {t(note ? "message.delete" : "message.deleteMessage")}
+                </MenuItem>
+              )}
             </MenuContent>
           </Menu>
         )}

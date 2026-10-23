@@ -226,6 +226,14 @@ type Message struct {
 	CreatedAt time.Time  `json:"created_at"`
 	// EditedAt is set when a plain internal note was edited.
 	EditedAt *time.Time `json:"edited_at"`
+	// DeletedAt and DeletedBy mark a deleted message, kept as a marker in its conversation.
+	// Only admins read what it said (Tombstone).
+	DeletedAt *time.Time `json:"deleted_at"`
+	DeletedBy *UserRef   `json:"deleted_by"`
+	// PurgedAt is set once an admin removed a deleted message's content for good.
+	PurgedAt *time.Time `json:"purged_at"`
+	// SentAsReplyID marks a note sent as a reply: it stays, empty, pointing at the reply.
+	SentAsReplyID *uuid.UUID `json:"sent_as_reply_id"`
 }
 
 // AIAction is the card on an agent message that asks the visitor to confirm a tool call.

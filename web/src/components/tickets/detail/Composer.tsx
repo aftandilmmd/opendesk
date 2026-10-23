@@ -7,9 +7,8 @@ import { useTranslation } from "react-i18next";
 import { tone } from "@/lib/tones";
 import { create } from "zustand";
 import { DropdownMenu as M } from "radix-ui";
-import type { Activity, Attachment, Mailbox, Member, Message, SavedReply, Thread, Ticket, TicketDraft, TicketStatus } from "@/lib/api/types";
+import type { Activity, Mailbox, Member, Message, SavedReply, Thread, Ticket, TicketStatus } from "@/lib/api/types";
 import { api, type SendMessageBody } from "@/lib/api/endpoints";
-import { errorMessage } from "@/lib/api/client";
 import { q, qk, upsertInList } from "@/lib/queries";
 import { useSession } from "@/lib/session";
 import { realtime } from "@/lib/realtime/manager";
@@ -33,15 +32,14 @@ import { variableText } from "./composerTemplates";
 import { SignaturePreview } from "./SignaturePreview";
 import { StatusIcon, statusLabel } from "../bits";
 import { useTicketViewers } from "../presence";
-import { applyPatch, useUpdateTicket } from "../useTicketActions";
-import { patchTicketEverywhere } from "@/lib/ticketCache";
+import { useUpdateTicket } from "../useTicketActions";
 import { ComposerAiMenu, ComposerAiStatus, ComposerSources, useComposerAi } from "@/components/ai/ticket/ComposerAi";
 import { SuggestedReplyCard } from "./SuggestedReply";
 import { SharedDraftBar } from "./SharedDraft";
+import { deliver, hold, UNDO_SEND_DEFAULT, useUnsent, type Upload } from "./outbox";
 import { addressLabel, fromLine, replyAddresses, TeamDot, useTeamsCtx, type TeamsCtx } from "../teams";
 
 type Mode = "reply" | "note" | "thread";
-type Upload = { key: string; file: File; status: "uploading" | "done" | "error"; attachment?: Attachment; preview?: string };
 /**
  * mailboxId: this reply goes out from another address (it becomes the ticket's reply address).
  * thread*: a third-party thread (contracts/api.md "Threads"): threadId writes in an existing one,
@@ -61,6 +59,8 @@ type Draft = {
   threadSubject: string;
   threadHistory: boolean;
   threadFiles: string[];
+  /** The note this reply is written from: it is removed once the reply is sent. */
+  fromNote?: string;
 };
 
 // Drafts survive switching tickets (memory only).
@@ -84,6 +84,8 @@ export type ComposerHandle = {
   aiDraft: () => void;
   /** Writes in an existing third-party thread. */
   inThread: (thread: Thread) => void;
+  /** Puts a note in the reply box, to go to the customer instead. */
+  fromNote: (m: Message) => void;
 };
 
 const emailRe = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
@@ -130,65 +132,36 @@ function EmailChips({ label, values, onChange, wide }: { label: string; values: 
   );
 }
 
-function useSend(ticket: Ticket, ctx: TeamsCtx) {
-  const qc = useQueryClient();
+/** The optimistic copy of a reply or note this agent writes, shown until the server's arrives. */
+function useTempMessage(ticket: Ticket, ctx: TeamsCtx) {
   const user = useSession((s) => s.user!);
-  return useMutation({
-    mutationFn: (v: { body: SendMessageBody; tempId: string }) => api.tickets.send(ticket.id, v.body),
-    onMutate: ({ body, tempId }) => {
-      const now = new Date().toISOString();
-      const mb = body.kind === "reply" ? ctx.mailbox(body.mailbox_id ?? ticket.mailbox_id) : undefined;
-      const from = mb ? fromLine(ctx, ticket, mb, user.name) : null;
-      const temp: Message = {
-        id: tempId,
-        ticket_id: ticket.id,
-        ai: false,
-        kind: body.kind,
-        direction: "outbound",
-        author: { type: "user", user: { id: user.id, name: user.name, email: user.email, avatar_url: user.avatar_url }, contact: null },
-        body_html: body.body_html,
-        body_text: "",
-        has_quoted: false,
-        subject: ticket.subject,
-        from_email: from?.email ?? "",
-        from_name: from?.name ?? user.name,
-        mailbox_id: mb?.id ?? null,
-        to: body.kind === "reply" && ticket.contact?.email ? [ticket.contact.email] : [],
-        cc: body.cc ?? [],
-        bcc: body.bcc ?? [],
-        attachments: [],
-        delivery_status: body.kind === "reply" ? "pending" : "none",
-        delivery_error: "",
-        edited_at: null,
-        created_at: now,
-      };
-      qc.setQueryData<Message[]>(qk.messages(ticket.id), (old) => [...(old ?? []), temp]);
-      const prevTicket = qc.getQueryData<Ticket>(qk.ticket(ticket.id));
-      if ((body.status || body.mailbox_id) && prevTicket)
-        patchTicketEverywhere(qc, applyPatch(qc, prevTicket, { status: body.status, mailbox_id: body.mailbox_id }), user.id);
-      // A reply going out clears the ticket's shared draft (contracts/api.md "Drafts").
-      const prevDraft = body.kind === "reply" ? qc.getQueryData<TicketDraft | null>(qk.ticketDraft(ticket.id)) : undefined;
-      if (prevDraft) qc.setQueryData(qk.ticketDraft(ticket.id), null);
-      return { prevTicket, prevDraft };
-    },
-    onSuccess: (m, { tempId }) => {
-      qc.setQueryData<Message[]>(qk.messages(ticket.id), (old) => {
-        // The socket may have delivered this message (and its delivery status) before
-        // the response arrived; that copy is newer than the response.
-        const live = (old ?? []).find((x) => x.id === m.id);
-        const rest = (old ?? []).filter((x) => x.id !== tempId && x.id !== m.id);
-        return [...rest, live ?? m].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
-      });
-    },
-    onError: (e, { tempId }, ctx) => {
-      qc.setQueryData<Message[]>(qk.messages(ticket.id), (old) =>
-        old?.map((x) => (x.id === tempId ? { ...x, delivery_status: "failed", delivery_error: errorMessage(e, "Not sent") } : x)),
-      );
-      if (ctx?.prevTicket) patchTicketEverywhere(qc, ctx.prevTicket, user.id);
-      if (ctx?.prevDraft) qc.setQueryData(qk.ticketDraft(ticket.id), ctx.prevDraft);
-    },
-    onSettled: () => void qc.invalidateQueries({ queryKey: qk.counts }),
-  });
+  return (body: SendMessageBody, tempId: string): Message => {
+    const mb = body.kind === "reply" ? ctx.mailbox(body.mailbox_id ?? ticket.mailbox_id) : undefined;
+    const from = mb ? fromLine(ctx, ticket, mb, user.name) : null;
+    return {
+      id: tempId,
+      ticket_id: ticket.id,
+      ai: false,
+      kind: body.kind,
+      direction: "outbound",
+      author: { type: "user", user: { id: user.id, name: user.name, email: user.email, avatar_url: user.avatar_url }, contact: null },
+      body_html: body.body_html,
+      body_text: "",
+      has_quoted: false,
+      subject: ticket.subject,
+      from_email: from?.email ?? "",
+      from_name: from?.name ?? user.name,
+      mailbox_id: mb?.id ?? null,
+      to: body.kind === "reply" && ticket.contact?.email ? [ticket.contact.email] : [],
+      cc: body.cc ?? [],
+      bcc: body.bcc ?? [],
+      attachments: [],
+      delivery_status: body.kind === "reply" ? "pending" : "none",
+      delivery_error: "",
+      edited_at: null,
+      created_at: new Date().toISOString(),
+    };
+  };
 }
 
 /** Starts a third-party thread or writes in one; the draft is cleared only once it is sent. */
@@ -350,7 +323,10 @@ export const Composer = forwardRef<ComposerHandle, { ticket: Ticket; disabled?: 
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const send = useSend(ticket, teams);
+  const tempMessage = useTempMessage(ticket, teams);
+  const me = useSession((s) => s.user!.id);
+  const { data: workspace } = useQuery(q.workspace());
+  const undoSeconds = workspace?.settings.undo_send_seconds ?? UNDO_SEND_DEFAULT;
   const sendThread = useSendThread(ticket);
   // Switching to a side conversation fills in a subject to edit, so what goes out is visible.
   const toMode = useCallback(
@@ -387,11 +363,18 @@ export const Composer = forwardRef<ComposerHandle, { ticket: Ticket; disabled?: 
       if (m.id.startsWith("tmp-")) qc.setQueryData<Message[]>(qk.messages(ticket.id), (old) => old?.filter((x) => x.id !== m.id));
       const tempId = `tmp-${Date.now().toString(36)}`;
       retries.current.set(tempId, body);
-      send.mutate({ body, tempId });
+      void deliver(tempMessage(body, tempId), body, me);
     },
     aiDraft: () => void draftReply(),
     inThread: (th) => {
       setDraft({ mode: "thread", threadId: th.id });
+      setTimeout(() => editor.current?.focus(), 0);
+    },
+    fromNote: (m) => {
+      const cur = useDrafts.getState()[ticket.id] ?? emptyDraft;
+      const html = cur.html && cur.mode === "reply" ? cur.html + m.body_html : m.body_html;
+      setDraft({ mode: "reply", html, fromNote: m.id });
+      editor.current?.setHtml(html);
       setTimeout(() => editor.current?.focus(), 0);
     },
   }));
@@ -442,19 +425,36 @@ export const Composer = forwardRef<ComposerHandle, { ticket: Ticket; disabled?: 
   const threadReady = mode !== "thread" || !!thread || (draft.threadTo.length > 0 && !!draft.threadSubject.trim());
   const canSend = !!draft.html && !busyUploads && !disabled && !ai.busy && !noSender && !filling && threadReady && !sendThread.isPending;
 
-  // The send button's moment: sending while the request is out, then a check.
+  // The send button's moment: a check once it is out, or once a reply is on hold (its toast
+  // and the timeline count down from there).
   const [sent, setSent] = useState(false);
-  const wasPending = useRef(false);
   useEffect(() => {
-    if (wasPending.current && send.isSuccess) {
-      setSent(true);
-      const id = setTimeout(() => setSent(false), 1200);
-      wasPending.current = send.isPending;
-      return () => clearTimeout(id);
-    }
-    wasPending.current = send.isPending;
-  }, [send.isPending, send.isSuccess]);
-  const phase = send.isPending || sendThread.isPending ? "sending" : sent ? "sent" : "idle";
+    if (!sent) return;
+    const id = setTimeout(() => setSent(false), 1200);
+    return () => clearTimeout(id);
+  }, [sent]);
+  const phase = sendThread.isPending ? "sending" : sent ? "sent" : "idle";
+
+  // A reply taken back during its undo window comes back here, after anything typed since.
+  const unsent = useUnsent((s) => s[ticket.id]);
+  useEffect(() => {
+    if (!unsent) return;
+    useUnsent.setState((s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== ticket.id)), true);
+    const cur = useDrafts.getState()[ticket.id] ?? emptyDraft;
+    const html = cur.html ? cur.html + unsent.html : unsent.html;
+    setDraft({
+      mode: "reply",
+      html,
+      cc: unsent.cc,
+      bcc: unsent.bcc,
+      showCc: unsent.cc.length + unsent.bcc.length > 0,
+      mailboxId: unsent.mailboxId,
+      fromNote: unsent.fromNote,
+    });
+    editor.current?.setHtml(html);
+    setUploads((u) => [...u, ...unsent.uploads]);
+    setTimeout(() => editor.current?.focus(), 0);
+  }, [unsent, ticket.id, setDraft]);
 
   const submitThread = (status?: TicketStatus) => {
     const attachments = uploads.filter((u) => u.attachment).map((u) => u.attachment!.id);
@@ -482,27 +482,47 @@ export const Composer = forwardRef<ComposerHandle, { ticket: Ticket; disabled?: 
     );
   };
 
-  const submit = (status?: TicketStatus) => {
+  // A reply that @mentions a teammate was most likely meant as a note: ask before it goes out.
+  const [mentionWarn, setMentionWarn] = useState<{ names: string[]; status?: TicketStatus } | null>(null);
+  useEffect(() => setMentionWarn(null), [draft.html, mode]);
+
+  /** Sends what is written; `as` sends it as a note instead, `checked` skips the mention check. */
+  const submit = (status?: TicketStatus, opts: { as?: "note"; checked?: boolean } = {}) => {
     if (!canSend) return;
     if (mode === "thread") return submitThread(status);
+    const kind = opts.as ?? mode;
+    const reply = kind === "reply";
+    if (reply && !opts.checked) {
+      const names = mentionedTeammates(draft.html, members ?? [], me);
+      if (names.length) return setMentionWarn({ names, status });
+    }
+    setMentionWarn(null);
     const body: SendMessageBody = {
-      kind: mode,
+      kind,
       body_html: draft.html,
-      cc: mode === "reply" && draft.cc.length ? draft.cc : undefined,
-      bcc: mode === "reply" && draft.bcc.length ? draft.bcc : undefined,
+      cc: reply && draft.cc.length ? draft.cc : undefined,
+      bcc: reply && draft.bcc.length ? draft.bcc : undefined,
       attachment_ids: uploads.filter((u) => u.attachment).map((u) => u.attachment!.id),
       status,
-      mailbox_id: mode === "reply" && draft.mailboxId && draft.mailboxId !== ticket.mailbox_id ? draft.mailboxId : undefined,
+      mailbox_id: reply && draft.mailboxId && draft.mailboxId !== ticket.mailbox_id ? draft.mailboxId : undefined,
+      from_note_id: reply ? draft.fromNote : undefined,
     };
     const tempId = `tmp-${Date.now().toString(36)}`;
     retries.current.set(tempId, body);
-    send.mutate({ body, tempId });
-    uploads.forEach((u) => u.preview && URL.revokeObjectURL(u.preview));
+    const temp = tempMessage(body, tempId);
+    if (reply) hold(temp, body, { html: draft.html, cc: draft.cc, bcc: draft.bcc, mailboxId: draft.mailboxId, uploads, fromNote: draft.fromNote }, me, undoSeconds);
+    else {
+      uploads.forEach((u) => u.preview && URL.revokeObjectURL(u.preview));
+      void deliver(temp, body, me);
+    }
+    setSent(true);
     setUploads([]);
-    setDraft({ html: "", cc: [], bcc: [], showCc: false, mailboxId: undefined });
+    setDraft({ html: "", cc: [], bcc: [], showCc: false, mailboxId: undefined, fromNote: undefined, ...(opts.as ? { mode: "reply" } : {}) });
     editor.current?.clear();
     ai.dismissSources();
-    if (status) toast.success(t(mode === "note" ? "composer.noteAndMarked" : "composer.sentAndMarked", { status: statusLabel[status].toLowerCase() }));
+    // A held reply's toast says what it will do; it sets the status only once it is sent.
+    if (status && (!reply || undoSeconds <= 0))
+      toast.success(t(reply ? "composer.sentAndMarked" : "composer.noteAndMarked", { status: statusLabel[status].toLowerCase() }));
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -563,6 +583,43 @@ export const Composer = forwardRef<ComposerHandle, { ticket: Ticket; disabled?: 
               <button type="button" onClick={() => setDraft({ mode: "note" })} className={cn("shrink-0 text-xs font-medium underline-offset-2 hover:underline", tone.amber.text)}>
                 {t("composer.noteInstead")}
               </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {draft.fromNote && mode === "reply" && (
+          <div role="status" className={cn("mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-[12.5px] animate-fade-in motion-reduce:animate-none", tone.amber.soft)}>
+            <Lock className={cn("size-3.5 shrink-0", tone.amber.text)} />
+            <span className="min-w-0 flex-1 text-fg-2">{t("composer.fromNote")}</span>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => {
+                setDraft({ html: "", fromNote: undefined });
+                editor.current?.clear();
+              }}
+            >
+              {t("composer.fromNoteCancel")}
+            </Button>
+          </div>
+        )}
+        <AnimatePresence initial={false}>
+          {mentionWarn && (
+            <motion.div
+              role="alert"
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
+              transition={{ duration: 0.18 }}
+              className={cn("mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-[12.5px]", tone.amber.soft)}
+            >
+              <TriangleAlert className={cn("size-3.5 shrink-0", tone.amber.text)} />
+              <span className="min-w-0 flex-1 text-fg-2">{t("composer.mentionWarn", { names: mentionWarn.names.join(", ") })}</span>
+              <Button size="xs" variant="secondary" onClick={() => submit(mentionWarn.status, { as: "note" })}>
+                {t("composer.mentionAsNote")}
+              </Button>
+              <Button size="xs" variant="ghost" onClick={() => submit(mentionWarn.status, { checked: true })}>
+                {t("composer.mentionSend")}
+              </Button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -884,6 +941,20 @@ function ReplyingAs({
       )}
     </div>
   );
+}
+
+/** Teammates a reply names with "@" (full name, first name or email), but not the writer. */
+function mentionedTeammates(html: string, members: Member[], me: string): string[] {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").toLowerCase();
+  if (!text.includes("@")) return [];
+  const named = (handle: string) => {
+    const h = handle.trim().toLowerCase();
+    if (h.length < 2) return false;
+    return new RegExp(`(^|[^\\p{L}\\p{N}])@${h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}@])`, "u").test(text);
+  };
+  return members
+    .filter((m) => m.user.id !== me && [m.user.name, m.user.name.split(" ")[0], m.user.email].some((h) => h && named(h)))
+    .map((m) => m.user.name);
 }
 
 /** The team a transfer switched the reply address for, until the next reply goes out. */

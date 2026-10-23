@@ -10,7 +10,10 @@ Scopes: `tickets:read` to read, `tickets:write` to send.
 | `GET` | `/v1/tickets/{id}/messages` | All messages, ascending |
 | `POST` | `/v1/tickets/{id}/messages` | Send a reply or add a note |
 | `PATCH` | `/v1/tickets/{id}/messages/{messageId}` | Edit your own internal note |
-| `DELETE` | `/v1/tickets/{id}/messages/{messageId}` | Delete your own internal note; admins can delete any note |
+| `DELETE` | `/v1/tickets/{id}/messages/{messageId}` | Delete a message, leaving a marker |
+| `POST` | `/v1/tickets/{id}/messages/{messageId}/restore` | Admins: bring a deleted message back |
+| `POST` | `/v1/tickets/{id}/messages/{messageId}/purge` | Admins: remove a deleted message's content for good |
+| `POST` | `/v1/tickets/{id}/messages/{messageId}/retract` | Turn a sent chat reply into an internal note |
 | `GET` | `/v1/messages/{id}/original` | The full original, including quoted history |
 | `POST` | `/v1/attachments` | Upload a file |
 | `GET` | `/v1/attachments/{id}` | Download a file |
@@ -41,6 +44,10 @@ type Message = {
   form_sender: string;
   created_at: string;
   edited_at: string | null;
+  deleted_at: string | null;  // a deleted message stays as a marker
+  deleted_by: UserRef | null;
+  purged_at: string | null;   // its content was removed for good
+  sent_as_reply_id: string | null; // a note sent as a reply, kept as a marker
 };
 ```
 
@@ -84,13 +91,28 @@ curl https://api.opendesk.sh/v1/tickets/1042/messages \
 
 Notes are never sent to the customer.
 
-## Edit or delete a note
+## Edit a note
 
-Agents can edit or delete their own plain internal notes. Admins can delete any internal note. A note in a side conversation and any reply are immutable through these routes. Editing takes sanitized `body_html` and sets `edited_at`; deleting removes the note and its attachment records, and removes stored files when no other attachment uses them. Both actions add a timeline entry that identifies the actor without including the note text. Editing notifies teammates the note now mentions for the first time.
+Agents can edit their own plain internal notes. Editing takes sanitized `body_html`, sets `edited_at`, adds a timeline entry without the note text, notifies teammates the note now mentions for the first time and publishes `message.updated`. A note in a side conversation and any reply cannot be edited.
 
-Editing and deleting are for teammates signed in to the app: an API key gets `403`, and a note written with an API key can be deleted by an admin.
+## Turn a note into a reply
 
-Edits publish `message.updated`; deletion returns `204` and publishes `message.deleted`.
+Send the reply with `from_note_id`, the id of your own internal note without files. The reply is sent now, at the end of the conversation. In the same step the note is emptied and stays where it was as a marker, with `sent_as_reply_id` pointing at the reply, so its words exist once.
+
+## Turn a chat reply into a note
+
+`POST .../retract` turns a reply you sent on a chat ticket into an internal note: it leaves the customer's chat, but they may already have read it. Admins can do it for any agent's reply. Email is delivered when it is sent, so an email reply returns `422`.
+
+## Delete, restore and purge
+
+Deleting leaves a marker in the conversation with who deleted it and when. Teammates see only the marker; admins can still read the message, restore it or remove its content for good.
+
+- **Who may delete**: admins any message, a customer's included. Agents follow the workspace's `settings.message_delete`: `off`, `own` (the default, their own messages) or `all` (any agent's), unless an admin set a rule of their own (`PATCH /v1/members/{user_id}/permissions`). Agents never delete a customer's, a bot's or an automation's message.
+- **What a deleted reply leaves**: the customer's chat, search, AI context, the quoted history of later emails, the ticket's count and preview. A reply not yet sent is not sent. An email already delivered stays in the customer's inbox.
+- **Purge** (admins, after deleting) removes the text, the subject, the files and the original email for good, for what should never have been written down. It cannot be restored and is recorded in the audit log.
+
+These routes are for teammates signed in to the app: an API key gets `403`. Deleting returns `204` and publishes `message.updated` with the marker, never the text.
+
 
 ## Attachments
 

@@ -166,7 +166,7 @@ func actorType(p *auth.Principal) string {
 func currentSuggestion(ctx context.Context, q db.Querier, wid, tid, id uuid.UUID, lock bool) (*SuggestedReply, error) {
 	sql := `SELECT ` + suggestedColumns + ` FROM ai_suggested_replies r WHERE workspace_id = $1 AND ticket_id = $2 AND status = 'pending'
 		AND ($3::uuid IS NULL OR id = $3)
-		AND r.message_id = (SELECT m.id FROM messages m WHERE m.workspace_id = $1 AND m.ticket_id = $2 AND m.kind = 'reply'
+		AND r.message_id = (SELECT m.id FROM messages m WHERE m.workspace_id = $1 AND m.ticket_id = $2 AND m.kind = 'reply' AND m.deleted_at IS NULL
 			ORDER BY m.created_at DESC, m.id DESC LIMIT 1)
 		AND EXISTS (SELECT 1 FROM tickets t WHERE t.workspace_id = $1 AND t.id = $2 AND t.deleted_at IS NULL)`
 	if lock {

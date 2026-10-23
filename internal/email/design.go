@@ -47,7 +47,7 @@ func loadHistory(ctx context.Context, q db.Querier, wid, ticketID uuid.UUID, mes
 		FROM messages m
 		LEFT JOIN users u ON u.id = m.author_user_id
 		LEFT JOIN contacts c ON c.id = m.author_contact_id AND c.workspace_id = m.workspace_id
-		WHERE m.workspace_id = $1 AND m.ticket_id = $2 AND m.kind = 'reply'
+		WHERE m.workspace_id = $1 AND m.ticket_id = $2 AND m.kind = 'reply' AND m.deleted_at IS NULL
 			AND ($3::uuid IS NULL OR (m.id <> $3 AND m.created_at <= (SELECT created_at FROM messages WHERE workspace_id = $1 AND id = $3)))
 			AND ((m.direction = 'inbound' AND NOT m.auth_failed) OR (m.direction = 'outbound' AND m.delivery_status IN ('sent', 'none')))
 		ORDER BY m.created_at DESC, m.id DESC LIMIT $4`, wid, ticketID, before, limit)

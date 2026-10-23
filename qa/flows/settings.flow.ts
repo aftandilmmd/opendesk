@@ -164,3 +164,24 @@ test("finish Slack's setup and route Telegram by channel ID", async ({ page, pro
   await proof.dwell();
   await proof.shot("connections", { caption: "Slack still needs its steps; Telegram shows the bot's handle and its routed group" });
 });
+
+test("set how long replies wait before they go out, and which messages agents may delete", async ({ page, proof }) => {
+  await proof.open("/settings/workspace");
+  const undo = page.getByText("Undo send", { exact: true });
+  await expect(undo).toBeVisible();
+  await undo.scrollIntoViewIfNeeded();
+  await expect(page.getByText("Agents can delete messages", { exact: true })).toBeVisible();
+  await proof.chapter("Undo send and deleting", "Workspace defaults, then one agent's own rule");
+  await proof.shot("workspace-rules", { caption: "Undo send, 5 seconds by default, and which messages agents may delete" });
+
+  await page.getByRole("link", { name: "Members", exact: true }).click();
+  await page.getByRole("button", { name: "Actions for Priya Raman" }).click();
+  await page.getByRole("menuitem", { name: "Can delete messages" }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: /Workspace default/ })).toBeVisible();
+  await proof.shot("member-rule-menu", { caption: "An agent's own rule: the workspace default, or none, their own or any agent's" });
+
+  await page.getByRole("menuitemcheckbox", { name: "Deletes any agent\u2019s messages" }).click();
+  await expect(page.getByText("Deletes any agent\u2019s messages")).toBeVisible();
+  await proof.dwell();
+  await proof.shot("member-rule-set", { caption: "Priya may delete any agent's messages, shown on her row" });
+});

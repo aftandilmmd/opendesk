@@ -43,6 +43,8 @@ type WorkspaceSettings = {
   auto_assign?: "none" | "round_robin" | "load_balanced";
   gravatar?: boolean;     // default false
   domain_logos?: boolean; // default true
+  undo_send_seconds?: 0 | 5 | 10 | 20 | 30; // default 5: how long the app holds a reply before sending it
+  message_delete?: "off" | "own" | "all";   // default "own": which messages agents may delete; admins any
 };
 type Member = {
   user: UserRef & { avatar_source: AvatarSource | null }; role: "owner" | "admin" | "agent" | "viewer";

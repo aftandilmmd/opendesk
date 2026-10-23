@@ -35,19 +35,20 @@ func (s *service) chatFollowUp(ctx context.Context, a jobs.ChatFollowUpArgs) err
 		var created time.Time
 		var ticketMailbox, team *uuid.UUID
 		var brand uuid.UUID
-		err := tx.QueryRow(ctx, `SELECT m.kind, m.direction, m.author_type, m.ai, m.delivery_status, m.created_at,
+		var deleted bool
+		err := tx.QueryRow(ctx, `SELECT m.kind, m.direction, m.author_type, m.ai, m.delivery_status, m.created_at, m.deleted_at IS NOT NULL,
 			t.mailbox_id, t.team_id, t.brand_id
 			FROM messages m JOIN tickets t ON t.id = m.ticket_id AND t.workspace_id = m.workspace_id
 			WHERE m.workspace_id = $1 AND m.id = $2 AND m.ticket_id = $3 AND t.deleted_at IS NULL FOR UPDATE OF m`,
 			a.WorkspaceID, a.MessageID, a.TicketID).
-			Scan(&kind, &direction, &authorType, &ai, &status, &created, &ticketMailbox, &team, &brand)
+			Scan(&kind, &direction, &authorType, &ai, &status, &created, &deleted, &ticketMailbox, &team, &brand)
 		if db.IsNotFound(err) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if kind != "reply" || direction != "outbound" || authorType != "user" || ai || status != "none" {
+		if kind != "reply" || direction != "outbound" || authorType != "user" || ai || status != "none" || deleted {
 			return nil
 		}
 		due, err := domain.ChatFollowUpDue(ctx, tx, a.WorkspaceID, a.TicketID, created)

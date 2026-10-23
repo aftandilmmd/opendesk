@@ -191,6 +191,8 @@ export type Mock = {
   showcaseId: string;
   /** The topic_id of the last conversation started (null: none was sent). */
   readonly lastTopic: string | null;
+  /** The team takes back its latest reply in the latest conversation (deleted, or made a note): it leaves the visitor's chat. */
+  takeBack(): boolean;
   dispose(): void;
 };
 
@@ -517,6 +519,17 @@ export function createMock(o: MockOptions = {}): Mock {
     fetch: fetcher,
     socket,
     showcaseId,
+    takeBack() {
+      const latest = [...conversations].sort((a, b) => Date.parse(b.last_message_at) - Date.parse(a.last_message_at))[0];
+      const list = latest ? messages[latest.id] : undefined;
+      const i = list ? list.map((m) => m.direction).lastIndexOf("outbound") : -1;
+      if (!latest || !list || i < 0) return false;
+      const [gone] = list.splice(i, 1);
+      const last = list[list.length - 1];
+      latest.last_message_preview = last ? last.body_text.slice(0, 140) : "";
+      broadcast("event", { id: uid(), seq: n, type: "message.deleted", data: { ticket_id: latest.id, message_id: gone.id }, topics: [] });
+      return true;
+    },
     playShowcase() {
       if (played) return;
       played = true;
@@ -536,3 +549,5 @@ const demoMock = () =>
   (demo ??= createMock({ lang: typeof location === "undefined" ? "" : (new URLSearchParams(location.search).get("od_lang") ?? ""), seed: "demo" }));
 export const mockFetch: Fetcher = (url, init) => demoMock().fetch(url, init);
 export const mockSocket: SocketFactory = (url, params) => demoMock().socket(url, params);
+/** The team takes back its latest reply in the demo (the proof flow dispatches `opendesk-mock:take-back`). */
+export const mockTakeBack = () => demoMock().takeBack();

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlarmClock, Hand, ShieldAlert, Sparkles, ArrowRightLeft, CircleDot, GitMerge, Link2, MessagesSquare, PencilLine, Star, Tag as TagIcon, TimerOff, Trash2, Users, UserRound } from "lucide-react";
+import { AlarmClock, Hand, ShieldAlert, Sparkles, ArrowRightLeft, CircleDot, GitMerge, Link2, MessagesSquare, PencilLine, Star, Tag as TagIcon, TimerOff, Trash2, Undo2, Users, UserRound, Reply } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -103,6 +103,16 @@ function describe(a: Activity, t: TFunction<"inbox">, { teams, members, tags, fi
       return { icon: <PencilLine />, text: line("activity.noteEdited") };
     case "note_deleted":
       return { icon: <Trash2 />, text: line("activity.noteDeleted") };
+    case "reply_retracted":
+      return { icon: <Undo2 />, text: line("activity.replyRetracted") };
+    case "message_deleted":
+      return { icon: <Trash2 />, text: line("activity.messageDeleted") };
+    case "message_purged":
+      return { icon: <Trash2 />, text: line("activity.messagePurged") };
+    case "message_restored":
+      return { icon: <Undo2 />, text: line("activity.messageRestored") };
+    case "note_sent_as_reply":
+      return { icon: <Reply />, text: line("activity.noteSentAsReply") };
     case "status_changed": {
       const to = d.to as TicketStatus;
       if (d.reason === "thread_replied") {
@@ -362,6 +372,8 @@ export function Timeline({
   activities,
   loading,
   onRetry,
+  onToReply,
+  onRetract,
   contactName,
   receivedAt,
   threads,
@@ -372,6 +384,9 @@ export function Timeline({
   activities: Activity[] | undefined;
   loading: boolean;
   onRetry: (m: Message) => void;
+  onToReply?: (m: Message) => void;
+  /** Set on a chat ticket: an agent's sent reply can be taken back from the customer. */
+  onRetract?: (m: Message) => void;
   contactName?: string;
   /** The address the customer first wrote to, for inbound messages that don't say. */
   receivedAt?: string | null;
@@ -492,6 +507,8 @@ export function Timeline({
                     <MessageItem
                       m={it.m}
                       onRetry={onRetry}
+                      onToReply={onToReply}
+                      onRetract={onRetract}
                       highlight={pointed.id === it.m.id}
                       receivedAt={receivedAt}
                       thread={it.m.thread_id ? threadById.get(it.m.thread_id) : undefined}

@@ -252,6 +252,8 @@ export type RequestOptions = {
   /** Send as this signed-in account (user id) rather than the active one. */
   as?: string;
   signal?: AbortSignal;
+  /** Let the request outlive the page (sent while it unloads). Bodies over 60 KB go without. */
+  keepalive?: boolean;
 };
 
 const NO_REFRESH = new Set([
@@ -338,6 +340,7 @@ async function raw(method: string, path: string, opts: RequestOptions = {}): Pro
         body,
         credentials: "include",
         signal: opts.signal,
+        keepalive: opts.keepalive && (typeof body !== "string" || body.length < 60_000) ? true : undefined,
       });
     } catch (e) {
       if ((e as Error)?.name === "AbortError") throw e;

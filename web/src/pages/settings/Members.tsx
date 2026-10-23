@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Clock, IdCard, Link2, LogOut, MoreHorizontal, Send, ShieldCheck, UserMinus, UserPlus, X } from "lucide-react";
+import { Clock, IdCard, Link2, LogOut, MoreHorizontal, Send, ShieldCheck, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SettingsPage, Section, ListRow } from "@/components/layout";
@@ -18,7 +18,7 @@ import { copyText } from "@/components/ui/copy-button";
 import { useConfirm } from "@/components/ui/confirm";
 import { Dialog, Drawer } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/input";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import { Menu, MenuChoice, MenuContent, MenuItem, MenuSeparator, MenuSub, MenuTrigger } from "@/components/ui/menu";
 import { Select } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api/endpoints";
@@ -40,6 +40,8 @@ const roleHint: Record<Exclude<Role, "owner">, string> = {
 };
 
 /** Which roles `me` may hand out, and whether they may manage `target` at all. */
+type DeleteRule = "off" | "own" | "all";
+
 function grantable(me: Role): Exclude<Role, "owner">[] {
   if (me === "owner") return ["admin", "agent", "viewer"];
   if (me === "admin") return ["agent", "viewer"];
@@ -113,6 +115,21 @@ function MembersList({ onInvite }: { onInvite?: () => void }) {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: qk.members }),
   });
+
+  const setDelete = useMutation({
+    mutationFn: ({ uid, value }: { uid: string; value: "default" | DeleteRule }) => api.members.setMessageDelete(uid, value),
+    onMutate: async ({ uid, value }) => {
+      await qc.cancelQueries({ queryKey: qk.members });
+      return patchMembers((list) => list.map((m) => (m.user.id === uid ? { ...m, message_delete: value === "default" ? null : value } : m)));
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(qk.members, ctx.prev);
+      toast.error(e);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.members }),
+  });
+  const { data: ws } = useQuery(q.workspace());
+  const wsRule: DeleteRule = ws?.settings.message_delete ?? "own";
 
   const remove = async (m: Member) => {
     const { prev } = patchMembers((list) => list.filter((x) => x.user.id !== m.user.id));
@@ -211,6 +228,12 @@ function MembersList({ onInvite }: { onInvite?: () => void }) {
                         )}
                       </div>
                       <div className="mono truncate text-xs text-fg-3">{m.user.email}</div>
+                      {m.role === "agent" && m.message_delete && (
+                        <span className="mt-1 inline-flex h-5 items-center gap-1 rounded-sm bg-hover px-1.5 text-[11px] text-fg-3">
+                          <Trash2 className="size-3" />
+                          {t(`members.deletes.${m.message_delete}`)}
+                        </span>
+                      )}
                       <MemberTeams m={m} canEdit={atLeast(role, "admin")} />
                     </div>
                     <span className="hidden w-32 whitespace-nowrap text-xs tabular-nums text-fg-3 sm:block">{shortDate(m.created_at)}</span>
@@ -243,6 +266,19 @@ function MembersList({ onInvite }: { onInvite?: () => void }) {
                             <MenuItem icon={<IdCard />} onSelect={() => setEditing(m.user.id)}>
                               {t("members.editProfile")}
                             </MenuItem>
+                            {m.role === "agent" && (
+                              <MenuSub icon={<Trash2 />} label={t("members.deleteRule")}>
+                                <MenuChoice checked={!m.message_delete} onSelect={() => setDelete.mutate({ uid: m.user.id, value: "default" })}>
+                                  {t("members.deleteDefault", { rule: t(`members.deletes.${wsRule}`) })}
+                                </MenuChoice>
+                                <MenuSeparator />
+                                {(["off", "own", "all"] as const).map((r) => (
+                                  <MenuChoice key={r} checked={m.message_delete === r} onSelect={() => setDelete.mutate({ uid: m.user.id, value: r })}>
+                                    {t(`members.deletes.${r}`)}
+                                  </MenuChoice>
+                                ))}
+                              </MenuSub>
+                            )}
                             {manageable && (
                               <>
                                 <MenuSeparator />

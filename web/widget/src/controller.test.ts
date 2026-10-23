@@ -146,3 +146,28 @@ describe("controller with topics", () => {
     mock.dispose();
   });
 });
+
+describe("controller with a reply taken back", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("drops a message the team took back from the open conversation", async () => {
+    const mock = createMock({ seed: "preview", latency: 5 });
+    const c = new Controller({ base: "https://mock.invalid", key: "wk_demo", fetcher: mock.fetch, socketFactory: mock.socket, persist: false });
+    const boot = c.boot(demoConfig("wk_demo"));
+    await vi.advanceTimersByTimeAsync(200);
+    await boot;
+    const id = mock.showcaseId;
+    const open = c.openConversation(id);
+    await vi.advanceTimersByTimeAsync(50);
+    await open;
+    const before = c.store.get().messages[id];
+    expect(before.length).toBeGreaterThan(0);
+    const gone = before[before.length - 1].id;
+
+    c.onEvent({ type: "message.deleted", data: { ticket_id: id, message_id: gone } } as unknown as Parameters<Controller["onEvent"]>[0]);
+    const after = c.store.get().messages[id];
+    expect(after).toHaveLength(before.length - 1);
+    expect(after.some((m) => m.id === gone)).toBe(false);
+  });
+});

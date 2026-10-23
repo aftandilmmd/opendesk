@@ -127,7 +127,8 @@ func LoadTicket(ctx context.Context, q db.Querier, wid, id uuid.UUID) (Ticket, e
 const MessageSelect = `SELECT m.id, m.ticket_id, m.kind, m.direction, m.author_type, m.body_html, m.body_text,
 	m.full_html <> '', m.subject, m.from_email, m.from_name, m.to_emails, m.cc_emails, m.bcc_emails,
 	m.delivery_status, m.delivery_error, m.ai, m.ai_action, m.ai_rating, m.mailbox_id, m.reply_to, m.auth_failed,
-	m.form_sender, m.received_at, m.thread_id, m.created_at, m.edited_at,
+	m.form_sender, m.received_at, m.thread_id, m.created_at, m.edited_at, m.deleted_at, m.purged_at, m.sent_as_reply_id,
+	du.id, du.name, du.email, du.avatar_url,
 	u.id, u.name, u.email, u.avatar_url,
 	c.id, c.email, c.name, c.avatar_url,
 	bt.id, bt.name, bt.avatar, bt.look,
@@ -137,7 +138,8 @@ const MessageSelect = `SELECT m.id, m.ticket_id, m.kind, m.direction, m.author_t
 FROM messages m
 LEFT JOIN users u ON u.id = m.author_user_id
 LEFT JOIN contacts c ON c.id = m.author_contact_id
-LEFT JOIN bots bt ON bt.id = m.bot_id`
+LEFT JOIN bots bt ON bt.id = m.bot_id
+LEFT JOIN users du ON du.id = m.deleted_by`
 
 func ScanMessage(row pgx.Row) (Message, error) {
 	var m Message
@@ -147,13 +149,19 @@ func ScanMessage(row pgx.Row) (Message, error) {
 	var bID *uuid.UUID
 	var bName, bAvatar *string
 	var bLook []byte
+	var dID *uuid.UUID
+	var dName, dEmail, dAvatar *string
 	err := row.Scan(&m.ID, &m.TicketID, &m.Kind, &m.Direction, &m.Author.Type, &m.BodyHTML, &m.BodyText,
 		&m.HasQuoted, &m.Subject, &m.FromEmail, &m.FromName, &m.To, &m.Cc, &m.Bcc,
 		&m.DeliveryStatus, &m.DeliveryError, &m.AI, &m.AIAction, &m.AIRating, &m.MailboxID, &m.ReplyTo, &m.AuthFailed,
-		&m.FormSender, &m.ReceivedAt, &m.ThreadID, &m.CreatedAt, &m.EditedAt,
+		&m.FormSender, &m.ReceivedAt, &m.ThreadID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt, &m.PurgedAt, &m.SentAsReplyID,
+		&dID, &dName, &dEmail, &dAvatar,
 		&uID, &uName, &uEmail, &uAvatar, &cID, &cEmail, &cName, &cAvatar, &bID, &bName, &bAvatar, &bLook, &atts)
 	if err != nil {
 		return m, err
+	}
+	if dID != nil {
+		m.DeletedBy = &UserRef{ID: *dID, Name: deref(dName), Email: deref(dEmail), AvatarURL: Avatar(deref(dAvatar))}
 	}
 	if uID != nil {
 		m.Author.User = &UserRef{ID: *uID, Name: deref(uName), Email: deref(uEmail), AvatarURL: Avatar(deref(uAvatar))}
@@ -185,17 +193,48 @@ func LoadMessage(ctx context.Context, q db.Querier, wid, id uuid.UUID) (Message,
 }
 
 // ListMessages returns a ticket's messages oldest first. publicOnly drops internal notes.
+// ListMessages lists a ticket's messages, oldest first, without deleted ones: what a
+// customer, a channel or the AI may read.
 func ListMessages(ctx context.Context, q db.Querier, wid, ticketID uuid.UUID, publicOnly bool) ([]Message, error) {
+	return listMessages(ctx, q, wid, ticketID, publicOnly, false, false)
+}
+
+// ListTimeline lists a ticket's messages for the team: deleted ones too, as markers that
+// keep what they said only when full (an admin).
+func ListTimeline(ctx context.Context, q db.Querier, wid, ticketID uuid.UUID, full bool) ([]Message, error) {
+	return listMessages(ctx, q, wid, ticketID, false, true, full)
+}
+
+func listMessages(ctx context.Context, q db.Querier, wid, ticketID uuid.UUID, publicOnly, deleted, full bool) ([]Message, error) {
 	rows, err := q.Query(ctx, MessageSelect+` WHERE m.workspace_id = $1 AND m.ticket_id = $2 AND (NOT $3 OR m.kind = 'reply')
-		ORDER BY m.created_at, m.id`, wid, ticketID, publicOnly)
+		AND ($4 OR (m.deleted_at IS NULL AND m.sent_as_reply_id IS NULL))
+		ORDER BY m.created_at, m.id`, wid, ticketID, publicOnly, deleted)
 	if err != nil {
 		return nil, err
 	}
-	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Message, error) { return ScanMessage(r) })
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Message, error) {
+		m, err := ScanMessage(r)
+		if !full {
+			m = Tombstone(m)
+		}
+		return m, err
+	})
 	if out == nil {
 		out = []Message{}
 	}
 	return out, err
+}
+
+// Tombstone is a deleted message as everyone but an admin sees it: who wrote it and who
+// deleted it, without what it said. A message that is not deleted is returned as it is.
+func Tombstone(m Message) Message {
+	if m.DeletedAt == nil {
+		return m
+	}
+	m.BodyHTML, m.BodyText, m.HasQuoted, m.Subject = "", "", false, ""
+	m.Attachments = []Attachment{}
+	m.AIAction = nil
+	return m
 }
 
 var ContactSelect = `SELECT ct.id, ct.email, ct.name, ct.phone, ct.avatar_url, ct.avatar_source, ct.external_id, ct.notes, ct.custom,

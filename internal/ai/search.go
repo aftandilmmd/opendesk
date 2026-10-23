@@ -129,7 +129,7 @@ func (s *Service) Search(ctx context.Context, p *auth.Principal, q string) (*AIS
 	}
 	if allowed(auth.ScopeTicketsRead) && tsq != "" {
 		fts, err := collectIDs(pool.Query(ctx, `SELECT t.id FROM tickets t WHERE t.workspace_id = $1 AND t.deleted_at IS NULL AND NOT t.spam
-			AND (t.search @@ `+tsq+` OR EXISTS (SELECT 1 FROM messages m WHERE m.workspace_id = $1 AND m.ticket_id = t.id AND m.search @@ `+tsq+`))
+			AND (t.search @@ `+tsq+` OR EXISTS (SELECT 1 FROM messages m WHERE m.workspace_id = $1 AND m.ticket_id = t.id AND m.deleted_at IS NULL AND m.search @@ `+tsq+`))
 			ORDER BY ts_rank(t.search, `+tsq+`) DESC, t.last_message_at DESC LIMIT `+strconv.Itoa(candidates), wid, args[0], args[1]))
 		if err != nil {
 			return nil, err

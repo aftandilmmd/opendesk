@@ -413,7 +413,7 @@ func (s *Service) postReply(ctx context.Context, in agentInput, trigger uuid.UUI
 			return err
 		}
 		var latest uuid.UUID
-		if err := tx.QueryRow(ctx, `SELECT id FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND kind = 'reply'
+		if err := tx.QueryRow(ctx, `SELECT id FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND kind = 'reply' AND deleted_at IS NULL
 			ORDER BY created_at DESC, id DESC LIMIT 1`, wid, tid).Scan(&latest); err != nil {
 			return err
 		}

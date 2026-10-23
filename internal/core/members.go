@@ -53,6 +53,7 @@ type CoreMember struct {
 	Availability   string     `json:"availability" enum:"online,away,offline"`
 	Presence       string     `json:"presence" enum:"online,away,offline" doc:"availability, or away when auto-away applies"`
 	MaxOpenTickets *int       `json:"max_open_tickets" doc:"Auto-assignment cap on open and pending tickets; null = no cap"`
+	MessageDelete  *string    `json:"message_delete" enum:"off,own,all" doc:"Which messages this agent may delete, over the workspace's settings.message_delete; null follows the workspace"`
 	OpenTickets    int        `json:"open_tickets"`
 	LastSeenAt     *time.Time `json:"last_seen_at"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -69,13 +70,13 @@ type MemberProfile struct {
 }
 
 const memberSelect = `SELECT u.id, u.name, u.email, u.avatar_url, u.avatar_source, m.role, m.availability, ` + domain.PresenceSQL + `,
-	m.max_open_tickets, ` + domain.OpenTicketsSQL + `, u.last_seen_at, m.created_at, m.title, m.phone, m.pronouns, m.signature_html
+	m.max_open_tickets, m.message_delete, ` + domain.OpenTicketsSQL + `, u.last_seen_at, m.created_at, m.title, m.phone, m.pronouns, m.signature_html
 	FROM members m JOIN users u ON u.id = m.user_id JOIN workspaces w ON w.id = m.workspace_id`
 
 func scanMember(r pgx.Row) (CoreMember, error) {
 	var m CoreMember
 	err := r.Scan(&m.User.ID, &m.User.Name, &m.User.Email, &m.User.AvatarURL, &m.User.AvatarSource, &m.Role, &m.Availability,
-		&m.Presence, &m.MaxOpenTickets, &m.OpenTickets, &m.LastSeenAt, &m.CreatedAt,
+		&m.Presence, &m.MaxOpenTickets, &m.MessageDelete, &m.OpenTickets, &m.LastSeenAt, &m.CreatedAt,
 		&m.Profile.Title, &m.Profile.Phone, &m.Profile.Pronouns, &m.Profile.SignatureHTML)
 	return m, err
 }

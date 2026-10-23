@@ -259,6 +259,21 @@ export function registerPictures() {
     return out;
   });
 
+  // Which messages an agent may delete, over the workspace's rule.
+  patch("/v1/members/:user_id/permissions", (ctx) => {
+    if (rank[role(ctx.ws)] < rank.admin) throw forbidden();
+    const m = ctx.ws.members.find((x) => x.user_id === ctx.params.user_id);
+    if (!m) throw notFound("Member");
+    const v = ctx.body.message_delete;
+    if (v !== "default" && v !== "off" && v !== "own" && v !== "all") throw invalid("message_delete must be default, off, own or all");
+    if (m.role !== "agent") throw invalid("Only agents have this setting: owners and admins delete any message, viewers none.");
+    m.message_delete = v === "default" ? null : v;
+    audit(ctx.ws, "member.permissions_changed", "member", m.user_id);
+    const out = memberOut(ctx.ws, m.user_id);
+    publish(ctx.ws, "member.updated", { member: out }, { topics: [`user:${m.user_id}`] });
+    return out;
+  });
+
   // Workspace logo and brand images.
   put("/v1/workspace/images/:slot", async (ctx) => {
     requireRole(ctx.ws, "admin");

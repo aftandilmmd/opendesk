@@ -314,9 +314,10 @@ func (s *service) sendMessage(ctx context.Context, wid, mid uuid.UUID, lastAttem
 	var to, cc, bcc []string
 	var authorID, mailboxID, threadID *uuid.UUID
 	var bot ollieSender
+	var deleted bool
 	err := s.d.DB.Pool.QueryRow(ctx, `SELECT ticket_id, kind, direction, body_html, body_text, subject, to_emails, cc_emails, bcc_emails,
-		delivery_status, author_user_id, ai, from_name, mailbox_id, author_type, thread_id FROM messages WHERE workspace_id = $1 AND id = $2`, wid, mid).
-		Scan(&ticketID, &kind, &direction, &bodyHTML, &bodyText, &subject, &to, &cc, &bcc, &status, &authorID, &bot.ai, &bot.name, &mailboxID, &authorType, &threadID)
+		delivery_status, author_user_id, ai, from_name, mailbox_id, author_type, thread_id, deleted_at IS NOT NULL FROM messages WHERE workspace_id = $1 AND id = $2`, wid, mid).
+		Scan(&ticketID, &kind, &direction, &bodyHTML, &bodyText, &subject, &to, &cc, &bcc, &status, &authorID, &bot.ai, &bot.name, &mailboxID, &authorType, &threadID, &deleted)
 	if db.IsNotFound(err) {
 		return nil
 	}
@@ -324,7 +325,8 @@ func (s *service) sendMessage(ctx context.Context, wid, mid uuid.UUID, lastAttem
 		return err
 	}
 	thread := threadID != nil && kind == "note"
-	if status != "pending" || direction != "outbound" || kind != "reply" && !thread {
+	// A reply deleted before it went out is not sent.
+	if status != "pending" || direction != "outbound" || kind != "reply" && !thread || deleted {
 		return nil
 	}
 	bot.system = authorType == "system"

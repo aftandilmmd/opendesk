@@ -125,6 +125,7 @@ type storedAttachment struct {
 	TicketContact    *uuid.UUID
 	MessageKind      *string
 	TicketDeleted    bool
+	MessageDeleted   bool
 	TicketIsAttached bool
 	TicketTeam       *uuid.UUID
 	TicketAssignee   *uuid.UUID
@@ -134,21 +135,22 @@ func loadStored(ctx context.Context, q db.Querier, id uuid.UUID) (storedAttachme
 	var a storedAttachment
 	err := q.QueryRow(ctx, `SELECT a.workspace_id, a.filename, a.content_type, a.size_bytes, a.storage_key,
 		a.uploaded_by_contact_id, a.uploaded_by, a.uploaded_by_api_key_id, t.contact_id, m.kind,
-		COALESCE(t.deleted_at IS NOT NULL, false), m.id IS NOT NULL, t.team_id, t.assignee_id
+		COALESCE(t.deleted_at IS NOT NULL, false), COALESCE(m.deleted_at IS NOT NULL, false), m.id IS NOT NULL, t.team_id, t.assignee_id
 		FROM attachments a LEFT JOIN messages m ON m.id = a.message_id LEFT JOIN tickets t ON t.id = m.ticket_id
 		WHERE a.id = $1`, id).Scan(&a.WorkspaceID, &a.Filename, &a.ContentType, &a.Size, &a.Key,
 		&a.UploaderContact, &a.UploaderUser, &a.UploaderKey, &a.TicketContact, &a.MessageKind, &a.TicketDeleted,
-		&a.TicketIsAttached, &a.TicketTeam, &a.TicketAssignee)
+		&a.MessageDeleted, &a.TicketIsAttached, &a.TicketTeam, &a.TicketAssignee)
 	return a, err
 }
 
 // mayRead decides access: a signed link, a member or key of the owning workspace who may
 // see the ticket carrying it (contracts/teams.md "Visibility") or who uploaded it while it
 // is not sent yet, or the visitor who uploaded the file or whose conversation carries it
-// in a public reply.
+// in a public reply. A deleted message's files are an admin's alone, as its text is: a
+// signed link handed out before it was deleted no longer opens them.
 func mayRead(r *http.Request, q db.Querier, id uuid.UUID, a storedAttachment) (bool, error) {
 	query := r.URL.Query()
-	if exp, sig := query.Get("exp"), query.Get("sig"); exp != "" && sig != "" && domain.VerifyAttachmentSig(id, exp, sig) {
+	if exp, sig := query.Get("exp"), query.Get("sig"); !a.MessageDeleted && exp != "" && sig != "" && domain.VerifyAttachmentSig(id, exp, sig) {
 		return true, nil
 	}
 	p := auth.FromContext(r.Context())
@@ -158,6 +160,9 @@ func mayRead(r *http.Request, q db.Querier, id uuid.UUID, a storedAttachment) (b
 	switch p.Kind {
 	case auth.KindUser, auth.KindAPIKey:
 		if p.Kind == auth.KindUser && !p.Role.Valid() || p.Kind == auth.KindAPIKey && !p.HasScope(auth.ScopeTicketsRead) {
+			return false, nil
+		}
+		if a.MessageDeleted && (p.Kind != auth.KindUser || !p.Role.AtLeast(auth.RoleAdmin)) {
 			return false, nil
 		}
 		if !a.TicketIsAttached {
@@ -173,7 +178,7 @@ func mayRead(r *http.Request, q db.Querier, id uuid.UUID, a storedAttachment) (b
 		if a.UploaderContact != nil && *a.UploaderContact == p.ContactID {
 			return true, nil
 		}
-		return a.TicketContact != nil && *a.TicketContact == p.ContactID && !a.TicketDeleted &&
+		return a.TicketContact != nil && *a.TicketContact == p.ContactID && !a.TicketDeleted && !a.MessageDeleted &&
 			a.MessageKind != nil && *a.MessageKind == "reply", nil
 	}
 	return false, nil

@@ -33,6 +33,7 @@ type MessageInput struct {
 	AttachmentIDs []string `json:"attachment_ids,omitempty" maxItems:"20"`
 	Status        *string  `json:"status,omitempty" enum:"open,pending,on_hold,solved,closed" doc:"Applied after the message is added"`
 	MailboxID     string   `json:"mailbox_id,omitempty" doc:"Replies: send from this address of the ticket's brand (the caller must be allowed to send from it); it becomes the ticket's reply address"`
+	FromNoteID    string   `json:"from_note_id,omitempty" doc:"Replies: an internal note of yours, without files, this reply is written from. The note is removed as the reply is added"`
 }
 
 const activitySelect = `SELECT a.id, a.ticket_id, a.actor_type, a.type, a.data, a.created_at, u.id, u.name, u.email, u.avatar_url
@@ -82,7 +83,8 @@ func registerMessages(d *deps.Deps, api huma.API) {
 			if err != nil {
 				return nil, httpx.Wrap(err)
 			}
-			msgs, err := domain.ListMessages(ctx, d.DB.Pool, p.WorkspaceID, id, false)
+			// Deleted messages stay as markers; only admins read what they said.
+			msgs, err := domain.ListTimeline(ctx, d.DB.Pool, p.WorkspaceID, id, p.Role.AtLeast(auth.RoleAdmin))
 			if err != nil {
 				return nil, httpx.Wrap(err)
 			}
@@ -184,7 +186,7 @@ func registerMessages(d *deps.Deps, api huma.API) {
 			var tid uuid.UUID
 			err = d.DB.Pool.QueryRow(ctx, `SELECT CASE WHEN m.full_html <> '' THEN m.full_html ELSE m.body_html END, t.id
 				FROM messages m JOIN tickets t ON t.id = m.ticket_id AND t.deleted_at IS NULL
-				WHERE m.workspace_id = $1 AND m.id = $2`, p.WorkspaceID, id).Scan(&out.Body.FullHTML, &tid)
+				WHERE m.workspace_id = $1 AND m.id = $2 AND (m.deleted_at IS NULL OR $3)`, p.WorkspaceID, id, p.Role.AtLeast(auth.RoleAdmin)).Scan(&out.Body.FullHTML, &tid)
 			if err == nil {
 				if _, err = resolveVisible(ctx, d.DB.Pool, p, tid.String()); err != nil {
 					return nil, httpx.NotFound("Message")
@@ -290,6 +292,10 @@ func PostMessage(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principal
 	if err := hd.CheckAttachments(ctx, tx, wid, attIDs, hd.Uploader{User: p.ActorUserID(), APIKey: p.ActorAPIKeyID()}); err != nil {
 		return domain.Message{}, err
 	}
+	fromNote, err := noteForReply(ctx, tx, p, tid, b)
+	if err != nil {
+		return domain.Message{}, err
+	}
 	authorType := actor.Type
 	if authorType == "ai" {
 		authorType = "user" // the assistant writes on the user's behalf, after their approval
@@ -324,6 +330,25 @@ func PostMessage(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principal
 	if err != nil {
 		return domain.Message{}, err
 	}
+	if fromNote != nil {
+		// The note's words are the reply now: the note stays where it was, empty, pointing at
+		// the reply, and its mentions go.
+		if _, err := tx.Exec(ctx, `UPDATE messages SET body_html = '', body_text = '', sent_as_reply_id = $4
+			WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`, wid, tid, *fromNote, msg.ID); err != nil {
+			return domain.Message{}, err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM notifications WHERE workspace_id = $1 AND ticket_id = $2 AND type = $3 AND data->>'message_id' = $4`,
+			wid, tid, hd.NotifyMentioned, fromNote.String()); err != nil {
+			return domain.Message{}, err
+		}
+		if _, err := domain.LogActivity(ctx, tx, wid, tid, actor.Type, actor.UserID, "note_sent_as_reply",
+			map[string]any{"message_id": *fromNote, "reply_id": msg.ID}); err != nil {
+			return domain.Message{}, err
+		}
+		if err := domain.PublishMessageUpdated(ctx, tx, wid, *fromNote); err != nil {
+			return domain.Message{}, err
+		}
+	}
 	if b.Kind == "note" {
 		if err := notifyMentions(ctx, tx, wid, tid, msg, actor.UserID); err != nil {
 			return domain.Message{}, err
@@ -335,6 +360,39 @@ func PostMessage(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principal
 		}
 	}
 	return msg, nil
+}
+
+// noteForReply checks the note a reply is written from (from_note_id): a plain internal
+// note on this ticket, by the caller, without files. Nil when there is none.
+func noteForReply(ctx context.Context, tx pgx.Tx, p *auth.Principal, tid uuid.UUID, b MessageInput) (*uuid.UUID, error) {
+	if strings.TrimSpace(b.FromNoteID) == "" {
+		return nil, nil
+	}
+	if b.Kind != "reply" {
+		return nil, httpx.Validation("from_note_id applies to replies")
+	}
+	id, err := hd.ParseRef(b.FromNoteID, "from_note_id")
+	if err != nil {
+		return nil, err
+	}
+	target, err := lockMessageMutationTarget(ctx, tx, p.WorkspaceID, tid, id)
+	if err != nil {
+		return nil, err
+	}
+	if target.kind != "note" || target.threadID != nil || target.deleted || target.sentAsReply {
+		return nil, httpx.Validation("from_note_id must be an internal note on this ticket")
+	}
+	if p.Kind != auth.KindUser || target.authorType != "user" || target.authorID == nil || *target.authorID != p.UserID {
+		return nil, httpx.Forbidden()
+	}
+	var files bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM attachments WHERE workspace_id = $1 AND message_id = $2)`, p.WorkspaceID, id).Scan(&files); err != nil {
+		return nil, err
+	}
+	if files {
+		return nil, httpx.Validation("a note with files can't become a reply")
+	}
+	return &id, nil
 }
 
 func replySubject(s string) string {

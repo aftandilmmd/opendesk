@@ -484,6 +484,13 @@ export class Controller {
   }
 
   onEvent(e: Envelope) {
+    // A reply the team took back leaves the conversation.
+    if (e.type === "message.deleted") {
+      const tid = e.data.ticket_id as string | undefined;
+      const mid = e.data.message_id as string | undefined;
+      if (tid && mid && this.s.messages[tid]) this.set((s) => ({ messages: { ...s.messages, [tid]: s.messages[tid].filter((m) => m.id !== mid) } }));
+      return;
+    }
     if (e.type !== "message.created" && e.type !== "message.updated") return;
     const m = e.data.message as Message | undefined;
     const tid = (e.data.ticket_id as string | undefined) ?? m?.ticket_id;

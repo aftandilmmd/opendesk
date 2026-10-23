@@ -256,6 +256,60 @@ func (s *svc) registerAvatars(api huma.API) {
 			return &struct{ Body CoreMember }{m}, nil
 		})
 
+	register(s, api, huma.Operation{OperationID: "update-member-permissions", Method: http.MethodPatch,
+		Path: "/v1/members/{user_id}/permissions", Summary: "Set which messages an agent may delete", Tags: []string{"Members"},
+		Description: "Admin. message_delete overrides the workspace's settings.message_delete for this agent; default follows it. Owners and admins delete any message and viewers none, so only agents take it."},
+		func(ctx context.Context, in *struct {
+			UserID string `path:"user_id"`
+			Body   struct {
+				MessageDelete string `json:"message_delete" enum:"default,off,own,all"`
+			}
+		}) (*struct{ Body CoreMember }, error) {
+			p, err := requireUserWorkspace(ctx, auth.RoleAdmin)
+			if err != nil {
+				return nil, httpx.Wrap(err)
+			}
+			uid, err := parseID(in.UserID, "Member")
+			if err != nil {
+				return nil, err
+			}
+			var value *string
+			if v := in.Body.MessageDelete; v != "default" {
+				value = &v
+			}
+			var m CoreMember
+			err = s.tx(ctx, func(tx pgx.Tx) error {
+				var role string
+				if err := tx.QueryRow(ctx, `SELECT role FROM members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE`,
+					p.WorkspaceID, uid).Scan(&role); err != nil {
+					if db.IsNotFound(err) {
+						return httpx.NotFound("Member")
+					}
+					return err
+				}
+				if role != string(auth.RoleAgent) {
+					return httpx.Validation("Only agents have this setting: owners and admins delete any message, viewers none.")
+				}
+				if _, err := tx.Exec(ctx, `UPDATE members SET message_delete = $3 WHERE workspace_id = $1 AND user_id = $2`,
+					p.WorkspaceID, uid, value); err != nil {
+					return err
+				}
+				if err := audit.Log(ctx, tx, p, p.WorkspaceID, "member.permissions_changed", "user", &uid,
+					map[string]any{"message_delete": in.Body.MessageDelete}); err != nil {
+					return err
+				}
+				if err := publishMember(ctx, tx, p.WorkspaceID, uid); err != nil {
+					return err
+				}
+				m, err = loadMember(ctx, tx, p.WorkspaceID, uid)
+				return err
+			})
+			if err != nil {
+				return nil, httpx.Wrap(err)
+			}
+			return &struct{ Body CoreMember }{m}, nil
+		})
+
 	slotDoc := "logo (the workspace avatar_url), help_center_logo, help_center_favicon, widget_avatar or widget_launcher (a bot's picture: PUT /v1/bots/{id}/image)"
 	register(s, api, images.UploadOperation(api, huma.Operation{OperationID: "upload-workspace-image", Method: http.MethodPut,
 		Path: "/v1/workspace/images/{slot}", Summary: "Upload a workspace logo or brand image", Tags: []string{"Workspace"},

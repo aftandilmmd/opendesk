@@ -41,6 +41,7 @@ export function memberOut(ws: WsData, user_id: string): Member {
     availability,
     presence: availability === "online" && idle ? "away" : availability,
     max_open_tickets: m.max_open_tickets ?? null,
+    message_delete: m.message_delete ?? null,
     open_tickets: open,
     last_seen_at: lastSeen,
     created_at: m.created_at,

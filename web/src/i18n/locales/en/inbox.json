@@ -416,7 +416,12 @@
     "other": "<b>{{who}}</b> updated this ticket <m>{{type}}</m>",
     "teamFrom": "<b>{{who}}</b> moved this from <b>{{from}}</b> to <b>{{team}}</b>",
     "teamRule": "Routed to <b>{{team}}</b> by rule <b>{{rule}}</b>",
-    "replyAddress": "replies now go from <m>{{address}}</m>"
+    "replyAddress": "replies now go from <m>{{address}}</m>",
+    "replyRetracted": "<b>{{who}}</b> turned a sent reply into an internal note",
+    "messageDeleted": "<b>{{who}}</b> deleted a message",
+    "messageRestored": "<b>{{who}}</b> restored a deleted message",
+    "noteSentAsReply": "<b>{{who}}</b> sent an internal note as a reply",
+    "messagePurged": "<b>{{who}}</b> permanently deleted a message’s content"
   },
   "typing_one": "{{who}} is typing",
   "typing_other": "{{who}} are typing",
@@ -472,7 +477,12 @@
     "addRecipient": "Add who to write to",
     "sideSent": "Sent to {{to}}. You're replying to the customer again.",
     "sideSentAndMarked": "Sent to {{to}} and marked {{status}}",
-    "threadFailed": "Couldn't send the side conversation message"
+    "threadFailed": "Couldn't send the side conversation message",
+    "mentionWarn": "This reply mentions {{names}}. The customer will read it.",
+    "mentionAsNote": "Turn into internal note",
+    "mentionSend": "Send anyway",
+    "fromNote": "This note goes to the customer as a reply. The note is removed once the reply is sent.",
+    "fromNoteCancel": "Keep as a note"
   },
   "sharedDraft": {
     "label": "Shared draft",
@@ -494,7 +504,7 @@
     "edit": "Edit note",
     "delete": "Delete note",
     "deleteTitle": "Delete this note?",
-    "deleteConfirm": "This note and its attachments will be permanently deleted.",
+    "deleteConfirm": "The note is hidden from the conversation. Admins can still read it and bring it back.",
     "edited": "Edited",
     "save": "Save",
     "cancel": "Cancel",
@@ -528,7 +538,38 @@
     "replyToHint": "The sender asked for replies to go to this address",
     "unverified": "Unverified sender",
     "unverifiedHint": "The sender's domain failed its email authentication check, so this may not be from who it says. Treat links and requests in it with care.",
-    "viaForm": "Sent through the form at <m>{{address}}</m>"
+    "viaForm": "Sent through the form at <m>{{address}}</m>",
+    "toReply": "Turn into a reply",
+    "retract": "Turn into internal note",
+    "retractTitle": "Turn this reply into an internal note?",
+    "retractConfirm": "It leaves the customer’s chat and stays here as an internal note. They may already have read it.",
+    "retractLabel": "Turn into note",
+    "retracted": "It is an internal note now and left the customer’s chat.",
+    "replyMenu": "Message actions",
+    "deleteReplyConfirm": "The message is hidden from the conversation and the customer’s chat. An email already sent stays in their inbox. Admins can still read it and bring it back.",
+    "deleteInboundConfirm": "The customer’s message is hidden from the conversation. Admins can still read it and bring it back.",
+    "deleteMessageTitle": "Delete this message?",
+    "deleteLabel": "Delete",
+    "deleteMessage": "Delete message",
+    "deletedLabel": "Deleted message from {{name}}",
+    "deletedNote": "{{who}} deleted a note from {{name}}",
+    "deletedMessage": "{{who}} deleted a message from {{name}}",
+    "someone": "Someone",
+    "showDeleted": "Show",
+    "hideDeleted": "Hide",
+    "loadingDeleted": "Loading…",
+    "restore": "Restore",
+    "restored": "Restored",
+    "deletedOwnNote": "{{who}} deleted their note",
+    "deletedOwnMessage": "{{who}} deleted their message",
+    "purgeTitle": "Delete this message permanently?",
+    "purgeConfirm": "Its text, files and the original email are removed for good and cannot be restored. A marker stays in the conversation.",
+    "purgeLabel": "Delete permanently",
+    "purgeHint": "Delete permanently: for what should never have been written down, like a card number or a password",
+    "purged": "Content removed for good",
+    "sentAsReply": "{{name}}’s note was sent as a reply",
+    "sentAsReplyLabel": "Note from {{name}}, sent as a reply",
+    "showReply": "Show reply"
   },
   "merge": {
     "title": "Merge #{{number}} into another ticket",
@@ -752,5 +793,13 @@
     "nothingElse": "Nothing else changes.",
     "back": "Back to teams",
     "move": "Move"
+  },
+  "outbox": {
+    "sending": "Sending your reply",
+    "sendingAndMark": "Sending your reply and marking it {{status}}",
+    "undo": "Undo",
+    "asNote": "Turn into internal note",
+    "sendingIn": "Sending in {{n}}s",
+    "sendNow": "Send now"
   }
 }

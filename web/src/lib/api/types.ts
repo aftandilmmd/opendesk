@@ -42,6 +42,10 @@ export type WorkspaceSettings = {
   ai?: AISettings;
   /** "admins": only admins may create labels by applying a new name. Default "anyone". */
   label_creation?: "anyone" | "admins";
+  /** Seconds an agent's reply waits in the app, with a way to take it back, before it is sent. Default 5; 0 sends at once. */
+  undo_send_seconds?: number;
+  /** Which messages agents may delete: none, their own, or any agent's. Admins may delete any. Default "own". */
+  message_delete?: "off" | "own" | "all";
   /** Display-only names and colours for the fixed statuses and priorities. */
   status_labels?: Partial<Record<TicketStatus, DisplayOverride>>;
   priority_labels?: Partial<Record<Priority, DisplayOverride>>;
@@ -73,6 +77,8 @@ export type Member = {
   presence: Availability;
   /** Auto-assignment cap on open and pending tickets; null is no cap. */
   max_open_tickets: number | null;
+  /** An agent's own rule for which messages they may delete; null follows the workspace's settings.message_delete. */
+  message_delete?: "off" | "own" | "all" | null;
   open_tickets: number;
   last_seen_at: string | null;
   created_at: string;
@@ -406,7 +412,8 @@ export type Attachment = {
   inline: boolean;
   url: string;
 };
-export type DeliveryStatus = "none" | "pending" | "sent" | "failed" | "bounced";
+/** "scheduled" is the app's own: a reply held for the undo window, not yet sent (outbox.ts). */
+export type DeliveryStatus = "none" | "scheduled" | "pending" | "sent" | "failed" | "bounced";
 export type Message = {
   id: string;
   ticket_id: string;
@@ -451,6 +458,13 @@ export type Message = {
   thread_id?: string | null;
   created_at: string;
   edited_at: string | null;
+  /** A deleted message stays as a marker: who deleted it and when. Only admins get what it said. */
+  deleted_at?: string | null;
+  deleted_by?: UserRef | null;
+  /** Set once an admin removed a deleted message's content for good. */
+  purged_at?: string | null;
+  /** A note sent as a reply: it stays, empty, pointing at the reply that holds its words. */
+  sent_as_reply_id?: string | null;
 };
 /** A third-party thread: an email conversation on a ticket with someone outside the team (contracts/api.md "Threads"). */
 export type Thread = {

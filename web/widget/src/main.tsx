@@ -51,7 +51,11 @@ function boot() {
   const base = (script.dataset.api || apiFor(new URL(script.src || location.href, location.href).origin)).replace(/\/+$/, "");
 
   if (__OD_WIDGET_MOCK__ && (script.dataset.mock === "1" || new URLSearchParams(location.search).has("od_mock"))) {
-    void import("./mock").then((m) => start(key, base, m.mockFetch, m.mockSocket));
+    void import("./mock").then((m) => {
+      start(key, base, m.mockFetch, m.mockSocket);
+      // Lets a proof flow play the team taking back its latest reply.
+      window.addEventListener("opendesk-mock:take-back", () => m.mockTakeBack());
+    });
     return;
   }
   start(key, base, (url, init) => fetch(url, init), phoenixFactory);

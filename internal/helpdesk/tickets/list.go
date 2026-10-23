@@ -193,7 +193,7 @@ func applyFilters(b *sqlBuilder, wid uuid.UUID, me *uuid.UUID, f listQuery) erro
 		}
 		tsq := "websearch_to_tsquery('simple', " + b.arg(q) + ")"
 		parts = append(parts, "t.search @@ "+tsq, "t.fields_search @@ "+tsq,
-			`EXISTS (SELECT 1 FROM messages fm WHERE fm.workspace_id = t.workspace_id AND fm.ticket_id = t.id AND fm.search @@ `+tsq+`)`)
+			`EXISTS (SELECT 1 FROM messages fm WHERE fm.workspace_id = t.workspace_id AND fm.ticket_id = t.id AND fm.deleted_at IS NULL AND fm.search @@ `+tsq+`)`)
 		if pq := prefixQuery(q); pq != "" {
 			ptsq := "to_tsquery('simple', " + b.arg(pq) + ")"
 			parts = append(parts, "t.search @@ "+ptsq, "t.fields_search @@ "+ptsq)

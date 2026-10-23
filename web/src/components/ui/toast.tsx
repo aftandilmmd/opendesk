@@ -1,7 +1,7 @@
 import { Toaster as Sonner, toast as sonner } from "sonner";
 import { errorMessage } from "@/lib/api/client";
 import { useTheme } from "@/lib/theme";
-import { Check, Info, Undo2, X } from "lucide-react";
+import { Check, Clock, Info, Undo2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { tone, type Tone } from "@/lib/tones";
 
@@ -44,11 +44,14 @@ type Opts = { description?: string; action?: { label: string; onClick: () => voi
 // how long is left; the bar pauses while the stack is hovered, as the timer does.
 const ACTION_MS = 6000;
 
-function Countdown({ ms }: { ms: number }) {
+function Countdown({ ms, steady }: { ms: number; steady?: boolean }) {
   return (
     <span
       aria-hidden
-      className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left animate-toast-progress bg-fg-4/40 motion-reduce:hidden [[data-expanded=true]_&]:[animation-play-state:paused]"
+      className={cn(
+        "pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left animate-toast-progress bg-fg-4/40 motion-reduce:hidden",
+        !steady && "[[data-expanded=true]_&]:[animation-play-state:paused]",
+      )}
       style={{ animationDuration: `${ms}ms` }}
     />
   );
@@ -74,6 +77,11 @@ export const toast = {
   /** A done destructive action with a way back. */
   undo: (msg: string, onUndo: () => void, label = "Undo") =>
     sonner(msg, { ...withAction({ action: { label, onClick: onUndo } }), icon: <ToastIcon hue="gray"><Undo2 /></ToastIcon> }),
+  /** Something about to happen on its own clock (a held reply): the bar runs whatever the
+   * pointer does, and the caller dismisses the toast when the moment comes. */
+  held: (msg: string, ms: number, action: { label: string; onClick: () => void }, cancel: { label: string; onClick: () => void }) =>
+    sonner(msg, { duration: Infinity, action, cancel, description: <Countdown ms={ms} steady />, icon: <ToastIcon hue="blue"><Clock /></ToastIcon> }),
+  dismiss: (id?: string | number) => sonner.dismiss(id),
   error: (e: unknown, fallback?: string) =>
     sonner.error(typeof e === "string" ? e : errorMessage(e, fallback), { icon: <ToastIcon hue="red"><X /></ToastIcon> }),
 };

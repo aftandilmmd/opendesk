@@ -57,6 +57,7 @@ export type MemberRow = {
   created_at: string;
   availability?: Availability;
   max_open_tickets?: number | null;
+  message_delete?: "off" | "own" | "all" | null;
   last_seen_at?: string | null;
   onboarding_dismissed?: boolean;
 };

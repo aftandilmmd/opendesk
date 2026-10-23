@@ -17,6 +17,8 @@ import { Dialog } from "@/components/ui/dialog";
 import { TextInput } from "@/components/ui/input";
 import { Picker } from "@/components/ui/picker";
 import { Switch } from "@/components/ui/switch";
+import { Segmented } from "@/components/ui/tabs";
+import { UNDO_SEND_CHOICES, UNDO_SEND_DEFAULT } from "@/components/tickets/detail/outbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { ReauthNotice } from "@/components/settings/ReauthNotice";
@@ -32,7 +34,11 @@ import { LOCALE_NAMES, matchLocale, SUPPORTED } from "@/i18n";
 type DisplaySettings = { status_labels?: Overrides<TicketStatus>; priority_labels?: Overrides<Priority> };
 type Draft = {
   name: string;
-  settings: Required<Pick<WS, "timezone" | "help_center_enabled" | "help_center_title" | "csat_enabled" | "gravatar" | "domain_logos">> & { brand_color: string; locale: string; locale_fixed: boolean };
+  settings: Required<Pick<WS, "timezone" | "help_center_enabled" | "help_center_title" | "csat_enabled" | "gravatar" | "domain_logos" | "undo_send_seconds" | "message_delete">> & {
+    brand_color: string;
+    locale: string;
+    locale_fixed: boolean;
+  };
   display: Required<DisplaySettings>;
 };
 
@@ -51,6 +57,8 @@ function toDraft(w: Workspace): Draft {
       brand_color: w.settings.brand_color ?? "",
       locale: matchLocale(w.settings.locale) ?? "en",
       locale_fixed: w.settings.locale_fixed ?? false,
+      undo_send_seconds: w.settings.undo_send_seconds ?? UNDO_SEND_DEFAULT,
+      message_delete: w.settings.message_delete ?? "own",
     },
   };
 }
@@ -252,6 +260,24 @@ export default function WorkspaceSettings() {
         <Section title={t("workspace.conversations")}>
           <Row label={t("workspace.csat")} description={t("workspace.csatHint")}>
             <Switch aria-label={t("workspace.csat")} checked={draft.settings.csat_enabled} onCheckedChange={(v) => set("csat_enabled", v)} disabled={!canEdit} />
+          </Row>
+          <Row label={t("workspace.undoSend")} description={t("workspace.undoSendHint")}>
+            <Segmented
+              value={String(draft.settings.undo_send_seconds)}
+              onChange={(v) => set("undo_send_seconds", Number(v))}
+              options={UNDO_SEND_CHOICES.map((n) => ({ value: String(n), label: n ? t("workspace.undoSeconds", { n }) : t("workspace.undoOff") }))}
+            />
+          </Row>
+          <Row label={t("workspace.messageDelete")} description={t("workspace.messageDeleteHint")}>
+            <Segmented
+              value={draft.settings.message_delete}
+              onChange={(v) => set("message_delete", v)}
+              options={[
+                { value: "off", label: t("workspace.messageDeleteOff") },
+                { value: "own", label: t("workspace.messageDeleteOwn") },
+                { value: "all", label: t("workspace.messageDeleteAll") },
+              ]}
+            />
           </Row>
           <Row label={t("workspace.autoAssign")} description={assignModeLabel}>
             <Button asChild size="sm" variant="ghost" iconRight={<ArrowRight className="size-3.5" />}>

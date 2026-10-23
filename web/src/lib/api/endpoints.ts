@@ -79,6 +79,8 @@ export type SendMessageBody = {
   status?: T.TicketStatus;
   /** Send from another address; it becomes the ticket's reply address. */
   mailbox_id?: string;
+  /** Replies: the agent's own note this reply is written from; it is removed as the reply is added. */
+  from_note_id?: string;
 };
 
 /** Starts a third-party thread (contracts/api.md "Threads"). */
@@ -218,6 +220,9 @@ export const api = {
     /** `userId` may be "me". Members set their own availability; admins anyone's, and the cap. */
     setAvailability: (userId: string, b: { availability?: T.Availability; max_open_tickets?: number | null }) =>
       http.patch<T.Member>(`/v1/members/${userId}/availability`, b),
+    /** Admin: which messages an agent may delete; "default" follows the workspace's rule. */
+    setMessageDelete: (userId: string, message_delete: "default" | "off" | "own" | "all") =>
+      http.patch<T.Member>(`/v1/members/${userId}/permissions`, { message_delete }),
     /** `userId` may be "me". Members edit their own profile; admins anyone's. */
     updateProfile: (userId: string, b: Partial<T.MemberProfile>) => http.patch<T.Member>(`/v1/members/${userId}/profile`, b),
   },
@@ -416,9 +421,15 @@ export const api = {
       http.post<{ data: T.Ticket[]; updated: number; deleted: number } | undefined>("/v1/tickets/bulk", b),
     merge: (id: string, into_id: string) => http.post<T.Ticket>(`/v1/tickets/${id}/merge`, { into_id }),
     messages: (id: string) => http.get<T.Page<T.Message>>(`/v1/tickets/${id}/messages`),
-    send: (id: string, b: SendMessageBody) => http.create<T.Message>(`/v1/tickets/${id}/messages`, b),
+    send: (id: string, b: SendMessageBody, keepalive?: boolean) => http.create<T.Message>(`/v1/tickets/${id}/messages`, b, { keepalive }),
     editMessage: (id: string, messageId: string, b: { body_html: string }) => http.patch<T.Message>(`/v1/tickets/${id}/messages/${messageId}`, b),
     deleteMessage: (id: string, messageId: string) => http.del(`/v1/tickets/${id}/messages/${messageId}`),
+    /** Takes a chat reply back from the customer: it becomes an internal note. */
+    retractMessage: (id: string, messageId: string) => http.post<T.Message>(`/v1/tickets/${id}/messages/${messageId}/retract`),
+    /** Admin: brings a deleted message back. */
+    restoreMessage: (id: string, messageId: string) => http.post<T.Message>(`/v1/tickets/${id}/messages/${messageId}/restore`),
+    /** Admin: removes a deleted message's text, files and original email for good. */
+    purgeMessage: (id: string, messageId: string) => http.post<T.Message>(`/v1/tickets/${id}/messages/${messageId}/purge`),
     activities: (id: string) => http.get<T.Page<T.Activity>>(`/v1/tickets/${id}/activities`),
     /** The ticket's shared draft (contracts/api.md "Drafts"): staged for the team, sent by whoever picks it up. */
     draft: {

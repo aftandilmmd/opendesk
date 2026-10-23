@@ -561,6 +561,13 @@ func TestAgentAttachments(t *testing.T) {
 	// An extended expiry with the old signature fails.
 	later := strconv.FormatInt(time.Now().Add(72*time.Hour).Unix(), 10)
 	e.Do("GET", "/v1/attachments/"+img.ID.String()+"?exp="+later+"&sig="+sig, hdtest.Auth{}, nil).Want(t, 404)
+
+	// A deleted message's files are an admin's alone: not a signed link from before, a key or an agent.
+	e.Exec(`UPDATE messages SET deleted_at = now() WHERE id = (SELECT message_id FROM attachments WHERE id = $1)`, img.ID)
+	e.Do("GET", "/v1/attachments/"+img.ID.String()+"?"+u.RawQuery, hdtest.Auth{}, nil).Want(t, 404)
+	e.Do("GET", "/v1/attachments/"+img.ID.String(), ws.Agent.As(ws), nil).Want(t, 404)
+	e.Do("GET", "/v1/attachments/"+img.ID.String(), hdtest.Auth{Bearer: key}, nil).Want(t, 404)
+	e.Do("GET", "/v1/attachments/"+img.ID.String(), ws.Admin.As(ws), nil).Want(t, 200)
 }
 
 func TestUploadTooLarge(t *testing.T) {

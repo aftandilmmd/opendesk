@@ -29,7 +29,7 @@ import { copyText } from "@/components/ui/copy-button";
 import { ChannelIcon, channelLabel, PriorityPill, SeverityChip, severityLabel, severityOrder, SlaPill, slaState, StatusPill, TicketNumber } from "../bits";
 import { useOllieNote } from "../ollie";
 import { aiDecisions } from "@/lib/decisions";
-import type { Thread, Ticket } from "@/lib/api/types";
+import type { Message, Thread, Ticket } from "@/lib/api/types";
 import { Morph } from "@/components/motion";
 import { CheckBurst } from "../CheckBurst";
 import { intent } from "../motion";
@@ -147,6 +147,17 @@ export default function TicketDetail({
   const aiOn = useAI().enabled;
   const { t: tAi } = useTranslation("aiTicket");
   const { t: tr } = useTranslation("inbox");
+  const retract = (m: Message) =>
+    confirm.show(
+      tr("message.retractConfirm"),
+      async () => {
+        const note = await api.tickets.retractMessage(m.ticket_id, m.id);
+        qc.setQueryData<Message[]>(qk.messages(m.ticket_id), (old) => old?.map((x) => (x.id === note.id ? note : x)));
+        void qc.invalidateQueries({ queryKey: qk.activities(m.ticket_id) });
+        toast.success(tr("message.retracted"));
+      },
+      { title: tr("message.retractTitle"), confirmLabel: tr("message.retractLabel"), danger: true },
+    );
   const [picker, setPicker] = useState<PropPicker>(null);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [burst, setBurst] = useState(0);
@@ -440,6 +451,8 @@ export default function TicketDetail({
             activities={activities.data}
             loading={!messages.data}
             onRetry={(m) => composer.current?.retry(m)}
+            onToReply={canEdit ? (m) => composer.current?.fromNote(m) : undefined}
+            onRetract={canEdit && t?.channel === "chat" ? retract : undefined}
             contactName={t?.contact?.name}
             receivedAt={t && t.channel !== "email" ? null : t?.received_at}
             threads={threads.data}

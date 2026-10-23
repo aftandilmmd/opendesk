@@ -90,14 +90,16 @@ test("an agent edits and deletes an internal note", async ({ page, proof }) => {
   await note.getByRole("button", { name: "Note actions" }).click();
   await page.getByRole("menuitem", { name: "Delete note" }).click();
   const dialog = page.getByRole("alertdialog");
-  await expect(dialog.getByText("This note and its attachments will be permanently deleted.")).toBeVisible();
-  await proof.chapter("Delete the note", "Confirm deletion and see the timeline record it");
-  await dialog.getByRole("button", { name: "Delete note", exact: true }).click();
+  await expect(dialog.getByText("The note is hidden from the conversation. Admins can still read it and bring it back.")).toBeVisible();
+  await proof.chapter("Delete the note", "Confirm deletion and see the note leave a marker in the timeline");
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
   const activity = page.getByText("Maya Chen deleted an internal note", { exact: true });
   await expect(activity).toBeVisible();
+  const marker = page.getByRole("article", { name: "Deleted message from Maya Chen" });
+  await expect(marker).toBeVisible();
   if (await ollieNotice.isVisible()) await ollieNotice.click();
   await proof.dwell();
-  await proof.shot("note-deleted", { caption: "The deletion recorded in the ticket timeline" });
+  await proof.shot("note-deleted", { caption: "The deleted note stays as a marker, recorded in the timeline" });
 });
 
 test("a reply drafted over MCP waits in the composer, to edit and send as your own", async ({ page, proof }) => {

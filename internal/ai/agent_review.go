@@ -255,8 +255,8 @@ func (s *Service) reviewQueue(ctx context.Context, p *auth.Principal) ([]AgentRe
 		LEFT JOIN contacts c ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
 		LEFT JOIN ai_widget_answers a ON a.workspace_id = m.workspace_id AND a.reply_id = m.id
 		LEFT JOIN LATERAL (SELECT v.body_text FROM messages v WHERE v.workspace_id = m.workspace_id AND v.ticket_id = m.ticket_id
-			AND v.kind = 'reply' AND v.direction = 'inbound' AND v.created_at < m.created_at ORDER BY v.created_at DESC LIMIT 1) q ON true
-		WHERE m.workspace_id = $1 AND m.ai AND m.kind = 'reply' AND m.created_at > now() - make_interval(days => $2)
+			AND v.kind = 'reply' AND v.direction = 'inbound' AND v.deleted_at IS NULL AND v.created_at < m.created_at ORDER BY v.created_at DESC LIMIT 1) q ON true
+		WHERE m.workspace_id = $1 AND m.ai AND m.kind = 'reply' AND m.deleted_at IS NULL AND m.created_at > now() - make_interval(days => $2)
 			AND (m.ai_rating = 'down' OR COALESCE(a.handoff, false))
 			AND NOT EXISTS (SELECT 1 FROM ai_agent_reviews r WHERE r.message_id = m.id)
 			AND `+domain.VisibleSQLUser("t", 4, 5)+`

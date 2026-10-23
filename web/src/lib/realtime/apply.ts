@@ -120,6 +120,8 @@ function mergeMessage(qc: QueryClient, ticketId: string, m: Message) {
   const old = qc.getQueryData<Message[]>(key);
   if (!old) return;
   const defined = Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined && v !== null)) as Partial<Message>;
+  // A restored message clears its deleted marker.
+  if ("deleted_at" in m) Object.assign(defined, { deleted_at: m.deleted_at ?? null, deleted_by: m.deleted_by ?? null });
   const i = old.findIndex((x) => x.id === m.id);
   if (i >= 0) {
     qc.setQueryData<Message[]>(key, old.map((x, j) => (j === i ? { ...x, ...defined, author: { ...x.author, ...(m.author ?? {}) } } : x)));
@@ -134,7 +136,9 @@ function mergeMessage(qc: QueryClient, ticketId: string, m: Message) {
       x.kind === m.kind &&
       (x.thread_id ?? null) === (m.thread_id ?? null) &&
       x.author?.user?.id === m.author?.user?.id &&
-      x.delivery_status !== "failed",
+      x.delivery_status !== "failed" &&
+      // A reply still held for its undo window has not been sent: nothing can be its copy.
+      x.delivery_status !== "scheduled",
   );
   if (temp >= 0 && m.author?.type === "user") {
     qc.setQueryData<Message[]>(key, old.map((x, j) => (j === temp ? full : x)));

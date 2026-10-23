@@ -456,7 +456,7 @@ func (s *service) registerMailboxRoutes(api huma.API) {
 					p.WorkspaceID, id).Scan(&name, &addr); err != nil {
 					return err
 				}
-				rows, err := tx.Query(ctx, `SELECT raw_storage_key FROM inbound_emails WHERE workspace_id = $1 AND mailbox_id = $2`, p.WorkspaceID, id)
+				rows, err := tx.Query(ctx, `SELECT raw_storage_key FROM inbound_emails WHERE workspace_id = $1 AND mailbox_id = $2 AND raw_storage_key <> ''`, p.WorkspaceID, id)
 				if err != nil {
 					return err
 				}

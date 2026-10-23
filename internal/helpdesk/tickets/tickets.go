@@ -880,8 +880,8 @@ func mergeTickets(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, src, dst uu
 			max(created_at) FILTER (WHERE kind = 'reply') AS last_at,
 			max(created_at) FILTER (WHERE kind = 'reply' AND direction = 'inbound') AS last_customer,
 			(SELECT left(regexp_replace(body_text, '\s+', ' ', 'g'), 200) FROM messages
-				WHERE workspace_id = $1 AND ticket_id = $2 AND kind = 'reply' ORDER BY created_at DESC, id DESC LIMIT 1) AS preview
-			FROM messages WHERE workspace_id = $1 AND ticket_id = $2) s
+				WHERE workspace_id = $1 AND ticket_id = $2 AND kind = 'reply' AND deleted_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1) AS preview
+			FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND deleted_at IS NULL) s
 		WHERE t.workspace_id = $1 AND t.id = $2`, wid, dst, src); err != nil {
 		return err
 	}

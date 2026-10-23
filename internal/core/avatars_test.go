@@ -197,3 +197,47 @@ func TestAvailabilityPermissions(t *testing.T) {
 		}
 	}
 }
+
+// TestMemberMessageDelete checks an admin sets an agent's own delete rule, back to the
+// workspace's with default, and that only agents take one.
+func TestMemberMessageDelete(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	owner, _ := e.signup("deleter-boss")
+	wid := owner.newWorkspace("Delete Rules Co")
+	agent, _ := e.signup("deleter-agent")
+	viewer, _ := e.signup("deleter-viewer")
+	ids := map[*client]string{}
+	for c, role := range map[*client]string{agent: "agent", viewer: "viewer"} {
+		me := c.do("GET", "/v1/me", nil)
+		id := me.Body["user"].(map[string]any)["id"].(string)
+		ids[c] = id
+		if _, err := e.d.DB.Pool.Exec(ctx, `INSERT INTO members (workspace_id, user_id, role) VALUES ($1, $2, $3)`, wid, id, role); err != nil {
+			t.Fatal(err)
+		}
+		c.workspace = wid
+	}
+	path := "/v1/members/" + ids[agent] + "/permissions"
+	if r := agent.do("PATCH", path, map[string]any{"message_delete": "all"}); r.Status != 403 {
+		t.Fatalf("agent sets their own: %d", r.Status)
+	}
+	if r := owner.do("PATCH", path, map[string]any{"message_delete": "all"}); r.Status != 200 || r.str("message_delete") != "all" {
+		t.Fatalf("owner sets: %d %s", r.Status, r.Raw)
+	}
+	if r := owner.do("PATCH", path, map[string]any{"message_delete": "default"}); r.Status != 200 || r.Body["message_delete"] != nil {
+		t.Fatalf("back to the workspace's: %d %s", r.Status, r.Raw)
+	}
+	if r := owner.do("PATCH", path, map[string]any{"message_delete": "everyone"}); r.Status != 422 {
+		t.Fatalf("unknown value: %d", r.Status)
+	}
+	if r := owner.do("PATCH", "/v1/members/"+ids[viewer]+"/permissions", map[string]any{"message_delete": "own"}); r.Status != 422 {
+		t.Fatalf("viewer: %d", r.Status)
+	}
+	var n int
+	if err := e.d.DB.Pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE workspace_id = $1 AND action = 'member.permissions_changed'`, wid).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("audit entries %d", n)
+	}
+}

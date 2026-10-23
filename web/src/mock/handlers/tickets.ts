@@ -373,8 +373,10 @@ export function registerTickets() {
 
   get("/v1/tickets/:id/messages", (ctx) => {
     const t = ticket(ctx);
+    const role = ctx.ws.members.find((m) => m.user_id === db.meId)?.role;
+    const admin = role === "admin" || role === "owner";
     const list = ctx.ws.messages.filter((m) => m.ticket_id === t.id).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
-    return { data: list, next_cursor: null };
+    return { data: admin ? list : list.map(tombstone), next_cursor: null };
   });
   post("/v1/tickets/:id/messages", (ctx) => {
     const t = ticket(ctx);
@@ -384,6 +386,11 @@ export function registerTickets() {
     if (status && !STATUSES.includes(status)) throw invalid("Unknown status");
     if ((status === "solved" || status === "closed") && t.status !== "solved" && t.status !== "closed") checkRequiredOnSolve(ctx.ws, t.fields);
     const myRef = userRef(db.meId);
+    // A reply written from the agent's own note replaces it.
+    const fromNote = kind === "reply" ? s(ctx, "from_note_id") : undefined;
+    const noteIndex = fromNote ? ctx.ws.messages.findIndex((m) => m.id === fromNote && m.ticket_id === t.id && m.kind === "note" && !m.deleted_at && !m.sent_as_reply_id) : -1;
+    if (fromNote && noteIndex < 0) throw notFound("Message");
+    if (fromNote && ctx.ws.messages[noteIndex].author.user?.id !== db.meId) throw forbidden();
     // A reply from another address makes it the ticket's reply address.
     const from = kind === "reply" ? s(ctx, "mailbox_id") : undefined;
     const sendsFrom = kind === "reply" && t.channel === "email" ? ctx.ws.mailboxes.find((m) => m.id === (from ?? t.mailbox_id)) : undefined;
@@ -399,6 +406,12 @@ export function registerTickets() {
       { status, actor: myRef },
     );
     if (msg.delivery_status === "pending") simulateDelivery(ctx.ws, t, msg.id);
+    if (fromNote) {
+      const note = ctx.ws.messages[noteIndex];
+      Object.assign(note, { body_html: "", body_text: "", sent_as_reply_id: msg.id });
+      addActivity(ctx.ws, t, "note_sent_as_reply", { message_id: fromNote, reply_id: msg.id }, myRef);
+      publish(ctx.ws, "message.updated", { ticket_id: t.id, message: note });
+    }
     // A reply going out ends the ticket's shared draft, whoever sends it.
     if (kind === "reply") clearDraft(ctx.ws, t);
     return respond(201, msg);
@@ -420,22 +433,76 @@ export function registerTickets() {
     publish(ctx.ws, "message.updated", { ticket_id: t.id, message });
     return message;
   });
+  // A deleted message stays as a marker; only admins read it (contracts/api.md).
   del("/v1/tickets/:id/messages/:messageId", (ctx) => {
     const t = ticket(ctx);
-    const index = ctx.ws.messages.findIndex((m) => m.id === ctx.params.messageId && m.ticket_id === t.id);
-    if (index < 0) throw notFound("Message");
-    const message = ctx.ws.messages[index];
-    if (message.kind !== "note" || message.thread_id) throw invalid("Only internal notes can be deleted");
+    const message = ctx.ws.messages.find((m) => m.id === ctx.params.messageId && m.ticket_id === t.id);
+    if (!message) throw notFound("Message");
+    if (message.deleted_at) return undefined;
+    if (message.thread_id) throw invalid("a side conversation's messages can't be deleted");
     const role = ctx.ws.members.find((m) => m.user_id === db.meId)?.role;
-    const mine = message.author.user?.id === db.meId;
-    if (!mine && role !== "admin" && role !== "owner") throw forbidden();
-    ctx.ws.messages.splice(index, 1);
-    delete ctx.ws.originals[message.id];
-    const attachments = new Set(message.attachments.map((a) => a.id));
-    for (let i = db.attachments.length - 1; i >= 0; i--) if (attachments.has(db.attachments[i].id)) db.attachments.splice(i, 1);
-    addActivity(ctx.ws, t, "note_deleted", { message_id: message.id }, userRef(db.meId));
-    publish(ctx.ws, "message.deleted", { ticket_id: t.id, message_id: message.id });
+    const admin = role === "admin" || role === "owner";
+    const rule = ctx.ws.members.find((m) => m.user_id === db.meId)?.message_delete ?? ctx.ws.workspace.settings.message_delete ?? "own";
+    const agentMsg = message.author.type === "user";
+    const allowed = admin || (agentMsg && (rule === "all" || (rule === "own" && message.author.user?.id === db.meId)));
+    if (!allowed) throw forbidden();
+    message.deleted_at = nowIso();
+    message.deleted_by = userRef(db.meId);
+    addActivity(ctx.ws, t, message.kind === "note" ? "note_deleted" : "message_deleted", { message_id: message.id }, userRef(db.meId));
+    publish(ctx.ws, "message.updated", { ticket_id: t.id, message: tombstone(message) });
+    if (message.kind === "reply") {
+      refreshPreview(ctx.ws.messages, t);
+      publish(ctx.ws, "ticket.updated", { ticket: t, changes: ["last_message_preview"] });
+    }
     return undefined;
+  });
+  post("/v1/tickets/:id/messages/:messageId/purge", (ctx) => {
+    const t = ticket(ctx);
+    const role = ctx.ws.members.find((m) => m.user_id === db.meId)?.role;
+    if (role !== "admin" && role !== "owner") throw forbidden();
+    const message = ctx.ws.messages.find((m) => m.id === ctx.params.messageId && m.ticket_id === t.id);
+    if (!message) throw notFound("Message");
+    if (!message.deleted_at) throw invalid("delete the message before removing it for good");
+    if (!message.purged_at) {
+      Object.assign(message, { body_html: "", body_text: "", has_quoted: false, subject: "", attachments: [], ai_action: null, purged_at: nowIso() });
+      delete ctx.ws.originals[message.id];
+      addActivity(ctx.ws, t, "message_purged", { message_id: message.id }, userRef(db.meId));
+      publish(ctx.ws, "message.updated", { ticket_id: t.id, message });
+    }
+    return message;
+  });
+  post("/v1/tickets/:id/messages/:messageId/restore", (ctx) => {
+    const t = ticket(ctx);
+    const role = ctx.ws.members.find((m) => m.user_id === db.meId)?.role;
+    if (role !== "admin" && role !== "owner") throw forbidden();
+    const message = ctx.ws.messages.find((m) => m.id === ctx.params.messageId && m.ticket_id === t.id);
+    if (!message) throw notFound("Message");
+    if (!message.deleted_at) throw invalid("this message is not deleted");
+    if (message.purged_at) throw invalid("this message's content was removed for good");
+    message.deleted_at = null;
+    message.deleted_by = null;
+    if (message.kind === "reply") {
+      refreshPreview(ctx.ws.messages, t);
+      publish(ctx.ws, "ticket.updated", { ticket: t, changes: ["last_message_preview"] });
+    }
+    addActivity(ctx.ws, t, "message_restored", { message_id: message.id }, userRef(db.meId));
+    publish(ctx.ws, "message.updated", { ticket_id: t.id, message });
+    return message;
+  });
+  post("/v1/tickets/:id/messages/:messageId/retract", (ctx) => {
+    const t = ticket(ctx);
+    const message = ctx.ws.messages.find((m) => m.id === ctx.params.messageId && m.ticket_id === t.id);
+    if (!message) throw notFound("Message");
+    if (message.kind !== "reply" || message.direction !== "outbound" || message.author.type !== "user") throw invalid("only an agent's reply can be taken back");
+    if (t.channel !== "chat") throw invalid("only a chat reply can be taken back; email is delivered when it is sent");
+    const role = ctx.ws.members.find((m) => m.user_id === db.meId)?.role;
+    if (message.author.user?.id !== db.meId && role !== "admin" && role !== "owner") throw forbidden();
+    message.kind = "note";
+    refreshPreview(ctx.ws.messages, t);
+    addActivity(ctx.ws, t, "reply_retracted", { message_id: message.id }, userRef(db.meId));
+    publish(ctx.ws, "ticket.updated", { ticket: t, changes: ["last_message_preview"] });
+    publish(ctx.ws, "message.updated", { ticket_id: t.id, message });
+    return message;
   });
   get("/v1/tickets/:id/activities", (ctx) => {
     const t = ticket(ctx);
@@ -602,4 +669,17 @@ export function customerReply(ws: WsData, t: Ticket, html: string) {
 
 export function meRef() {
   return userRef(me().id);
+}
+
+/** A deleted message as agents see it: who deleted it, not what it said. */
+function tombstone(m: Message): Message {
+  return m.deleted_at ? { ...m, body_html: "", body_text: "", has_quoted: false, attachments: [], ai_action: null } : m;
+}
+
+/** The ticket's preview, from the latest reply it still shows. */
+function refreshPreview(messages: Message[], t: Ticket) {
+  const last = messages
+    .filter((m) => m.ticket_id === t.id && m.kind === "reply" && !m.deleted_at)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  t.last_message_preview = last ? last.body_text.slice(0, 200) : "";
 }

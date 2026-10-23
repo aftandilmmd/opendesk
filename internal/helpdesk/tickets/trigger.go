@@ -279,7 +279,7 @@ func (r *triggerRun) facts(ctx context.Context, messageID *uuid.UUID) (facts, er
 	q := `SELECT body_text, from_email FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND id = $3`
 	args := []any{r.wid, r.tid, messageID}
 	if messageID == nil {
-		q = `SELECT body_text, from_email FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND kind = 'reply'
+		q = `SELECT body_text, from_email FROM messages WHERE workspace_id = $1 AND ticket_id = $2 AND kind = 'reply' AND deleted_at IS NULL
 			ORDER BY (direction = 'inbound') DESC, created_at DESC LIMIT 1`
 		args = args[:2]
 	}

@@ -192,7 +192,14 @@
     "discardTitle": "Discard changes?",
     "discardBody": "Your edits to this profile are not saved.",
     "discardConfirm": "Discard",
-    "save": "Save profile"
+    "save": "Save profile",
+    "deleteRule": "Can delete messages",
+    "deleteDefault": "Workspace default ({{rule}})",
+    "deletes": {
+      "off": "Deletes no messages",
+      "own": "Deletes their own messages",
+      "all": "Deletes any agent’s messages"
+    }
   },
   "teams": {
     "title": "Teams",
@@ -322,7 +329,16 @@
     "gravatar": "Gravatar pictures",
     "gravatarHint": "Sends a hash of contact email addresses to Gravatar to look up their pictures.",
     "domainLogos": "Company logos",
-    "domainLogosHint": "Fetches each company's logo from its website."
+    "domainLogosHint": "Fetches each company's logo from its website.",
+    "undoSend": "Undo send",
+    "undoSendHint": "Replies wait this long before they go out, so they can be taken back or made a note.",
+    "undoOff": "Off",
+    "undoSeconds": "{{n}}s",
+    "messageDelete": "Agents can delete messages",
+    "messageDeleteHint": "A deleted message stays as a marker. Admins can delete any message, read deleted ones and restore them, and set another rule for an agent in Members.",
+    "messageDeleteOff": "Off",
+    "messageDeleteOwn": "Their own",
+    "messageDeleteAll": "Any agent’s"
   },
   "display": {
     "title": "Statuses and priorities",
