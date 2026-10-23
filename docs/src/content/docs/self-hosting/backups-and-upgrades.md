@@ -23,8 +23,9 @@ This writes `backups/<UTC time>/` (or under `dir`) containing:
 - `data.tar.gz`: the opendesk data volume
 - `env`: a copy of `.env`
 - `VERSION`: the running release
+- `SHA256SUMS`: a checksum of each file, which `restore` checks before it changes anything
 
-The directory is created with mode `0700`. It contains your secrets: copy it off the machine, to encrypted storage you control. Schedule it with cron:
+The directory is created with mode `0700`. The backup is taken while opendesk keeps running: `pg_dump` reads one consistent snapshot of the database, and files written during the copy may be missing from `data.tar.gz`. An [upgrade](#upgrade) stops the app first, so its backup holds every write. Schedule it with cron:
 
 ```sh
 0 3 * * * /opt/opendesk/opendesk-ctl backup >> /var/log/opendesk-backup.log 2>&1
@@ -32,13 +33,60 @@ The directory is created with mode `0700`. It contains your secrets: copy it off
 
 If you use an external database or S3 storage, back those up with your provider's tools as well.
 
+## Off-site copies
+
+A backup is a complete restore set: the database, the files and `.env`, which holds `CREDENTIALS_KEY`, the key that decrypts the stored mailbox credentials. Anyone holding a copy can read all of it, so treat it like the server itself. Encrypt it before it leaves the machine, with a key that is not stored on the server or next to the copies.
+
+With [age](https://age-encryption.org), generate a key pair once on a machine you trust, and keep the private key there (a password manager, or offline):
+
+```sh
+age-keygen -o opendesk-backup.key    # prints the public key, age1...
+```
+
+Only the public key goes on the server. Encrypt each backup into one file and copy that:
+
+```sh
+cd /opt/opendesk/backups
+tar -cf - 20261011T030000Z | age -r age1yourpublickey... > 20261011T030000Z.tar.age
+sha256sum 20261011T030000Z.tar.age > 20261011T030000Z.tar.age.sha256
+# copy both files off-site (rclone, rsync, aws s3 cp, restic...), then:
+rm 20261011T030000Z.tar.age
+```
+
+The server can write new encrypted copies but cannot read old ones. Keep the private key and its recovery separate from the copies: losing it makes every encrypted backup unreadable, and keeping it beside them makes the encryption pointless.
+
+- Check `sha256sum -c` on the `.sha256` file after each transfer, and again before a restore.
+- Use storage that keeps old versions or locks them for a while (object lock, versioning), so a compromised server cannot delete its own history.
+- Decide how long to keep copies and delete older ones on that schedule. A copy keeps the credentials and customer data it was taken with until it is deleted.
+- A transfer that stopped part way leaves an incomplete file whose checksum fails. Copy it again rather than keeping it.
+
+`gpg --encrypt --recipient` or an encrypting backup tool such as restic work the same way.
+
+## Restore drill
+
+Restore a backup on a separate, disposable machine every few months, so you know the copies work and how long a restore takes. The restored copy holds production's mailbox credentials and would fetch mail and send queued replies, so cut it off from the internet before it starts:
+
+1. Install opendesk on the spare machine with the [installer](/self-hosting/install-script/), with no DNS pointed at it, and run `docker pull alpine:3.22` (the restore unpacks files with it).
+2. Block outgoing connections from the machine, for example with a firewall that allows only your SSH session.
+3. Copy an encrypted backup there, check its checksum, then decrypt and unpack it with the private key:
+
+   ```sh
+   sha256sum -c 20261011T030000Z.tar.age.sha256
+   age -d -i opendesk-backup.key 20261011T030000Z.tar.age | tar -xf -
+   ```
+
+   A wrong or missing key stops here with an error, and nothing is written.
+4. Put the backup's `env` in place (`cp 20261011T030000Z/env /opt/opendesk/.env`) so stored credentials decrypt, and restore it as below.
+5. Sign in over an SSH tunnel, and open a few tickets and their attachments.
+6. Destroy the machine, and delete the private key's copy from it.
+
 ## Restore
 
 ```sh
 /opt/opendesk/opendesk-ctl restore /path/to/backups/20261011T030000Z
 ```
 
-It stops the app, replaces the database and the data volume, and asks you to type `restore` first (`OPENDESK_YES=1` skips the prompt). Keep the same `CREDENTIALS_KEY` and `AUTH_SECRET` as the backup.
+It checks the files against `SHA256SUMS`, stops the app, replaces the database and the data volume, and asks you to type `restore` first (`OPENDESK_YES=1` skips the prompt). A file that does not match its checksum stops the restore before anything changes. Keep the same `CREDENTIALS_KEY` and `AUTH_SECRET` as the backup.
 
 ## Upgrade
 
