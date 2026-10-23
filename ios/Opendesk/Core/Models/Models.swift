@@ -721,6 +721,8 @@ struct Message: Codable, Hashable, Sendable, Identifiable {
     var createdAt: Date
     /// Members the event payload left out (chat replies arrive customer-safe).
     var isPartial = false
+    /// A deleted message, or a note sent as a reply: a marker the app does not show yet.
+    var isHidden = false
 
     enum CodingKeys: String, CodingKey {
         case id, kind, direction, author, subject, to, cc, attachments, ai
@@ -759,6 +761,13 @@ struct Message: Codable, Hashable, Sendable, Identifiable {
         ai = c.lenient(Bool.self, forKey: .ai) ?? false
         createdAt = c.lenient(Date.self, forKey: .createdAt) ?? .now
         isPartial = author == nil || to == nil || attachments == nil
+        let marker = try decoder.container(keyedBy: MarkerKeys.self)
+        isHidden = (try? marker.decodeNil(forKey: .deletedAt)) == false || (try? marker.decodeNil(forKey: .sentAsReplyID)) == false
+    }
+
+    private enum MarkerKeys: String, CodingKey {
+        case deletedAt = "deleted_at"
+        case sentAsReplyID = "sent_as_reply_id"
     }
 
     init(localID: String, ticketID: String, kind: MessageKind, html: String, text: String, author: UserRef) {

@@ -121,7 +121,7 @@ final class TicketStore {
                 cursor = page.nextCursor
                 guardCount += 1
             }
-            self.messages = all.data.sorted { $0.createdAt < $1.createdAt }
+            self.messages = all.data.filter { !$0.isHidden }.sorted { $0.createdAt < $1.createdAt }
             self.activities = (await activities)?.data ?? []
             self.suggestedReply = (await suggestion)?.suggestedReply.flatMap { $0.isPending ? $0 : nil }
             error = nil
@@ -144,7 +144,7 @@ final class TicketStore {
             var merged = self.messages.map { fresh[$0.id] ?? $0 }
             let known = Set(merged.map(\.id))
             merged += page.data.filter { !known.contains($0.id) }
-            self.messages = merged.sorted { $0.createdAt < $1.createdAt }
+            self.messages = merged.filter { !$0.isHidden }.sorted { $0.createdAt < $1.createdAt }
         }
     }
 
@@ -198,6 +198,11 @@ final class TicketStore {
     /// Merge by id. Chat replies arrive customer-safe (no recipients, no attachments), so a
     /// stored copy keeps its members, and a new partial one triggers a reload of the thread.
     private func merge(_ message: Message) {
+        // A deleted message (or a note sent as a reply) leaves the thread.
+        if message.isHidden {
+            messages.removeAll { $0.id == message.id }
+            return
+        }
         if let index = messages.firstIndex(where: { $0.id == message.id }) {
             messages[index] = messages[index].merged(with: message)
             return
