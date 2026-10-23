@@ -251,10 +251,20 @@ export type RequestOptions = {
   idempotent?: boolean;
   /** Send as this signed-in account (user id) rather than the active one. */
   as?: string;
+  /** Send OD-Workspace with this workspace rather than the selected one (with `as`, that account's). */
+  workspaceId?: string;
   signal?: AbortSignal;
-  /** Let the request outlive the page (sent while it unloads). Bodies over 60 KB go without. */
+  /** Let the request outlive the page (sent while it unloads). Bodies over KEEPALIVE_MAX go without. */
   keepalive?: boolean;
 };
+
+/** The largest JSON body (bytes) sent with keepalive; browsers allow 64 KB for all of a page's keepalive requests together. */
+export const KEEPALIVE_MAX = 60_000;
+
+/** The size of a JSON body in bytes, as it goes over the wire. */
+export function jsonBytes(body: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(body)).length;
+}
 
 const NO_REFRESH = new Set([
   "/v1/auth/login",
@@ -312,7 +322,7 @@ async function raw(method: string, path: string, opts: RequestOptions = {}): Pro
   // A request belongs to the account (and workspace) it started under, even if
   // the person switches while it is in flight.
   let account = opts.as ?? state.userId;
-  const workspaceId = opts.as && opts.as !== state.userId ? null : state.workspaceId;
+  const workspaceId = opts.workspaceId ?? (opts.as && opts.as !== state.userId ? null : state.workspaceId);
 
   // Refresh ahead of expiry rather than eating a 401 on every 15-minute boundary.
   const tok = tokenFor(account);
@@ -340,7 +350,7 @@ async function raw(method: string, path: string, opts: RequestOptions = {}): Pro
         body,
         credentials: "include",
         signal: opts.signal,
-        keepalive: opts.keepalive && (typeof body !== "string" || body.length < 60_000) ? true : undefined,
+        keepalive: opts.keepalive && (typeof body !== "string" || new TextEncoder().encode(body).length <= KEEPALIVE_MAX) ? true : undefined,
       });
     } catch (e) {
       if ((e as Error)?.name === "AbortError") throw e;

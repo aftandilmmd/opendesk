@@ -7,7 +7,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, TextInput } from "@/components/ui/input";
 import { api } from "@/lib/api/endpoints";
 import { errorMessage, isApiError } from "@/lib/api/client";
-import { leaveActiveAccount, useSession } from "@/lib/session";
+import { leaveActiveAccount, runBeforeSignOut, useSession } from "@/lib/session";
 
 /** Deletes the signed-in account after the password (and 2FA code when on). Used in Security and onboarding. */
 export function DeleteAccountDialog({ onClose }: { onClose: () => void }) {
@@ -19,7 +19,11 @@ export function DeleteAccountDialog({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState("");
   const [typed, setTyped] = useState("");
   const del = useMutation({
-    mutationFn: () => api.me.delete({ password: password || undefined, code: totp ? code.trim() : undefined }),
+    mutationFn: async () => {
+      // A reply on hold goes out while the account can still send it.
+      await runBeforeSignOut();
+      return api.me.delete({ password: password || undefined, code: totp ? code.trim() : undefined });
+    },
     onSuccess: async () => {
       // The deleted account's cookie is gone; another account signed in here takes over.
       const next = await leaveActiveAccount();

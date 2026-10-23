@@ -299,6 +299,8 @@ export function clearSession() {
 export async function leaveActiveAccount(): Promise<SessionState> {
   const s = useSession.getState();
   const uid = s.user?.id;
+  // Started before the token goes (a session that ended elsewhere fails them, and says so).
+  void runBeforeSignOut();
   if (uid) forgetAccount(uid);
   accountsSeq++;
   // The server's list is the truth (an account may have ended elsewhere, or not loaded yet).
@@ -319,12 +321,29 @@ export async function leaveActiveAccount(): Promise<SessionState> {
   return useSession.getState();
 }
 
+// Work that must finish under the account before it signs out (a reply held for its undo
+// window goes out first, with that account's credentials).
+type LeaveHook = () => Promise<unknown>;
+const leaveHooks = new Set<LeaveHook>();
+/** Runs `h` before an account signs out, is deleted, or leaves this browser; awaited when it can be. */
+export function beforeSignOut(h: LeaveHook): () => void {
+  leaveHooks.add(h);
+  return () => {
+    leaveHooks.delete(h);
+  };
+}
+/** Runs every beforeSignOut hook. Each starts at once, while the account's token is still held. */
+export function runBeforeSignOut(): Promise<unknown> {
+  return Promise.allSettled([...leaveHooks].map((h) => h()));
+}
+
 /**
  * Log out of the active account in this browser; the next signed-in account
  * takes over. With `all`, log out of every account here.
  */
 export async function signOut(opts: { all?: boolean } = {}): Promise<SessionState> {
   const uid = useSession.getState().user?.id;
+  await runBeforeSignOut();
   try {
     await api.auth.logout(opts.all ? { all: true } : uid ? { user_id: uid } : {});
   } catch {

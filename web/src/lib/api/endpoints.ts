@@ -79,7 +79,7 @@ export type SendMessageBody = {
   status?: T.TicketStatus;
   /** Send from another address; it becomes the ticket's reply address. */
   mailbox_id?: string;
-  /** Replies: the agent's own note this reply is written from; it is removed as the reply is added. */
+  /** Replies: the agent's own note this reply is written from; it stays as a marker pointing at the reply. */
   from_note_id?: string;
 };
 
@@ -421,7 +421,9 @@ export const api = {
       http.post<{ data: T.Ticket[]; updated: number; deleted: number } | undefined>("/v1/tickets/bulk", b),
     merge: (id: string, into_id: string) => http.post<T.Ticket>(`/v1/tickets/${id}/merge`, { into_id }),
     messages: (id: string) => http.get<T.Page<T.Message>>(`/v1/tickets/${id}/messages`),
-    send: (id: string, b: SendMessageBody, keepalive?: boolean) => http.create<T.Message>(`/v1/tickets/${id}/messages`, b, { keepalive }),
+    /** `opts` pins the account and workspace a held reply started in, and lets it outlive the page. */
+    send: (id: string, b: SendMessageBody, opts?: { keepalive?: boolean; as?: string; workspaceId?: string }) =>
+      http.create<T.Message>(`/v1/tickets/${id}/messages`, b, opts),
     editMessage: (id: string, messageId: string, b: { body_html: string }) => http.patch<T.Message>(`/v1/tickets/${id}/messages/${messageId}`, b),
     deleteMessage: (id: string, messageId: string) => http.del(`/v1/tickets/${id}/messages/${messageId}`),
     /** Takes a chat reply back from the customer: it becomes an internal note. */
