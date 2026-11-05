@@ -301,7 +301,7 @@ export function registerTickets() {
     const fallback =
       ws.mailboxes.find((m) => m.brand_id === brand?.id && !!teamId && m.team_id === teamId && m.status !== "disabled" && canSendFrom(ws, m, db.meId)) ??
       ws.mailboxes.find((m) => m.brand_id === brand?.id && m.status !== "disabled" && canSendFrom(ws, m, db.meId));
-    const mailboxId = s(ctx, "mailbox_id") ?? (channel === "chat" ? null : (fallback?.id ?? null));
+    const mailboxId = s(ctx, "mailbox_id") ?? fallback?.id ?? null;
     const box = mailboxId ? ws.mailboxes.find((m) => m.id === mailboxId) : undefined;
     if (mailboxId && (!box || !canSendFrom(ws, box, db.meId))) throw invalid("You can't send from that address");
     if (box && (s(ctx, "kind") ?? "reply") === "reply" && sendingOf(box) === "system_off") throw cannotSend();
