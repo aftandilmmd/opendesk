@@ -43,6 +43,7 @@ import type { Brand, Widget, WidgetSettings as WS } from "@/lib/api/types";
 import { useAI } from "@/lib/ai";
 import { appOrigin, config } from "@/lib/config";
 import { q, qk, removeFromList, upsertInList } from "@/lib/queries";
+import { sameJSON } from "@/lib/sameJSON";
 import { atLeast, useRole, useWorkspace } from "@/lib/session";
 import { AI_TONE, tone } from "@/lib/tones";
 import { cn } from "@/lib/cn";
@@ -189,7 +190,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
 
   useEffect(() => {
     // Someone else saved: take their version unless we are mid-edit.
-    if (JSON.stringify(draft) === JSON.stringify(prevBase)) setDraft(base);
+    if (sameJSON(draft, prevBase)) setDraft(base);
     setPrevBase(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
@@ -200,7 +201,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
   }, [draft.settings.theme]);
 
   const s = draft.settings;
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = !sameJSON(draft, base);
   const agentOn = ai.enabled && agentSettings(ai.features).widget_answers;
   const hasFollowUpMailbox = mailboxes?.some(
     (m) =>
@@ -252,7 +253,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
       // PATCH merges, so only what changed goes up.
       const patch: Partial<WS> = {};
       for (const k of Object.keys(d.settings) as (keyof WS)[]) {
-        if (JSON.stringify(d.settings[k]) !== JSON.stringify(base.settings[k])) (patch as Record<string, unknown>)[k] = d.settings[k];
+        if (!sameJSON(d.settings[k], base.settings[k])) (patch as Record<string, unknown>)[k] = d.settings[k];
       }
       if (patch.suggestions) patch.suggestions = patch.suggestions.map(tidy);
       if (patch.topics) patch.topics = topicsForSave(patch.topics);
