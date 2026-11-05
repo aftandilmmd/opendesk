@@ -171,3 +171,59 @@ describe("controller with a reply taken back", () => {
     expect(after.some((m) => m.id === gone)).toBe(false);
   });
 });
+
+describe("replies that came while the visitor was away", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** The mock API, with the session reporting a reply the visitor has not read. */
+  function awayFetch(mock: ReturnType<typeof createMock>) {
+    return async (url: string, init: RequestInit) => {
+      const res = await mock.fetch(url, init);
+      if (!url.endsWith("/v1/widget/session")) return res;
+      const body = await res.json();
+      const latest = {
+        id: "msg-away",
+        ticket_id: "conv-away",
+        kind: "reply",
+        direction: "outbound",
+        body_html: "<p>Your order shipped today.</p>",
+        body_text: "Your order shipped today.",
+        author: { type: "user", user: { id: "u1", name: "Maya", avatar_url: null }, contact: null },
+        attachments: [],
+        created_at: new Date().toISOString(),
+      };
+      return new Response(JSON.stringify({ ...body, unread: 2, unread_latest: latest }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+  }
+
+  it("counts them on the launcher and previews the newest until the visitor opens or dismisses it", async () => {
+    const mock = createMock({ seed: "demo", latency: 5 });
+    const c = new Controller({ base: "https://mock.invalid", key: "wk_away", fetcher: awayFetch(mock), socketFactory: mock.socket });
+    const boot = c.boot(demoConfig("wk_away"));
+    await vi.advanceTimersByTimeAsync(200);
+    await boot;
+    let s = c.store.get();
+    expect(s.unread).toBe(2);
+    expect(s.teaser?.id).toBe("msg-away");
+    expect(c.senderName(s.teaser!)).toBe("Maya");
+
+    c.dismissTeaser();
+    expect(c.store.get().teaser).toBeNull();
+    c.stop();
+
+    // The next page load does not preview the dismissed reply again; the count stays.
+    const again = new Controller({ base: "https://mock.invalid", key: "wk_away", fetcher: awayFetch(mock), socketFactory: mock.socket });
+    const boot2 = again.boot(demoConfig("wk_away"));
+    await vi.advanceTimersByTimeAsync(200);
+    await boot2;
+    s = again.store.get();
+    expect(s.unread).toBe(2);
+    expect(s.teaser).toBeNull();
+
+    again.open();
+    expect(again.store.get().unread).toBe(0);
+    again.stop();
+    mock.dispose();
+  });
+});

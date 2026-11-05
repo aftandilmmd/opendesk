@@ -1,5 +1,5 @@
 // The fields a new ticket starts from, the same in the dialog and on the page:
-// email or log internally, who it goes to, and the address it goes from.
+// email, chat or log internally, who it goes to, and the address or widget it goes from.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -11,7 +11,7 @@ import { Segmented } from "@/components/ui/tabs";
 import { Picker } from "@/components/ui/picker";
 import { Avatar } from "@/components/ui/avatar";
 import { api } from "@/lib/api/endpoints";
-import { qk } from "@/lib/queries";
+import { q, qk } from "@/lib/queries";
 import { addressLabel, TeamDot } from "./teams";
 import type { NewTicketState } from "./useNewTicket";
 
@@ -19,12 +19,17 @@ const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function NewTicketKind({ s }: { s: NewTicketState }) {
   const { t: tr } = useTranslation("inbox");
+  const { data: widgets } = useQuery(q.widgets());
+  // Chat is offered once the workspace has a widget to open it in.
+  const hasWidget = (widgets ?? []).some((w) => w.settings.enabled !== false);
+  const value = s.draft.kind === "note" ? "note" : s.chat ? "chat" : "email";
   return (
     <Segmented
-      value={s.draft.kind}
-      onChange={(kind) => s.set({ kind })}
+      value={value}
+      onChange={(v) => s.set(v === "note" ? { kind: "note" } : { kind: "reply", channel: v })}
       options={[
-        { value: "reply", label: tr("newTicket.email") },
+        { value: "email", label: tr("newTicket.email") },
+        ...(hasWidget || s.chat ? [{ value: "chat" as const, label: tr("newTicket.chat") }] : []),
         { value: "note", label: tr("newTicket.internal") },
       ]}
     />
@@ -41,14 +46,17 @@ export function NewTicketTo({ s }: { s: NewTicketState }) {
     enabled: toQuery.trim().length > 0,
   });
   const to = s.draft.to;
+  const chat = s.chat;
+  // A chat reaches only contacts the widget knows; the others say why and take an email instead.
   const toItems = (contacts.data?.data ?? []).map((c) => ({
     value: c.id,
     label: c.name || c.email || tr("newTicket.unnamed"),
-    hint: c.email ?? undefined,
+    hint: chat && !c.chat_reachable ? tr("newTicket.notOnChatShort") : (c.email ?? undefined),
     icon: <Avatar name={c.name || c.email || "?"} src={c.avatar_url} size="xs" />,
   }));
+  const unreachable = chat && !!to && !to.contact?.chat_reachable;
   return (
-    <Field label={tr("newTicket.to")}>
+    <Field label={tr("newTicket.to")} error={unreachable ? tr("newTicket.notOnChat") : undefined}>
       {({ id }) =>
         to ? (
           <div className="flex h-8 items-center gap-2 rounded-md border border-line bg-surface pl-2 pr-1 text-sm">
@@ -74,8 +82,8 @@ export function NewTicketTo({ s }: { s: NewTicketState }) {
               if (contact && !qc.getQueryData(qk.contact(v))) qc.setQueryData(qk.contact(v), contact);
               s.set({ to: { contact } });
             }}
-            onCreate={(v) => emailRe.test(v) && s.set({ to: { email: v } })}
-            createLabel={tr("newTicket.use")}
+            onCreate={chat ? undefined : (v) => emailRe.test(v) && s.set({ to: { email: v } })}
+            createLabel={chat ? undefined : tr("newTicket.use")}
             trigger={
               <button
                 id={id}
@@ -95,6 +103,7 @@ export function NewTicketTo({ s }: { s: NewTicketState }) {
 
 export function NewTicketFrom({ s }: { s: NewTicketState }) {
   const { t: tr } = useTranslation("inbox");
+  if (s.chat) return <NewTicketWidget s={s} />;
   return (
     <Field label={tr("newTicket.from")} error={s.noSender ? tr("newTicket.cannotSend") : undefined}>
       {({ id }) => (
@@ -105,6 +114,27 @@ export function NewTicketFrom({ s }: { s: NewTicketState }) {
           disabled={s.draft.kind === "note" || !s.fromChoices.length}
           placeholder={tr("newTicket.noMailbox")}
           options={s.fromChoices.map((m) => ({ value: m.id, label: addressLabel(m), icon: <TeamDot team={s.teams.team(m.team_id)} /> }))}
+        />
+      )}
+    </Field>
+  );
+}
+
+const LATEST = "__latest";
+
+/** The widget a chat opens in: the contact's latest by default, or one of the brand's. */
+function NewTicketWidget({ s }: { s: NewTicketState }) {
+  const { t: tr } = useTranslation("inbox");
+  const { data: widgets } = useQuery(q.widgets());
+  const choices = (widgets ?? []).filter((w) => w.settings.enabled !== false && (!s.teams.multiBrand || !s.brand || w.brand_id === s.brand));
+  return (
+    <Field label={tr("newTicket.widget")}>
+      {({ id }) => (
+        <Select
+          id={id}
+          value={s.draft.widgetId ?? LATEST}
+          onChange={(v) => s.set({ widgetId: v === LATEST ? undefined : v })}
+          options={[{ value: LATEST, label: tr("newTicket.widgetLatest") }, ...choices.map((w) => ({ value: w.id, label: w.name }))]}
         />
       )}
     </Field>

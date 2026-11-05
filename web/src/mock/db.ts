@@ -226,3 +226,8 @@ export function defaultRouting(): RoutingState {
 export function contactRef(c: Contact) {
   return { id: c.id, email: c.email, name: c.name, avatar_url: c.avatar_url };
 }
+
+/** The team can start a chat with them: not blocked, and verified in a widget or a visitor who chatted. */
+export function chatReachable(ws: WsData, c: Contact): boolean {
+  return !c.blocked && (!!c.external_id || ws.tickets.some((t) => t.channel === "chat" && t.contact?.id === c.id));
+}

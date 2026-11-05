@@ -479,6 +479,7 @@ export default function TicketDetail({
             receivedAt={t && t.channel !== "email" ? null : t?.received_at}
             threads={threads.data}
             threadActions={threadActions}
+            visitorReadAt={t?.channel === "chat" ? (t.visitor_read_at ?? null) : undefined}
           />
           {t && canEdit && <Composer ref={composer} ticket={t} onSent={onSent && ((status, heldMs) => !refused(status) && onSent(t, status, heldMs))} />}
         </div>

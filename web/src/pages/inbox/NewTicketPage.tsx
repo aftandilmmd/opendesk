@@ -42,7 +42,7 @@ export default function NewTicketPage() {
   const [panel, setPanel] = useState(readPanel);
   const editor = useRef<RichEditorHandle>(null);
   const note = draft.kind === "note";
-  const emailed = draft.kind === "reply" && !!draft.mailbox;
+  const emailed = draft.kind === "reply" && !!draft.mailbox && !s.chat;
   const recipient = draft.to?.contact?.email ?? draft.to?.email;
   useDocumentTitle(tr("newTicket.title"));
 
@@ -158,7 +158,7 @@ export default function NewTicketPage() {
               <NewTicketFrom s={s} />
             </div>
             <Field label={tr("newTicket.subject")}>
-              {({ id }) => <TextInput id={id} value={draft.subject} maxLength={500} onChange={(e) => set({ subject: e.target.value })} placeholder={tr("newTicket.subjectPlaceholder")} />}
+              {({ id }) => <TextInput id={id} value={draft.subject} maxLength={500} onChange={(e) => set({ subject: e.target.value })} placeholder={s.chat ? tr("newTicket.subjectChat") : tr("newTicket.subjectPlaceholder")} />}
             </Field>
             <div
               onDragOver={(e) => {
@@ -218,7 +218,7 @@ export default function NewTicketPage() {
                 ref={editor}
                 value={draft.body}
                 onChange={(body) => set({ body })}
-                placeholder={note ? tr("newTicket.bodyNote") : tr("newTicket.bodyReply")}
+                placeholder={note ? tr("newTicket.bodyNote") : s.chat ? tr("newTicket.bodyChat") : tr("newTicket.bodyReply")}
                 extensions={extensions}
                 onSubmit={submit}
                 contentClassName="min-h-[240px]"

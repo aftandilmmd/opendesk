@@ -270,6 +270,10 @@ type widgetSession struct {
 		Contact      domain.ContactRef `json:"contact"`
 		WSToken      string            `json:"ws_token"`
 		GatewayURL   string            `json:"gateway_url"`
+		// Unread is the team's replies the visitor has not read in this widget's chats, and
+		// UnreadLatest the newest of them, so the widget shows both without another request.
+		Unread       int             `json:"unread"`
+		UnreadLatest *domain.Message `json:"unread_latest"`
 	}
 }
 
@@ -538,7 +542,8 @@ func (h *handler) session(ctx context.Context, in *widgetSessionInput) (*widgetS
 		out.Body.Contact = domain.ContactRef{ID: c.ID, Email: c.Email, Name: c.Name, AvatarURL: c.AvatarURL}
 		out.Body.WSToken = wsToken
 		out.Body.GatewayURL = h.d.Cfg.GatewayURL + "/widget" // the widget socket, open to any origin
-		return nil
+		out.Body.Unread, out.Body.UnreadLatest, err = unreadFor(ctx, tx, wid, contactID, g.BrandID)
+		return err
 	})
 	if err != nil {
 		return nil, httpx.Wrap(err)
@@ -681,4 +686,25 @@ func widgetPicture(ctx context.Context, d *deps.Deps, tx pgx.Tx, wid, cid uuid.U
 		return err
 	}
 	return images.Enqueue(ctx, tx, d.Jobs, jobs.AvatarFetchArgs{Owner: images.OwnerContact, ID: cid, WorkspaceID: wid})
+}
+
+// unreadFor counts the team's replies the contact has not read in their chats of the brand,
+// and returns the newest one as the widget shows it.
+func unreadFor(ctx context.Context, tx pgx.Tx, wid, contactID, brandID uuid.UUID) (int, *domain.Message, error) {
+	var n int
+	var latest *uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT count(*), (array_agg(m.id ORDER BY m.created_at DESC, m.id DESC))[1]
+		FROM messages m JOIN tickets t ON t.workspace_id = m.workspace_id AND t.id = m.ticket_id
+		WHERE t.workspace_id = $1 AND t.contact_id = $2 AND t.brand_id = $3 AND t.channel = 'chat' AND t.deleted_at IS NULL
+		AND m.kind = 'reply' AND m.direction = 'outbound' AND NOT `+domain.HiddenMessageSQL+`
+		AND m.created_at > COALESCE(t.visitor_read_at, '-infinity')`, wid, contactID, brandID).Scan(&n, &latest)
+	if err != nil || latest == nil {
+		return n, nil, err
+	}
+	m, err := domain.LoadMessage(ctx, tx, wid, *latest)
+	if err != nil {
+		return 0, nil, err
+	}
+	m = publicMessage(m)
+	return n, &m, nil
 }

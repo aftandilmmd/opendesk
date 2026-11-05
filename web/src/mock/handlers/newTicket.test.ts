@@ -52,4 +52,20 @@ describe("mock new ticket", () => {
     const msgs = (await call("GET", `/v1/tickets/${created.body.id}/messages`)).body.data as Message[];
     expect(msgs[0]).toMatchObject({ kind: "note", cc: [] });
   });
+
+  it("starts a chat only with a contact the widget knows, named after its first message", async () => {
+    const contacts = (await call("GET", "/v1/contacts?limit=100")).body.data as Contact[];
+    const onChat = contacts.find((c) => c.chat_reachable)!;
+    const offChat = contacts.find((c) => !c.chat_reachable && !c.blocked)!;
+    const refused = await call("POST", "/v1/tickets", { subject: "", contact_id: offChat.id, channel: "chat", body_html: "<p>Hi</p>", kind: "reply" });
+    expect(refused.status).toBe(422);
+    expect(refused.body.code).toBe("chat_unreachable");
+    const created = await call("POST", "/v1/tickets", { subject: "", contact_id: onChat.id, channel: "chat", body_html: "<p>Your order shipped</p>", kind: "reply", status: "pending" });
+    expect(created.status).toBe(201);
+    const t = created.body as Ticket;
+    expect(t).toMatchObject({ channel: "chat", subject: "Your order shipped", mailbox_id: null, visitor_read_at: null });
+    expect(t.widget_id).toBeTruthy();
+    const msgs = (await call("GET", `/v1/tickets/${t.id}/messages`)).body.data as Message[];
+    expect(msgs[0]).toMatchObject({ kind: "reply", direction: "outbound" });
+  });
 });

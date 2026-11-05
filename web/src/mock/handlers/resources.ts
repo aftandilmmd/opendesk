@@ -22,7 +22,7 @@ import type {
 import { isTone } from "@/lib/tones";
 import { isOneEmoji } from "@/components/tickets/ViewIcon";
 import { viewIconDef } from "@/components/tickets/viewIcons";
-import { db, userRef, type WsData } from "../db";
+import { chatReachable, db, userRef, type WsData } from "../db";
 import { publish } from "../gateway";
 import { HttpError, del, get, invalid, notFound, paginate, patch, post, required, respond, s, strArr, type Ctx } from "../router";
 import { applyLabels, canCreateLabels, fieldFiltersFromQuery, fieldsText, matchFields, mergeFields } from "../labels";
@@ -39,6 +39,7 @@ import { checkSendAs, normalizeAliases, writeAliasSettings } from "../aliases";
 
 function contactOut(ws: WsData, c: Contact): Contact {
   c.ticket_count = ws.tickets.filter((t) => t.contact?.id === c.id && !ws.deletedTickets.has(t.id)).length;
+  c.chat_reachable = chatReachable(ws, c);
   return c;
 }
 

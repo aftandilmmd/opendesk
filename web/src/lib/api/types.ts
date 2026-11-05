@@ -279,6 +279,8 @@ export type Contact = {
   fields: FieldValues;
   blocked: boolean;
   ticket_count: number;
+  /** The team can start a chat with them: verified in a widget, or with a live widget session. */
+  chat_reachable?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -416,6 +418,8 @@ export type Ticket = {
   received_at: string;
   /** Chat: the page the conversation started on. */
   page_url: string;
+  /** Chat: when the visitor last read it in the widget; null until they do. */
+  visitor_read_at?: string | null;
   routed: TicketRouted | null;
   tags: TagRef[];
   required_skills: TicketSkill[];

@@ -3,6 +3,7 @@
   "support": "고객지원",
   "openChat": "채팅 열기",
   "openChatUnread": "채팅 열기, 새 메시지 {count}개",
+  "dismiss": "닫기",
   "closeChat": "채팅 닫기",
   "greeting": "안녕하세요. 무엇을 도와드릴까요?",
   "replyTime": "보통 몇 시간 안에 답변드려요.",

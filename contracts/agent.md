@@ -23,7 +23,9 @@ an "AI" tint; activities, triage, drafts and the assistant are always Ollie's.
 
 - Every visitor message in a chat conversation the agent is handling gets one reply. It handles a
   conversation while the ticket is open or pending, unassigned, not spam, not handed off and no team
-  member has replied. It runs as a job (`ai.widget_answer`, scheduled 1.5 s after the message so a
+  member has replied. A chat the team starts (`POST /v1/tickets` with `channel: "chat"`, contracts/api.md)
+  opens with a team member's reply, so the agent stays out of it; one an API key starts is handled like
+  a visitor's. It runs as a job (`ai.widget_answer`, scheduled 1.5 s after the message so a
   burst of quick messages gets one reply about all of them), never in the request. A job whose
   message is no longer the latest visitor message does nothing.
 - After `settings.ai.widget_max_replies` replies in one conversation it hands off.

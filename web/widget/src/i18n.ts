@@ -9,6 +9,7 @@ export const en = {
   support: "Support",
   openChat: "Open chat",
   openChatUnread: "Open chat, {count} new",
+  dismiss: "Dismiss",
   closeChat: "Close chat",
   greeting: "Hi there. How can we help?",
   replyTime: "We usually reply within a few hours.",

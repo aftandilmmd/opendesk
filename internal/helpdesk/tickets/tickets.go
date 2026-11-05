@@ -147,11 +147,12 @@ type ticketContactInput struct {
 }
 
 type ticketCreateBody struct {
-	Subject       string              `json:"subject" minLength:"1" maxLength:"500"`
+	Subject       string              `json:"subject,omitempty" maxLength:"500" doc:"Required, except for a chat, which is named after its first message when empty"`
 	ContactID     string              `json:"contact_id,omitempty"`
 	Contact       *ticketContactInput `json:"contact,omitempty"`
-	Channel       string              `json:"channel,omitempty" enum:"email,api" doc:"Default email when mailbox_id is given, otherwise api"`
+	Channel       string              `json:"channel,omitempty" enum:"email,api,chat" doc:"Default email when mailbox_id is given, otherwise api. chat opens a chat in a widget with a contact it reaches"`
 	MailboxID     string              `json:"mailbox_id,omitempty"`
+	WidgetID      string              `json:"widget_id,omitempty" doc:"chat only: the widget the chat opens in. Default: the contact's latest, else the brand's first"`
 	BodyHTML      string              `json:"body_html,omitempty" maxLength:"500000"`
 	Kind          string              `json:"kind,omitempty" enum:"reply,note" doc:"Default reply"`
 	Priority      string              `json:"priority,omitempty" enum:"low,normal,high,urgent"`
@@ -633,7 +634,7 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 		sev := b.Severity
 		nt.Severity = &sev
 	}
-	if strings.TrimSpace(b.Subject) == "" {
+	if strings.TrimSpace(b.Subject) == "" && b.Channel != domain.ChannelChat {
 		return domain.Ticket{}, httpx.Validation("subject is required")
 	}
 	if b.Custom != nil {
@@ -710,6 +711,14 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 	if kind == "" {
 		kind = "reply"
 	}
+	if nt.Channel != domain.ChannelChat && b.WidgetID != "" {
+		return domain.Ticket{}, httpx.Validation("widget_id is for a chat")
+	}
+	if nt.Channel == domain.ChannelChat {
+		if err := checkChatStart(b, kind); err != nil {
+			return domain.Ticket{}, err
+		}
+	}
 	if nt.Channel == domain.ChannelEmail {
 		if nt.MailboxID == nil {
 			return domain.Ticket{}, httpx.Validation("an email ticket needs mailbox_id")
@@ -769,7 +778,14 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 			return domain.Ticket{}, httpx.E(403, "forbidden", "Only members of its team can send from this address.")
 		}
 	}
-	brandID, err := domain.ResolveBrand(ctx, tx, wid, askedBrand, nt.MailboxID, nil)
+	if nt.Channel == domain.ChannelChat {
+		widgetID, err := chatWidget(ctx, tx, d, wid, *nt.ContactID, b.WidgetID, askedBrand)
+		if err != nil {
+			return domain.Ticket{}, err
+		}
+		nt.WidgetID = &widgetID
+	}
+	brandID, err := domain.ResolveBrand(ctx, tx, wid, askedBrand, nt.MailboxID, nt.WidgetID)
 	if err != nil {
 		return domain.Ticket{}, err
 	}
@@ -791,12 +807,26 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 	}
 	bodyHTML := hd.SanitizeRich(b.BodyHTML)
 	bodyText := hd.HTMLToText(bodyHTML)
+	if nt.Channel == domain.ChannelChat {
+		if bodyText == "" && len(attIDs) == 0 {
+			return domain.Ticket{}, httpx.Validation("a chat starts with a message or a file")
+		}
+		if strings.TrimSpace(nt.Subject) == "" {
+			// Named like a chat the visitor starts: after its words, else its first file.
+			if nt.Subject = hd.Excerpt(bodyText, 80); nt.Subject == "" {
+				if err := tx.QueryRow(ctx, `SELECT filename FROM attachments WHERE workspace_id = $1 AND id = $2`, wid, attIDs[0]).Scan(&nt.Subject); err != nil {
+					return domain.Ticket{}, err
+				}
+				nt.Subject = hd.Excerpt(nt.Subject, 80)
+			}
+		}
+	}
 
 	// The team (contracts/teams.md "Routing"): the one asked for, else the address's, then
 	// the first matching routing rule.
 	in := routing.Input{WorkspaceID: wid, Channel: nt.Channel, BrandID: brandID, MailboxID: nt.MailboxID, Subject: nt.Subject,
-		Body: bodyText, ContactID: nt.ContactID, TeamID: askedTeam}
-	if in.Channel != domain.ChannelEmail {
+		Body: bodyText, ContactID: nt.ContactID, TeamID: askedTeam, WidgetID: nt.WidgetID}
+	if in.Channel != domain.ChannelEmail && in.Channel != domain.ChannelChat {
 		in.Channel = domain.ChannelAPI
 	}
 	if contactEmail != nil {
@@ -1071,4 +1101,81 @@ func merge(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, src, dst uuid.UUID
 func queryOf(ctx huma.Context) url.Values {
 	u := ctx.URL()
 	return u.Query()
+}
+
+// Starting a chat (contracts/api.md "Tickets"): the first message is a reply to a contact
+// the widget can show it to; nothing about email applies.
+func checkChatStart(b ticketCreateBody, kind string) error {
+	if b.ContactID == "" || b.Contact != nil {
+		return httpx.Validation("a chat needs contact_id, a contact who used the chat")
+	}
+	if kind != "reply" {
+		return httpx.Validation("a chat starts with a reply, not a note")
+	}
+	if b.MailboxID != "" || len(b.Cc) > 0 || len(b.Bcc) > 0 {
+		return httpx.Validation("mailbox_id, cc and bcc are for email")
+	}
+	return nil
+}
+
+// chatStartsPerHour is how many chats the team may start with one contact in an hour.
+const chatStartsPerHour = 10
+
+// chatWidget returns the widget a new chat with the contact opens in: the one asked for,
+// else the contact's latest of the brand, else the brand's first. The widget must be on and
+// reach the contact.
+func chatWidget(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, contactID uuid.UUID, raw string, askedBrand *uuid.UUID) (uuid.UUID, error) {
+	var widgetID, brandID uuid.UUID
+	if raw != "" {
+		id, err := hd.ParseRef(raw, "widget_id")
+		if err != nil {
+			return uuid.Nil, err
+		}
+		var on bool
+		err = tx.QueryRow(ctx, `SELECT brand_id, COALESCE((settings ->> 'enabled')::boolean, true) FROM widgets WHERE workspace_id = $1 AND id = $2`,
+			wid, id).Scan(&brandID, &on)
+		if db.IsNotFound(err) {
+			return uuid.Nil, httpx.Validation("widget not found in this workspace")
+		}
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if askedBrand != nil && *askedBrand != brandID {
+			return uuid.Nil, httpx.Validation("widget_id must be a widget of brand_id")
+		}
+		if !on {
+			return uuid.Nil, httpx.Validation("this widget is turned off")
+		}
+		widgetID = id
+	} else {
+		id, err := domain.ChatWidget(ctx, tx, wid, contactID, askedBrand)
+		if db.IsNotFound(err) {
+			return uuid.Nil, httpx.Validation("the brand has no chat widget turned on")
+		}
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if err := tx.QueryRow(ctx, `SELECT brand_id FROM widgets WHERE workspace_id = $1 AND id = $2`, wid, id).Scan(&brandID); err != nil {
+			return uuid.Nil, err
+		}
+		widgetID = id
+	}
+	var blocked bool
+	if err := tx.QueryRow(ctx, `SELECT blocked FROM contacts WHERE workspace_id = $1 AND id = $2`, wid, contactID).Scan(&blocked); err != nil {
+		return uuid.Nil, err
+	}
+	if blocked {
+		return uuid.Nil, httpx.Validation("this contact is blocked")
+	}
+	ok, err := domain.ChatReachable(ctx, tx, wid, contactID, brandID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !ok {
+		return uuid.Nil, httpx.E(http.StatusUnprocessableEntity, "chat_unreachable", "This contact hasn't used the chat on your site yet. Send an email instead.")
+	}
+	if !d.Limiter.Shared(ctx, "chat-start:"+wid.String()+":"+contactID.String(), chatStartsPerHour, time.Hour) {
+		return uuid.Nil, httpx.RateLimited()
+	}
+	return widgetID, nil
 }

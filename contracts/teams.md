@@ -302,7 +302,8 @@ every plan and never count as mailboxes (contracts/billing.md). Each alias is it
 ## Chat follow-up
 
 When an agent (not Ollie, not an automation) posts a public reply on a chat, the visitor gets it by
-email too when all of these hold:
+email too when all of these hold (the first message of a chat the team starts, contracts/api.md
+`POST /v1/tickets`, is such a reply):
 
 - the widget's `email_follow_up` is on (the conversation's widget; for an older chat without one, the
   default brand's first widget);

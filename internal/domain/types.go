@@ -44,8 +44,10 @@ type Contact struct {
 	Fields       map[string]any `json:"fields"`
 	Blocked      bool           `json:"blocked"`
 	TicketCount  int            `json:"ticket_count"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	// ChatReachable: the team can start a chat with them (contracts/api.md "Tickets").
+	ChatReachable bool      `json:"chat_reachable"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Tag is a label definition (contracts/api.md Tag).
@@ -135,9 +137,11 @@ type Ticket struct {
 	WidgetID *uuid.UUID `json:"widget_id"`
 	// OriginMailboxID and ReceivedAt are where the first message arrived (ReceivedAt is the
 	// exact address, which may be an alias). MailboxID is the address replies go out from.
-	OriginMailboxID       *uuid.UUID     `json:"origin_mailbox_id"`
-	ReceivedAt            string         `json:"received_at"`
-	PageURL               string         `json:"page_url"`
+	OriginMailboxID *uuid.UUID `json:"origin_mailbox_id"`
+	ReceivedAt      string     `json:"received_at"`
+	PageURL         string     `json:"page_url"`
+	// VisitorReadAt is when a chat's visitor last read it in the widget; nil until they do.
+	VisitorReadAt         *time.Time     `json:"visitor_read_at"`
 	Routed                *TicketRouted  `json:"routed"`
 	Tags                  []TagRef       `json:"tags"`
 	RequiredSkills        []TicketSkill  `json:"required_skills"`

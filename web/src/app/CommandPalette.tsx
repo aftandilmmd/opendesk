@@ -21,6 +21,7 @@ import {
   Server,
   Settings,
   SquarePen,
+  MessageCircle,
   Sun,
   User,
   UserPlus,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
+import { useStartChat } from "@/components/tickets/useNewTicket";
 import { EmptyState } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
@@ -115,6 +117,7 @@ export function CommandPalette() {
   const [aiMode, setAiMode] = useState(false);
   const collab = useCollab();
   const { tickets: ticketsOn } = useProducts();
+  const startChat = useStartChat();
   const { data: mailAccounts } = useMailAccounts();
   const { t: tCollab } = useTranslation("collab");
   const { t: tw } = useTranslation("workspaces");
@@ -448,6 +451,11 @@ export function CommandPalette() {
                 {ticketsOn && !onNewTicket && atLeast(role, "agent") && (
                   <Item value="new ticket full page compose create" keywords={[tNav("command.newTicketPage")]} icon={<SquarePen />} {...link({ to: NEW_TICKET_PATH })}>
                     {tNav("command.newTicketPage")}
+                  </Item>
+                )}
+                {ticketsOn && !onNewTicket && atLeast(role, "agent") && (
+                  <Item value="start chat message visitor widget" keywords={[tNav("command.startChat")]} icon={<MessageCircle />} onSelect={() => go(() => startChat())}>
+                    {tNav("command.startChat")}
                   </Item>
                 )}
                 {atLeast(role, "agent") && (

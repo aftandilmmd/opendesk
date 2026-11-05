@@ -3,6 +3,7 @@
   "support": "サポート",
   "openChat": "チャットを開く",
   "openChatUnread": "チャットを開く（新着 {count} 件）",
+  "dismiss": "閉じる",
   "closeChat": "チャットを閉じる",
   "greeting": "こんにちは。どのようなご用件でしょうか？",
   "replyTime": "通常、数時間以内に返信します。",

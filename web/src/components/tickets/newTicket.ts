@@ -13,6 +13,10 @@ export type NewTicketDraft = {
   subject: string;
   body: string;
   kind: "reply" | "note";
+  /** A reply goes by email, or opens a chat in the contact's widget. */
+  channel?: "email" | "chat";
+  /** Chat: the widget it opens in; undefined lets the server pick the contact's latest. */
+  widgetId?: string;
   /** The address it goes from; set to the brand's first one that can send until someone picks. */
   mailbox?: string;
   priority: Priority;
@@ -76,9 +80,16 @@ export function pageOnlyCount(d: NewTicketDraft): number {
   return d.tags.length + (d.severity ? 1 : 0) + Object.keys(d.fields).length + d.cc.length + d.bcc.length;
 }
 
+/** A reply that opens a chat in the contact's widget instead of going by email. */
+export const isChat = (d: NewTicketDraft) => d.kind === "reply" && d.channel === "chat";
+
 /** What is missing before it can be created, as an inbox `newTicket.*` key. */
-export function newTicketProblem(d: NewTicketDraft, noSender: boolean): "needTo" | "needSubject" | "needBody" | "cannotSend" | null {
+export function newTicketProblem(d: NewTicketDraft, noSender: boolean): "needTo" | "needSubject" | "needBody" | "cannotSend" | "notOnChat" | null {
   if (!d.to) return "needTo";
+  if (isChat(d)) {
+    if (!d.to.contact?.chat_reachable) return "notOnChat";
+    return d.body ? null : "needBody";
+  }
   if (!d.subject.trim()) return "needSubject";
   if (!d.body) return "needBody";
   if (noSender) return "cannotSend";
@@ -94,6 +105,27 @@ export function createTicketBody(
   o: { me: string; teamId: string | null; hasTeams: boolean; attachmentIds?: string[] },
 ): CreateTicketBody {
   const assignee = d.assignee === undefined ? o.me : d.assignee;
+  if (isChat(d)) {
+    // A chat names itself after its first message when no subject is given.
+    const chat: CreateTicketBody = {
+      subject: d.subject.trim(),
+      contact_id: d.to?.contact?.id,
+      channel: "chat",
+      widget_id: d.widgetId || undefined,
+      brand_id: d.widgetId ? undefined : d.brandId,
+      body_html: d.body,
+      kind: "reply",
+      priority: d.priority,
+      assignee_id: assignee ?? undefined,
+      team_id: o.hasTeams && o.teamId ? o.teamId : undefined,
+      status: "pending",
+    };
+    if (d.severity) chat.severity = d.severity;
+    if (d.tags.length) chat.tags = d.tags;
+    if (Object.keys(d.fields).length) chat.fields = d.fields;
+    if (o.attachmentIds?.length) chat.attachment_ids = o.attachmentIds;
+    return chat;
+  }
   const emailed = d.kind === "reply" && !!d.mailbox;
   const body: CreateTicketBody = {
     subject: d.subject.trim(),

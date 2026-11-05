@@ -98,13 +98,13 @@ export default function NewTicketDialog() {
           <NewTicketFrom s={s} />
         </div>
         <Field label={tr("newTicket.subject")}>
-          {({ id }) => <TextInput id={id} value={draft.subject} onChange={(e) => set({ subject: e.target.value })} placeholder={tr("newTicket.subjectPlaceholder")} />}
+          {({ id }) => <TextInput id={id} value={draft.subject} onChange={(e) => set({ subject: e.target.value })} placeholder={s.chat ? tr("newTicket.subjectChat") : tr("newTicket.subjectPlaceholder")} />}
         </Field>
         <div className="rounded-md border border-line transition-[border-color,box-shadow] duration-150 focus-within:border-fg-4 focus-within:shadow-[0_0_0_3px_var(--focus)]">
           <RichEditor
             value={draft.body}
             onChange={(body) => set({ body })}
-            placeholder={draft.kind === "reply" ? tr("newTicket.bodyReply") : tr("newTicket.bodyNote")}
+            placeholder={draft.kind === "note" ? tr("newTicket.bodyNote") : s.chat ? tr("newTicket.bodyChat") : tr("newTicket.bodyReply")}
             contentClassName="min-h-[160px]"
             onSubmit={() => s.submit()}
           />

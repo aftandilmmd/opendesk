@@ -314,6 +314,24 @@ function HeldDelivery({ id }: { id: string }) {
   );
 }
 
+/** Whether a chat's visitor has read the team's latest reply in the widget. */
+function Seen({ seen, at }: { seen: boolean; at?: string }) {
+  const { t } = useTranslation("inbox");
+  if (!seen)
+    return (
+      <Tooltip content={t("message.notSeenHint")}>
+        <span className="shrink-0 text-[11px] text-fg-4">{t("message.notSeen")}</span>
+      </Tooltip>
+    );
+  return (
+    <Tooltip content={at ? t("message.seenAt", { when: fullDate(at) }) : t("message.seen")}>
+      <span className="flex shrink-0 items-center gap-1 text-[11px] text-fg-4 animate-fade-in motion-reduce:animate-none">
+        <CheckCheck className={`size-3 ${tone.blue.text}`} /> {t("message.seen")}
+      </span>
+    </Tooltip>
+  );
+}
+
 function Delivery({ m, onRetry }: { m: Message; onRetry?: () => void }) {
   const { t } = useTranslation("inbox");
   // A thread message is a note that is emailed to the third party, so it reports delivery.
@@ -503,6 +521,8 @@ export const MessageItem = memo(function MessageItem({
   thread,
   threadActions,
   threadFirst,
+  seen,
+  seenAt,
 }: {
   m: Message;
   onRetry?: (m: Message) => void;
@@ -519,6 +539,9 @@ export const MessageItem = memo(function MessageItem({
   threadActions?: ThreadActions;
   /** The thread's first message. */
   threadFirst?: boolean;
+  /** A chat's latest reply: whether the visitor has read it (undefined on other messages). */
+  seen?: boolean;
+  seenAt?: string;
 }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const [viewingSent, setViewingSent] = useState(false);
@@ -630,6 +653,7 @@ export const MessageItem = memo(function MessageItem({
         {m.ai && m.ai_rating && <AiRating rating={m.ai_rating} />}
         <TranslateButton tr={tr} />
         <Delivery m={m} onRetry={onRetry ? () => onRetry(m) : undefined} />
+        {seen !== undefined && <Seen seen={seen} at={seenAt} />}
         <Tooltip content={fullDate(m.created_at)}>
           <time dateTime={m.created_at} className="mono shrink-0 text-[11px] text-fg-4">
             {clock(m.created_at)}

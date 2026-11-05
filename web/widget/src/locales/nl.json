@@ -3,6 +3,7 @@
   "support": "Klantenservice",
   "openChat": "Chat openen",
   "openChatUnread": "Chat openen, {count} nieuw",
+  "dismiss": "Sluiten",
   "closeChat": "Chat sluiten",
   "greeting": "Hallo! Waarmee kunnen we helpen?",
   "replyTime": "We reageren meestal binnen een paar uur.",

@@ -131,4 +131,28 @@ describe("createTicketBody", () => {
     expect(createTicketBody({ ...d, kind: "note" }, o)).not.toHaveProperty("cc");
     expect(createTicketBody({ ...d, mailbox: undefined }, o)).not.toHaveProperty("bcc");
   });
+
+  it("opens a chat only with a contact on chat, without email's address and copies", () => {
+    const onChat = { ...contact, chat_reachable: true } as Contact;
+    const chat = draft({ kind: "reply", channel: "chat", to: { contact }, body: "<p>Hi</p>", mailbox: "m1", cc: ["b@example.com"] });
+    expect(newTicketProblem(chat, false)).toBe("notOnChat");
+    expect(newTicketProblem({ ...chat, to: { email: "x@example.com" } }, false)).toBe("notOnChat");
+    // No subject needed: the chat is named after its first message.
+    expect(newTicketProblem({ ...chat, to: { contact: onChat } }, true)).toBeNull();
+    expect(newTicketProblem({ ...chat, to: { contact: onChat }, body: "" }, false)).toBe("needBody");
+    expect(wire(createTicketBody({ ...chat, to: { contact: onChat }, widgetId: "w1" }, o))).toEqual({
+      subject: "",
+      contact_id: "c1",
+      channel: "chat",
+      widget_id: "w1",
+      body_html: "<p>Hi</p>",
+      kind: "reply",
+      priority: "normal",
+      assignee_id: "u-me",
+      team_id: "t1",
+      status: "pending",
+    });
+    // An internal note stays a note whatever the channel last picked.
+    expect(createTicketBody({ ...chat, kind: "note" }, o).channel).not.toBe("chat");
+  });
 });

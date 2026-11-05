@@ -1,7 +1,7 @@
 // Tickets, messages, activities, attachments, search and reports.
 
 import type { Attachment, Channel, Message, Priority, ReportsAgents, ReportsOverview, Severity, SuggestionField, Thread, Ticket, TicketPatch, TicketStatus } from "@/lib/api/types";
-import { contactRef, db, me, userRef, type WsData } from "../db";
+import { chatReachable, contactRef, db, me, userRef, type WsData } from "../db";
 import { publish } from "../gateway";
 import { HttpError, del, forbidden, get, invalid, notFound, paginate, patch, post, required, respond, s, strArr, type Ctx } from "../router";
 import { searchWiki } from "./wiki";
@@ -274,8 +274,10 @@ export function registerTickets() {
   });
 
   post("/v1/tickets", (ctx) => {
-    const subject = required(ctx, "subject").slice(0, 250);
     const ws = ctx.ws;
+    const channel = (s(ctx, "channel") as Channel | undefined) ?? "email";
+    if (channel === "chat") return startChat(ctx);
+    const subject = required(ctx, "subject").slice(0, 250);
     let contact = s(ctx, "contact_id") ? ws.contacts.find((c) => c.id === s(ctx, "contact_id")) : undefined;
     if (s(ctx, "contact_id") && !contact) throw invalid("Unknown contact");
     if (!contact && isRecord(ctx.body.contact)) {
@@ -292,7 +294,6 @@ export function registerTickets() {
     const p = readPatch(ctx.body);
     const fields = p.fields ? mergeFields(ws, "ticket", {}, p.fields).next : {};
     if (p.status === "solved" || p.status === "closed") checkRequiredOnSolve(ws, fields);
-    const channel = (s(ctx, "channel") as Channel | undefined) ?? "email";
     const teamId = s(ctx, "team_id") ?? null;
     if (teamId && !ws.teams.some((x) => x.id === teamId)) throw invalid("Unknown team");
     // From: the given address, else the default brand's address for the team, else its default.
@@ -787,4 +788,50 @@ function refreshPreview(messages: Message[], t: Ticket) {
     .filter((m) => m.ticket_id === t.id && m.kind === "reply" && !m.deleted_at)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
   t.last_message_preview = last ? last.body_text.slice(0, 200) : "";
+}
+
+/**
+ * POST /v1/tickets with channel "chat": the team opens a chat with a contact the widget
+ * knows (contracts/api.md "Tickets"), in the given widget, else the brand's first.
+ */
+function startChat(ctx: Ctx) {
+  const ws = ctx.ws;
+  const contact = ws.contacts.find((c) => c.id === s(ctx, "contact_id"));
+  if (!contact) throw invalid("a chat needs contact_id, a contact who used the chat");
+  if ((s(ctx, "kind") ?? "reply") !== "reply") throw invalid("a chat starts with a reply, not a note");
+  if (s(ctx, "mailbox_id") || strArr(ctx.body.cc)?.length || strArr(ctx.body.bcc)?.length) throw invalid("mailbox_id, cc and bcc are for email");
+  if (contact.blocked) throw invalid("this contact is blocked");
+  if (!chatReachable(ws, contact)) throw new HttpError(422, "chat_unreachable", "This contact hasn't used the chat on your site yet. Send an email instead.");
+  const body = s(ctx, "body_html") ?? "";
+  const text = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) throw invalid("a chat starts with a message or a file");
+  const brandId = s(ctx, "brand_id") ?? defaultBrand(ws)?.id;
+  const widget = s(ctx, "widget_id") ? ws.widgets.find((w) => w.id === s(ctx, "widget_id")) : ws.widgets.find((w) => w.brand_id === brandId && w.settings.enabled !== false);
+  if (!widget) throw invalid(s(ctx, "widget_id") ? "widget not found in this workspace" : "the brand has no chat widget turned on");
+  if (widget.settings.enabled === false) throw invalid("this widget is turned off");
+  // The subject is the first message's words when left empty, so it is not a patch field here.
+  const p = readPatch({ ...ctx.body, subject: undefined });
+  const teamId = s(ctx, "team_id") ?? null;
+  const subject = (s(ctx, "subject") ?? "").trim() || (text.length > 80 ? `${text.slice(0, 79)}…` : text);
+  const t = newTicket(ws, {
+    subject,
+    contact: contactRef(contact),
+    channel: "chat",
+    priority: p.priority,
+    severity: p.severity ?? null,
+    mailbox_id: null,
+    assignee: userRef(s(ctx, "assignee_id")),
+    team_id: teamId,
+    brand_id: widget.brand_id,
+    widget_id: widget.id,
+    received_at: "",
+    fields: p.fields ? mergeFields(ws, "ticket", {}, p.fields).next : {},
+  });
+  t.origin_mailbox_id = null;
+  t.visitor_read_at = null;
+  if (p.tags) applyPatch(ws, t, { tags: p.tags }, userRef(db.meId), false, personOpts(ws));
+  contact.ticket_count++;
+  publish(ws, "ticket.created", { ticket: t });
+  addMessage(ws, t, { kind: "reply", direction: "outbound", html: body, user: userRef(db.meId), attachments: attachmentsFor(strArr(ctx.body.attachment_ids)) }, { status: p.status, actor: userRef(db.meId) });
+  return respond(201, t);
 }

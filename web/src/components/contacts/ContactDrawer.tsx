@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { FileText, Pencil, Ticket as TicketIcon, Trash2, UserRound } from "lucide-react";
+import { FileText, MessageCircle, Pencil, Ticket as TicketIcon, Trash2, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { dur, ease, springs } from "@/lib/motion";
@@ -30,6 +30,8 @@ import { fullDate, relShort, shortDate } from "@/lib/format";
 import { useContactAvatar } from "@/lib/pictures";
 import { q, qk } from "@/lib/queries";
 import { atLeast, useRole } from "@/lib/session";
+import { useProducts } from "@/lib/products";
+import { useStartChat } from "@/components/tickets/useNewTicket";
 import { CompanyPicker } from "./CompanyPicker";
 import { CompanyGlyph, Detail, fieldLabel, fieldsOf, fieldText, MiniStat, none } from "./bits";
 import { RecordFields, RecordLabels, useRecordFields } from "./LabelsAndFields";
@@ -44,6 +46,8 @@ export function ContactDrawer({ contactId, onClose }: { contactId: string | null
   const confirm = useConfirm();
   const reduce = useReducedMotion();
   const canEdit = atLeast(useRole(), "agent");
+  const { tickets: ticketsOn } = useProducts();
+  const startChat = useStartChat();
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -150,6 +154,11 @@ export function ContactDrawer({ contactId, onClose }: { contactId: string | null
                 <RecordLabels kind="contact" record={c} />
               </div>
             </div>
+            {canEdit && !editing && ticketsOn && c.chat_reachable && (
+              <Button size="sm" variant="secondary" icon={<MessageCircle className="size-3.5" />} onClick={() => startChat(c)}>
+                {t("drawer.startChat")}
+              </Button>
+            )}
             {canEdit && !editing && (
               <Button size="sm" variant="secondary" icon={<Pencil className="size-3.5" />} onClick={() => setEditing(true)}>
                 {t("drawer.edit")}

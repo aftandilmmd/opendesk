@@ -180,6 +180,7 @@ export function App({ c }: { c: Controller }) {
           {drag && <div class="drop">{t("dropFiles")}</div>}
         </div>
       )}
+      {cfg && !s.open && s.teaser && <Teaser c={c} s={s} />}
       {cfg && (
         <button
           ref={launcher}
@@ -204,6 +205,32 @@ export function App({ c }: { c: Controller }) {
           )}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── Teaser: the team's latest unread reply, above the closed launcher ─────────
+
+function Teaser({ c, s }: { c: Controller; s: State }) {
+  const m = s.teaser!;
+  const who = c.senderName(m);
+  const text = (m.body_text || m.body_html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  return (
+    <div class="teaser" key={m.id}>
+      <button class="teaser-main" onClick={() => c.openTeaser()} aria-label={t("newMessage", { name: who, text: text.slice(0, 200) })}>
+        <span class="teaser-who">{who}</span>
+        <span class="teaser-text">{text || t("conversation")}</span>
+      </button>
+      <button
+        class="teaser-x"
+        aria-label={t("dismiss")}
+        onClick={() => c.dismissTeaser()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") c.dismissTeaser();
+        }}
+      >
+        {X(14)}
+      </button>
     </div>
   );
 }
@@ -302,7 +329,7 @@ function Home({ c }: { c: Controller }) {
                   <span class={`dot${v.status === "solved" || v.status === "closed" ? "" : " open"}`} aria-hidden="true" />
                   <span class="conv-main">
                     <span class="conv-top">
-                      <span class="conv-subject">{v.subject || t("conversation")}</span>
+                      <span class={`conv-subject${v.unread ? " unread" : ""}`}>{v.subject || t("conversation")}</span>
                       <span class="time">{relTime(v.last_message_at)}</span>
                     </span>
                     <span class="conv-prev">{s.typing[v.id] ? t("typing", { name: s.typing[v.id] }) : v.last_message_preview}</span>

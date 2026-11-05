@@ -393,6 +393,7 @@ export function Timeline({
   receivedAt,
   threads,
   threadActions,
+  visitorReadAt,
 }: {
   ticketId: string;
   messages: Message[] | undefined;
@@ -409,6 +410,8 @@ export function Timeline({
   threads?: Thread[];
   /** Offered on each thread's latest message; absent for viewers. */
   threadActions?: ThreadActions;
+  /** A chat's: when its visitor last read it in the widget (null: not yet); undefined for other channels. */
+  visitorReadAt?: string | null;
 }) {
   const { t } = useTranslation("indicators");
   // Messages to the customer's side and the team's (Settings → Profile → Appearance); activity stays full width.
@@ -427,6 +430,12 @@ export function Timeline({
     }
     return [new Set(first.values()), new Set(last.values())];
   }, [messages]);
+  // A chat's latest reply to the visitor says whether they have read it.
+  const lastReply = useMemo(() => {
+    if (visitorReadAt === undefined) return null;
+    const replies = (messages ?? []).filter((m) => m.kind === "reply" && m.direction === "outbound" && !m.id.startsWith("tmp-"));
+    return replies[replies.length - 1] ?? null;
+  }, [messages, visitorReadAt]);
   const items = useMemo<Item[]>(() => {
     const out: Item[] = [
       ...(messages ?? []).map((m) => ({ kind: "message" as const, at: m.created_at, m })),
@@ -540,6 +549,8 @@ export function Timeline({
                       thread={it.m.thread_id ? threadById.get(it.m.thread_id) : undefined}
                       threadActions={lastInThread.has(it.m.id) ? threadActions : undefined}
                       threadFirst={firstInThread.has(it.m.id)}
+                      seen={lastReply?.id === it.m.id ? !!visitorReadAt && Date.parse(visitorReadAt) >= Date.parse(it.m.created_at) : undefined}
+                      seenAt={visitorReadAt ?? undefined}
                     />
                   ) : it.a.type === "call" ? (
                     <CallEntry a={it.a} />

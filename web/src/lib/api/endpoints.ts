@@ -104,8 +104,11 @@ export type CreateTicketBody = {
   subject: string;
   contact_id?: string;
   contact?: { email: string; name: string };
-  channel?: "email" | "api";
+  channel?: "email" | "api" | "chat";
   mailbox_id?: string;
+  /** Chat: the widget it opens in; left out, the contact's latest, else the brand's first. */
+  widget_id?: string;
+  brand_id?: string;
   body_html: string;
   kind?: "reply" | "note";
   priority?: T.Priority;

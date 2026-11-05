@@ -8,8 +8,10 @@ import { errorMessage } from "@/lib/api/client";
 import { q, qk } from "@/lib/queries";
 import { patchTicketEverywhere } from "@/lib/ticketCache";
 import { useSession } from "@/lib/session";
+import type { Contact } from "@/lib/api/types";
+import { shell } from "@/app/shellStore";
 import { useTeamsCtx } from "./teams";
-import { createTicketBody, draftKey, isDirty, newTicketDrafts, newTicketProblem, useNewTicketDraft, type NewTicketDraft } from "./newTicket";
+import { createTicketBody, draftKey, isChat, isDirty, newTicketDrafts, newTicketProblem, useNewTicketDraft, type NewTicketDraft } from "./newTicket";
 
 /**
  * Writing a new ticket, in the dialog or on its page: the workspace's draft, the
@@ -41,11 +43,12 @@ export function useNewTicket({ onCreated }: { onCreated?: () => void } = {}) {
     const next = fromChoices.find((m) => m.status === "active" && m.sending !== "system_off") ?? fromChoices.find((m) => m.status === "active") ?? fromChoices[0];
     if (next?.id !== mailbox) set({ mailbox: next?.id });
   }, [fromChoices.map((m) => m.id).join(), mailbox]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The team follows the address's default team until someone picks one.
-  const teamId = draft.team !== undefined ? draft.team : (teams.mailbox(mailbox)?.team_id ?? null);
+  const chat = isChat(draft);
+  // The team follows the address's default team until someone picks one; a chat's comes from routing.
+  const teamId = draft.team !== undefined ? draft.team : chat ? null : (teams.mailbox(mailbox)?.team_id ?? null);
   const teamRow = teams.team(teamId);
   // An address with no way to send cannot email the first message (mailbox_cannot_send).
-  const noSender = draft.kind === "reply" && teams.mailbox(mailbox)?.sending === "system_off";
+  const noSender = draft.kind === "reply" && !chat && teams.mailbox(mailbox)?.sending === "system_off";
   const assignee = draft.assignee === undefined ? me : draft.assignee;
 
   const create = useMutation({
@@ -72,6 +75,7 @@ export function useNewTicket({ onCreated }: { onCreated?: () => void } = {}) {
     key,
     me,
     draft,
+    chat,
     set,
     discard: () => newTicketDrafts.clear(key),
     dirty: isDirty(draft),
@@ -91,3 +95,16 @@ export function useNewTicket({ onCreated }: { onCreated?: () => void } = {}) {
 }
 
 export type NewTicketState = ReturnType<typeof useNewTicket>;
+
+/** Opens the new ticket dialog set to start a chat, with the contact when given. */
+export function useStartChat() {
+  const me = useSession((s) => s.user!.id);
+  const wid = useSession((s) => s.workspaceId!);
+  return useCallback(
+    (contact?: Contact) => {
+      newTicketDrafts.patch(draftKey(me, wid), { kind: "reply", channel: "chat", ...(contact ? { to: { contact } } : {}) });
+      shell.newTicket();
+    },
+    [me, wid],
+  );
+}

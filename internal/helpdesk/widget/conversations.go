@@ -35,6 +35,7 @@ type WidgetConversation struct {
 	LastMessagePreview string    `json:"last_message_preview"`
 	LastMessageAt      time.Time `json:"last_message_at"`
 	AIHandoff          bool      `json:"ai_handoff" doc:"The conversation was handed from the AI agent to the team"`
+	Unread             int       `json:"unread" doc:"The team's replies the visitor has not read yet"`
 }
 
 type widgetMessageBody struct {
@@ -80,7 +81,13 @@ func cleanBody(s string, files int) (string, error) {
 }
 
 const conversationCols = `SELECT id, subject, status, last_message_preview, last_message_at,
-	COALESCE(custom->>'ai_handoff' = 'true', false) FROM tickets`
+	COALESCE(custom->>'ai_handoff' = 'true', false), ` + unreadSQL + ` FROM tickets`
+
+// unreadSQL counts a chat's replies from the team (and its bots) after the visitor last
+// read it (tickets.visitor_read_at), on the tickets table without an alias.
+const unreadSQL = `(SELECT count(*) FROM messages m WHERE m.workspace_id = tickets.workspace_id AND m.ticket_id = tickets.id
+	AND m.kind = 'reply' AND m.direction = 'outbound' AND NOT ` + domain.HiddenMessageSQL + `
+	AND m.created_at > COALESCE(tickets.visitor_read_at, '-infinity'))`
 
 // sameBrand limits a visitor's conversations to the brand of the widget their session
 // started in, bound as $n.
@@ -106,7 +113,7 @@ func loadConversation(ctx context.Context, q db.Querier, p *auth.Principal, rawI
 	}
 	err := q.QueryRow(ctx, conversationCols+` WHERE workspace_id = $1 AND id = $2 AND contact_id = $3 AND channel = 'chat'
 		AND deleted_at IS NULL`+sameBrand(4), p.WorkspaceID, id, p.ContactID, sessionWidget(p)).
-		Scan(&c.ID, &c.Subject, &c.Status, &c.LastMessagePreview, &c.LastMessageAt, &c.AIHandoff)
+		Scan(&c.ID, &c.Subject, &c.Status, &c.LastMessagePreview, &c.LastMessageAt, &c.AIHandoff, &c.Unread)
 	if db.IsNotFound(err) {
 		return c, httpx.NotFound("Conversation")
 	}
@@ -118,6 +125,22 @@ func loadConversation(ctx context.Context, q db.Querier, p *auth.Principal, rawI
 func (h *handler) seen(ctx context.Context, p *auth.Principal) error {
 	_, err := h.d.DB.Pool.Exec(ctx, `UPDATE widget_sessions SET last_seen_at = now() WHERE id = $1 AND workspace_id = $2`, p.VisitorID, p.WorkspaceID)
 	return err
+}
+
+// read records that the visitor read the conversation now, when it had replies they had
+// not read: the widget's unread count drops and agents see it was seen (ticket.updated).
+func (h *handler) read(ctx context.Context, p *auth.Principal, c WidgetConversation) error {
+	if c.Unread == 0 {
+		return nil
+	}
+	return h.d.DB.Tx(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE tickets SET visitor_read_at = now() WHERE workspace_id = $1 AND id = $2 AND contact_id = $3`,
+			p.WorkspaceID, c.ID, p.ContactID)
+		if err != nil || tag.RowsAffected() == 0 {
+			return err
+		}
+		return domain.PublishTicketUpdated(ctx, tx, p.WorkspaceID, c.ID, []string{"visitor_read_at"})
+	})
 }
 
 func (h *handler) registerConversations(api huma.API) {
@@ -141,7 +164,7 @@ func (h *handler) registerConversations(api huma.API) {
 			}
 			list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (WidgetConversation, error) {
 				var c WidgetConversation
-				err := r.Scan(&c.ID, &c.Subject, &c.Status, &c.LastMessagePreview, &c.LastMessageAt, &c.AIHandoff)
+				err := r.Scan(&c.ID, &c.Subject, &c.Status, &c.LastMessagePreview, &c.LastMessageAt, &c.AIHandoff, &c.Unread)
 				return c, err
 			})
 			if err != nil {
@@ -278,6 +301,9 @@ func (h *handler) registerConversations(api huma.API) {
 			if err := h.seen(ctx, p); err != nil {
 				return nil, httpx.Wrap(err)
 			}
+			if err := h.read(ctx, p, c); err != nil {
+				return nil, httpx.Wrap(err)
+			}
 			for i := range msgs {
 				msgs[i] = publicMessage(msgs[i])
 			}
@@ -298,10 +324,14 @@ func (h *handler) registerConversations(api huma.API) {
 			if err := h.allowWrite(p, "seen", visitorWrites); err != nil {
 				return nil, err
 			}
-			if _, err := loadConversation(ctx, h.d.DB.Pool, p, in.ID); err != nil {
+			c, err := loadConversation(ctx, h.d.DB.Pool, p, in.ID)
+			if err != nil {
 				return nil, httpx.Wrap(err)
 			}
 			if err := h.seen(ctx, p); err != nil {
+				return nil, httpx.Wrap(err)
+			}
+			if err := h.read(ctx, p, c); err != nil {
 				return nil, httpx.Wrap(err)
 			}
 			return nil, nil

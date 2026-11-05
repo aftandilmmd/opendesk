@@ -98,6 +98,9 @@ export type WidgetSession = {
   contact: ContactRef;
   ws_token: string;
   gateway_url: string;
+  /** The team's replies not read yet in this widget's chats, and the newest of them. */
+  unread?: number;
+  unread_latest?: Message | null;
 };
 
 export type Conversation = {
@@ -108,6 +111,8 @@ export type Conversation = {
   last_message_at: string;
   /** The conversation was handed from the AI agent to the team (contracts/agent.md). */
   ai_handoff?: boolean;
+  /** The team's replies the visitor has not read yet. */
+  unread?: number;
 };
 
 export type Attachment = { id: string; filename: string; content_type: string; size_bytes: number; inline: boolean; url: string };

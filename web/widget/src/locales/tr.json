@@ -3,6 +3,7 @@
   "support": "Destek",
   "openChat": "Sohbeti aç",
   "openChatUnread": "Sohbeti aç, {count} yeni",
+  "dismiss": "Kapat",
   "closeChat": "Sohbeti kapat",
   "greeting": "Merhaba! Size nasıl yardımcı olabiliriz?",
   "replyTime": "Genellikle birkaç saat içinde yanıt veririz.",

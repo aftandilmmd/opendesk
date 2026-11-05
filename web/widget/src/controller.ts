@@ -45,6 +45,8 @@ export class Controller {
   private typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private storageKey: string;
+  /** The preview the visitor closed, by message id: it does not come back. */
+  private teaserKey: string;
   private persist: boolean;
   /** Called with screen-reader text: once per completed reply, never per streamed chunk. */
   announce: (text: string) => void = () => {};
@@ -54,6 +56,7 @@ export class Controller {
     this.store = env.store ?? new Store();
     this.persist = env.persist !== false;
     this.storageKey = `od_widget_${env.key}`;
+    this.teaserKey = `od_teaser_${env.key}`;
     this.api.visitorToken = this.persist ? load(this.storageKey) : null;
   }
 
@@ -115,6 +118,11 @@ export class Controller {
     const s = await this.session();
     this.remember(s.visitor_token);
     this.set({ session: s, error: null });
+    // Replies that came while the visitor was away: a count on the launcher and the newest one previewed.
+    if (!this.s.open && !this.s.preview) {
+      const latest = s.unread_latest ?? null;
+      this.set({ unread: s.unread ?? 0, teaser: latest && (!this.persist || load(this.teaserKey) !== latest.id) ? latest : null });
+    }
     this.live?.stop();
     this.live = new Live(
       this.env.socketFactory,
@@ -169,7 +177,7 @@ export class Controller {
 
   open() {
     if (this.s.open) return;
-    this.set({ open: true, unread: 0 });
+    this.set({ open: true, unread: 0, teaser: null });
     this.emit("open");
   }
   close() {
@@ -180,6 +188,29 @@ export class Controller {
   toggle() {
     if (this.s.open) this.close();
     else this.open();
+  }
+
+  /** The preview above the launcher: open its conversation. */
+  openTeaser() {
+    const m = this.s.teaser;
+    if (!m) return;
+    this.open();
+    void this.openConversation(m.ticket_id);
+  }
+
+  /** Close the preview; that message is not previewed again. */
+  dismissTeaser() {
+    const m = this.s.teaser;
+    if (!m) return;
+    if (this.persist) save(this.teaserKey, m.id);
+    this.set({ teaser: null });
+  }
+
+  /** Who a reply is from, as the visitor sees it. */
+  senderName(m: Message) {
+    const s = this.s;
+    const ai = isAiAnswer(m);
+    return m.author.user?.name ?? (ai ? readBotRef(m.author.bot)?.name || s.config?.bot?.name || t("ai") : keyBot(m)?.name || s.config?.workspace_name || t("support"));
   }
 
   home() {
@@ -505,17 +536,15 @@ export class Controller {
     this.clearTyping(tid);
     this.clearAwaiting(tid);
     const viewing = s.open && s.view === "thread" && s.active === tid;
-    if (!s.open) this.set((st) => ({ unread: st.unread + 1 }));
+    if (!s.open) this.set((st) => ({ unread: st.unread + 1, teaser: st.preview ? null : m }));
     else if (!viewing) void this.loadConversations();
-    // An agent's reply read on screen: tell the API the visitor is here, so it is not emailed too.
-    if (viewing && !s.preview && m.author.type === "user" && typeof document !== "undefined" && !document.hidden) {
+    // A reply read on screen: tell the API the visitor is here and has read it, so it is not
+    // emailed too and does not show as unread on their next visit.
+    if (viewing && !s.preview && typeof document !== "undefined" && !document.hidden) {
       void this.api.seen(tid).catch(() => {});
     }
     if (s.config?.sound && !s.preview && typeof document !== "undefined" && document.hidden) chime();
-    const ai = isAiAnswer(m);
-    const who =
-      m.author.user?.name ??
-      (ai ? readBotRef(m.author.bot)?.name || s.config?.bot?.name || t("ai") : keyBot(m)?.name || s.config?.workspace_name || t("support"));
+    const who = this.senderName(m);
     const text = (m.body_text || plainText(m.body_html.replace(/<[^>]+>/g, " "))).slice(0, 200);
     this.announce(t("newMessage", { name: who, text }));
     this.emit("message", { conversation_id: tid, body: m.body_text, from: who });

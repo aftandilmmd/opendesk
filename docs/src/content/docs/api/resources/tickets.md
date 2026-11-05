@@ -134,15 +134,35 @@ curl https://api.opendesk.sh/v1/tickets \
 
 | Field | Notes |
 | --- | --- |
-| `subject` | required |
+| `subject` | required, except for a chat |
 | `contact_id` or `contact` | an existing contact, or `{ email, name }` to find or create one |
-| `channel` | `email` or `api` |
+| `channel` | `email`, `api` or `chat` |
 | `mailbox_id` | the mailbox to send from, for email tickets |
+| `widget_id` | the widget a chat opens in |
 | `body_html` | the first message |
 | `kind` | `reply` or `note` |
 | `priority`, `severity`, `assignee_id`, `team_id`, `tags`, `fields`, `status` | optional |
 
 An `email` ticket created with a `reply` sends that reply to the contact from the mailbox. When that mailbox has no way to send (`sending: "system_off"`, see [Mailboxes](/api/resources/mailboxes/#sending-through-opendesk)), the request is `422 mailbox_cannot_send` and no ticket is created.
+
+### Start a chat
+
+A `chat` ticket opens a conversation in the chat widget on your site, with a contact the widget knows. The first message is a `reply`; the subject may be left out, and the chat is named after the message.
+
+```sh
+curl https://api.opendesk.sh/v1/tickets \
+  -H "Authorization: Bearer od_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "chat",
+    "contact_id": "0192f0c4-...",
+    "body_html": "<p>Hi Ana, your order shipped today.</p>"
+  }'
+```
+
+The widget knows a contact who signed in through [identity verification](/guides/live-chat/identity-verification/), or a visitor who used the chat in the last 90 days from the same browser. Contacts carry `chat_reachable` to say so. Anyone else, such as a contact known only by email, answers `422 chat_unreachable`: email them instead. An email a visitor typed in the widget never links them to an existing contact, so it never reveals a chat to them.
+
+Without `widget_id`, the chat opens in the widget the contact used last, else the brand's first widget that is on. The visitor sees it the next time the widget loads, with a count on the launcher and a preview of the message; while they are away it also goes to their email when the widget's email follow-up is on. A chat a person starts stays with the team: Ollie does not answer in it. The team can start at most 10 chats with one contact an hour.
 
 ## Get a ticket
 

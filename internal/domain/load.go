@@ -79,7 +79,7 @@ var TicketSelect = `SELECT t.id, t.number, t.alias, t.subject, t.status, t.prior
 	t.sla_policy_id, t.first_response_due_at, t.resolution_due_at, t.first_responded_at, t.solved_at, t.snoozed_until,
 	t.last_message_at, t.last_customer_message_at, t.waiting_since, t.unanswered_count, t.last_message_preview, t.message_count, t.spam,
 	t.csat_score, t.csat_comment, t.custom, t.fields, t.created_at, t.updated_at,
-	t.brand_id, t.widget_id, t.origin_mailbox_id, t.received_at, t.page_url, t.routed,
+	t.brand_id, t.widget_id, t.origin_mailbox_id, t.received_at, t.page_url, t.routed, t.visitor_read_at,
 	c.id, c.email, c.name, c.avatar_url,
 	u.id, u.name, u.email, u.avatar_url,
 	` + TagRefsSQL("ticket_tags", "lt.ticket_id = t.id") + `,
@@ -106,7 +106,7 @@ func ScanTicket(row pgx.Row) (Ticket, error) {
 		&slaID, &frDue, &resDue, &t.FirstRespondedAt, &t.SolvedAt, &t.SnoozedUntil,
 		&t.LastMessageAt, &t.LastCustomerMessageAt, &t.WaitingSince, &t.UnansweredCount, &t.LastMessagePreview, &t.MessageCount, &t.Spam,
 		&csatScore, &csatComment, &t.Custom, &t.Fields, &t.CreatedAt, &t.UpdatedAt,
-		&t.BrandID, &t.WidgetID, &t.OriginMailboxID, &t.ReceivedAt, &t.PageURL, &t.Routed,
+		&t.BrandID, &t.WidgetID, &t.OriginMailboxID, &t.ReceivedAt, &t.PageURL, &t.Routed, &t.VisitorReadAt,
 		&cID, &cEmail, &cName, &cAvatar, &uID, &uName, &uEmail, &uAvatar, &tags, &skills)
 	if err != nil {
 		return t, err
@@ -282,7 +282,7 @@ const HiddenMessageSQL = `(m.deleted_at IS NOT NULL OR m.sent_as_reply_id IS NOT
 var ContactSelect = `SELECT ct.id, ct.email, ct.name, ct.phone, ct.avatar_url, ct.avatar_source, ct.external_id, ct.notes, ct.custom,
 	ct.blocked, ct.created_at, ct.updated_at, co.id, co.name, co.domain, co.avatar_url,
 	(SELECT count(*) FROM tickets tk WHERE tk.contact_id = ct.id AND tk.deleted_at IS NULL),
-	ct.fields, ` + TagRefsSQL("contact_tags", "lt.contact_id = ct.id") + `
+	ct.fields, ` + TagRefsSQL("contact_tags", "lt.contact_id = ct.id") + `, ` + ChatReachableSQL + `
 FROM contacts ct LEFT JOIN companies co ON co.id = ct.company_id`
 
 func ScanContact(row pgx.Row) (Contact, error) {
@@ -291,7 +291,7 @@ func ScanContact(row pgx.Row) (Contact, error) {
 	var coName, coDomain, coAvatar *string
 	var tags []byte
 	err := row.Scan(&c.ID, &c.Email, &c.Name, &c.Phone, &c.AvatarURL, &c.AvatarSource, &c.ExternalID, &c.Notes, &c.Custom,
-		&c.Blocked, &c.CreatedAt, &c.UpdatedAt, &coID, &coName, &coDomain, &coAvatar, &c.TicketCount, &c.Fields, &tags)
+		&c.Blocked, &c.CreatedAt, &c.UpdatedAt, &coID, &coName, &coDomain, &coAvatar, &c.TicketCount, &c.Fields, &tags, &c.ChatReachable)
 	if err != nil {
 		return c, err
 	}

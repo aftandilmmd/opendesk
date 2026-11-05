@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import type { LiveState } from "./live";
-import type { AIActionStatus, Conversation, Rating, UiMessage, WidgetConfig, WidgetSession } from "./types";
+import type { AIActionStatus, Conversation, Message, Rating, UiMessage, WidgetConfig, WidgetSession } from "./types";
 
 export type View = "home" | "thread";
 
@@ -24,6 +24,8 @@ export type State = {
   /** ticket_id -> agent name, while they are typing. */
   typing: Record<string, string>;
   unread: number;
+  /** The team's latest unread reply, previewed above the launcher while the widget is closed. */
+  teaser: Message | null;
   error: string | null;
   booting: boolean;
   /** Active language; changing it re-renders every string. */
@@ -58,6 +60,7 @@ export const initialState = (): State => ({
   messages: {},
   typing: {},
   unread: 0,
+  teaser: null,
   error: null,
   booting: true,
   lang: "en",

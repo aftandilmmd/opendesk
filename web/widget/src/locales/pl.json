@@ -3,6 +3,7 @@
   "support": "Pomoc",
   "openChat": "Otwórz czat",
   "openChatUnread": "Otwórz czat, nowe: {count}",
+  "dismiss": "Zamknij",
   "closeChat": "Zamknij czat",
   "greeting": "Cześć! Jak możemy pomóc?",
   "replyTime": "Zwykle odpowiadamy w ciągu kilku godzin.",

@@ -3,6 +3,7 @@
   "support": "客服",
   "openChat": "打开聊天",
   "openChatUnread": "打开聊天，{count} 条新消息",
+  "dismiss": "关闭",
   "closeChat": "关闭聊天",
   "greeting": "你好！有什么可以帮你？",
   "replyTime": "我们通常会在几小时内回复。",

@@ -87,6 +87,19 @@ img { display: block; }
 .pos-left .badge { right: auto; left: -5px; }
 @keyframes pop { 0% { transform: scale(.5); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: none; } }
 
+/* Teaser: the team's latest unread reply above the closed launcher. */
+.teaser {
+  position: fixed; right: var(--ox, 20px); bottom: var(--gap-launcher); width: 280px; max-width: calc(100vw - 2 * var(--ox, 20px));
+  display: flex; align-items: flex-start; pointer-events: auto; background: var(--bg); color: var(--fg);
+  border-radius: var(--r-card, 10px); box-shadow: var(--shadow); animation: rise .22s var(--ease) both;
+}
+.pos-left .teaser { right: auto; left: var(--ox, 20px); }
+.teaser-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 12px 4px 12px 14px; text-align: start; border-radius: inherit; }
+.teaser-who { font-size: 12px; font-weight: 600; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.teaser-text { font-size: 13px; line-height: 18px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.teaser-x { flex: none; width: 28px; height: 28px; margin: 6px 6px 0 0; display: grid; place-items: center; border-radius: var(--r-ctl, 8px); color: var(--fg-4); transition: background .12s, color .12s; }
+.teaser-x:hover { background: var(--bg-3); color: var(--fg); }
+
 /* Panel: rises from the launcher's corner, eases out on close. */
 .panel {
   position: fixed; right: var(--ox, 20px); bottom: var(--gap-launcher); width: 384px;
@@ -152,6 +165,7 @@ img { display: block; }
 .conv-main { flex: 1; min-width: 0; }
 .conv-top { display: flex; justify-content: space-between; gap: 8px; }
 .conv-subject { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-subject.unread { font-weight: 650; }
 .conv-prev { display: block; font-size: 12.5px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .time { font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); flex: none; }
 .dot { width: 7px; height: 7px; border-radius: 99px; margin-top: 6px; flex: none; background: var(--line-2); }

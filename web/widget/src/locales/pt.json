@@ -3,6 +3,7 @@
   "support": "Suporte",
   "openChat": "Abrir chat",
   "openChatUnread": "Abrir chat, {count} novas",
+  "dismiss": "Dispensar",
   "closeChat": "Fechar chat",
   "greeting": "Olá! Como podemos ajudar?",
   "replyTime": "Costumamos responder em poucas horas.",
