@@ -65,6 +65,7 @@ import { spaceUi, useSpaceUi, type EditorTarget } from "@/lib/spaces/store";
 import { tone } from "@/lib/tones";
 import { buildRow, everywhereIcons, InWorkspace, useRowLabels, type RowLabels } from "./rows";
 import { SpaceGlyph, spaceIcons, spaceTone } from "./icons";
+import { sameJSON } from "@/lib/sameJSON";
 
 const sectionIcons: Record<SidebarSectionId, ReactNode> = { favorites: <Star />, inbox: <Inbox />, mail: <Mail />, teams: <Users />, views: <Layers />, workspace: <Building2 /> };
 
@@ -451,7 +452,7 @@ function SpaceEditor({ target, make }: { target: EditorTarget; make: () => Space
   const problems = spaceProblems(draft, members);
   const listProblems = starter ? [] : spacesProblems(replaceSpace(spaces ?? [], draft), members).filter((p) => p.code !== "space");
   const blocked = problems.length > 0 || listProblems.length > 0;
-  const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
+  const dirty = !sameJSON(draft, initial);
   const distinct = new Set(draft.sections.flatMap((s) => s.items.map((i) => i.workspace_id)));
   const nameProblem = problems.find((p) => p.code === "name_required" || p.code === "name_too_long");
   const general = [...problems.filter((p) => !("section" in p) && p !== nameProblem).map((p) => p.code), ...listProblems.map((p) => p.code)];

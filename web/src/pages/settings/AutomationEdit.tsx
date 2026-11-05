@@ -60,6 +60,7 @@ import { q, qk, removeFromList, upsertInList } from "@/lib/queries";
 import { atLeast, useRole } from "@/lib/session";
 import { cn } from "@/lib/cn";
 import { tone, type Tone } from "@/lib/tones";
+import { sameJSON } from "@/lib/sameJSON";
 
 /** Built-in fields an automation offers: call fields only on call_ended, and never a destination's time. */
 const automationFields = (trigger: AutomationTrigger, severity: boolean) => (f: ConditionField) => f !== "time" && (trigger === "call_ended" || !callFields.has(f)) && (severity || f !== "severity");
@@ -152,7 +153,7 @@ export default function AutomationEdit() {
   if (draft && condKeys.length !== draft.conditions.length) setCondKeys(draft.conditions.map(() => seq.current++));
   if (draft && actKeys.length !== draft.actions.length) setActKeys(draft.actions.map(() => seq.current++));
 
-  const dirty = !!draft && !!initial && !saved && JSON.stringify(draft) !== JSON.stringify(initial);
+  const dirty = !!draft && !!initial && !saved && !sameJSON(draft, initial);
 
   const save = useMutation({
     mutationFn: (d: Draft) => {

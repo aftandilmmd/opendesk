@@ -67,6 +67,7 @@ import { tone } from "@/lib/tones";
 import { isMicrosoftHost, mailboxHost, offersNoTls, readsDirectly, receivesOverImap, sendOnly, signedInProvider } from "@/lib/mailHost";
 import { q, qk, upsertInList } from "@/lib/queries";
 import { atLeast, useRole } from "@/lib/session";
+import { sameJSON } from "@/lib/sameJSON";
 
 type Draft = {
   name: string;
@@ -206,7 +207,7 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
   // Someone else saved: take their version unless we are mid-edit.
   const [prevBase, setPrevBase] = useState(base);
   useEffect(() => {
-    if (JSON.stringify(draft) === JSON.stringify(prevBase)) setDraft(base);
+    if (sameJSON(draft, prevBase)) setDraft(base);
     setPrevBase(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
@@ -242,7 +243,7 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
   const aliasTeams = aliasTeamsFor(draft.alias_teams, draft.aliases, !!teams.find((x) => x.id === draft.team_id)?.private);
   const aliasSettings = aliasSettingsPatch(draft.alias_settings, draft.aliases, base.alias_settings);
   const setAlias = (alias: string, d: AliasDraft) => setDraft((x) => ({ ...x, alias_settings: { ...x.alias_settings, [alias]: d } }));
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = !sameJSON(draft, base);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const setCfg = <K extends keyof MailboxConfig>(k: K, v: MailboxConfig[K]) => setDraft((d) => ({ ...d, config: { ...d.config, [k]: v } }));
 
@@ -289,10 +290,10 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
         display_name: draft.display_name.trim(),
         team_id: draft.team_id ?? "", // "" clears the team; null would mean "unchanged"
         ...(draft.brand_id && draft.brand_id !== base.brand_id ? { brand_id: draft.brand_id } : {}),
-        ...(JSON.stringify(draft.aliases) !== JSON.stringify(base.aliases) ? { aliases: draft.aliases } : {}),
+        ...(!sameJSON(draft.aliases, base.aliases) ? { aliases: draft.aliases } : {}),
         ...(sameAliasTeams(aliasTeams, base.alias_teams) ? {} : { alias_teams: aliasTeams }),
         ...(aliasSettings ? { alias_settings: aliasSettings } : {}),
-        ...(JSON.stringify(draft.trusted_form_senders) !== JSON.stringify(base.trusted_form_senders) ? { trusted_form_senders: draft.trusted_form_senders } : {}),
+        ...(!sameJSON(draft.trusted_form_senders, base.trusted_form_senders) ? { trusted_form_senders: draft.trusted_form_senders } : {}),
         ...(draft.from_name_format !== base.from_name_format ? { from_name_format: draft.from_name_format.trim() } : {}),
         signature_html: draft.signature_html,
         auto_reply_enabled: draft.auto_reply_enabled,
@@ -303,7 +304,7 @@ function MailboxEditor({ mailbox }: { mailbox: Mailbox }) {
         ...(draft.ai_answers_mode !== base.ai_answers_mode ? { ai_answers_mode: draft.ai_answers_mode } : {}),
         ...(draft.ai_answers_outside_hours !== base.ai_answers_outside_hours ? { ai_answers_outside_hours: draft.ai_answers_outside_hours } : {}),
         ...(draft.bot_id !== base.bot_id ? { bot_id: draft.bot_id } : {}),
-        ...(JSON.stringify(draft.personal_replies) !== JSON.stringify(base.personal_replies) ? { personal_replies: draft.personal_replies } : {}),
+        ...(!sameJSON(draft.personal_replies, base.personal_replies) ? { personal_replies: draft.personal_replies } : {}),
         ...(draft.outbound_kind !== base.outbound_kind ? { outbound_kind: draft.outbound_kind } : {}),
         // Only the server settings and the Gmail or Outlook options: the rest of config is the API's.
         ...(imap || smtp || tidyChanged

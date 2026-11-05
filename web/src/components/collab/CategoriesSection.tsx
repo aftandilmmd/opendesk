@@ -25,6 +25,7 @@ import { storeAccount } from "@/lib/collab/hooks";
 import { cn } from "@/lib/cn";
 import { q, qk } from "@/lib/queries";
 import { tone } from "@/lib/tones";
+import { sameJSON } from "@/lib/sameJSON";
 
 type Form = { mode: MailAccountCategories["mode"]; categories: MailCategory[]; ai: boolean };
 
@@ -143,7 +144,7 @@ export function CategoriesSection({ account }: { account: MailAccount }) {
 }
 
 function sameList(a: MailCategory[], b: MailCategory[]) {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return sameJSON(a, b);
 }
 function sameForm(a: Form, b: Form) {
   return a.mode === b.mode && a.ai === b.ai && (a.mode !== "custom" || sameList(a.categories, b.categories));

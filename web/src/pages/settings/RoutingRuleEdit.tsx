@@ -30,6 +30,7 @@ import { cn } from "@/lib/cn";
 import { dur, springs } from "@/lib/motion";
 import { q, qk, removeFromList, upsertInList } from "@/lib/queries";
 import { atLeast, useRole } from "@/lib/session";
+import { sameJSON } from "@/lib/sameJSON";
 
 const MAX_CONDITIONS = 20;
 const MAX_AI = 3;
@@ -103,12 +104,12 @@ function RuleEditor({ rule, back }: { rule: RoutingRule | null; back: React.Reac
   const [prevBase, setPrevBase] = useState(base);
   const [tried, setTried] = useState(false);
   useEffect(() => {
-    if (JSON.stringify(draft) === JSON.stringify(prevBase)) setDraft(base);
+    if (sameJSON(draft, prevBase)) setDraft(base);
     setPrevBase(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = !sameJSON(draft, base);
   const condBad = (c: RoutingCondition) => (c.field === "ai_decide" ? (c.question ?? "").trim().length < 3 : !c.value.trim());
   const aiCount = draft.conditions.filter((c) => c.field === "ai_decide").length;
   const problems = { name: !draft.name.trim(), team: !draft.team_id, conditions: draft.conditions.some(condBad) || !draft.conditions.length, ai: aiCount > MAX_AI };

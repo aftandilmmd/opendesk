@@ -31,6 +31,7 @@ import { q, qk } from "@/lib/queries";
 import { atLeast, useRole } from "@/lib/session";
 import { AI_TONE, tone } from "@/lib/tones";
 import { cn } from "@/lib/cn";
+import { sameJSON } from "@/lib/sameJSON";
 
 const PLAYGROUND = "/settings/ai/playground";
 const TESTS = "/settings/ai/tests";
@@ -53,7 +54,7 @@ export default function AgentBehaviour() {
     if (!touched) setDraft(base);
   }, [base, touched]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = !sameJSON(draft, base);
   // Unsaved edits stay available to the playground, and come back here.
   useEffect(() => {
     setKept(dirty ? { ai: draft } : null);
@@ -68,7 +69,7 @@ export default function AgentBehaviour() {
     mutationFn: async () => {
       const patch: Partial<AISettings> = {};
       for (const k of Object.keys(draft) as (keyof AgentSettings)[]) {
-        if (JSON.stringify(draft[k]) !== JSON.stringify(base[k])) (patch as Record<string, unknown>)[k] = draft[k];
+        if (!sameJSON(draft[k], base[k])) (patch as Record<string, unknown>)[k] = draft[k];
       }
       return Object.keys(patch).length ? api.ai.updateSettings(patch) : null;
     },

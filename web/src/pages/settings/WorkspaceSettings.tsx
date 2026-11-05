@@ -34,6 +34,7 @@ import type { Priority, TicketStatus, Workspace, WorkspaceSettings as WS } from 
 import { q, qk } from "@/lib/queries";
 import { atLeast, reloadSession, updateWorkspace, useRole, useSession } from "@/lib/session";
 import { LOCALE_NAMES, matchLocale, SUPPORTED } from "@/i18n";
+import { sameJSON } from "@/lib/sameJSON";
 
 type DisplaySettings = { status_labels?: Overrides<TicketStatus>; priority_labels?: Overrides<Priority>; send_and_finish_button?: boolean; severity_enabled?: boolean };
 type Draft = {
@@ -167,7 +168,7 @@ export default function WorkspaceSettings() {
 
   const mailUsable = ws.mail_disabled_reason !== "instance_disabled" && ws.mail_disabled_reason !== "plan";
   const base = toDraft(ws);
-  const dirty = JSON.stringify(base) !== JSON.stringify(draft);
+  const dirty = !sameJSON(base, draft);
   const set = <K extends keyof Draft["settings"]>(k: K, v: Draft["settings"][K]) => setDraft({ ...draft, settings: { ...draft.settings, [k]: v } });
   const colorOk = !draft.settings.brand_color || hexRe.test(draft.settings.brand_color);
   // The workspace's help center is the default brand's.
