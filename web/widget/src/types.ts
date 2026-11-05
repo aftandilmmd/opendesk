@@ -49,6 +49,8 @@ export type WidgetConfig = {
   offset_x?: number;
   /** 0..200 px from the bottom. */
   offset_y?: number;
+  /** The host's stacking order on the page; 0 = DEFAULT_Z_INDEX. */
+  z_index?: number;
   launcher?: WidgetLauncher;
   /** "" = the translated "Chat with us". */
   launcher_label?: string;

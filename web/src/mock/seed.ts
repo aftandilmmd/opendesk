@@ -182,6 +182,7 @@ export function defaultWidget(): WidgetSettings {
     position: "right",
     offset_x: 20,
     offset_y: 20,
+    z_index: 0,
     launcher: "icon",
     launcher_label: "",
     radius: "soft",

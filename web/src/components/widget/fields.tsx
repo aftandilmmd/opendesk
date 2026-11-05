@@ -237,6 +237,7 @@ export function toWidgetConfig(d: WidgetSettings, ws: Workspace | null, members:
     position: d.position,
     offset_x: d.offset_x,
     offset_y: d.offset_y,
+    z_index: d.z_index,
     launcher: d.launcher,
     launcher_label: tidy(d.launcher_label),
     radius: d.radius,

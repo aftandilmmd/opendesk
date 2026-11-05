@@ -3,6 +3,7 @@ package hd
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"slices"
 	"time"
 
@@ -36,6 +37,7 @@ type WidgetSettings struct {
 	Position      string   `json:"position" enum:"right,left"`
 	OffsetX       int      `json:"offset_x" minimum:"0" maximum:"200"`
 	OffsetY       int      `json:"offset_y" minimum:"0" maximum:"200"`
+	ZIndex        int      `json:"z_index" minimum:"0" maximum:"2147483647" doc:"The widget's stacking order on the page; 0 = the default, above the page"`
 	Launcher      string   `json:"launcher" enum:"icon,label"`
 	LauncherLabel string   `json:"launcher_label"`
 	Radius        string   `json:"radius" enum:"square,soft,round"`
@@ -99,6 +101,7 @@ func (w *WidgetSettings) normalize() {
 		w.Radius = d.Radius
 	}
 	w.OffsetX, w.OffsetY = min(max(w.OffsetX, 0), 200), min(max(w.OffsetY, 0), 200)
+	w.ZIndex = min(max(w.ZIndex, 0), math.MaxInt32)
 	if w.AllowedOrigins == nil {
 		w.AllowedOrigins = []string{}
 	}

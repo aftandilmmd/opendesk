@@ -35,6 +35,7 @@ type widgetSettingsPatch struct {
 	Position        *string    `json:"position,omitempty" enum:"right,left"`
 	OffsetX         *int       `json:"offset_x,omitempty" minimum:"0" maximum:"200"`
 	OffsetY         *int       `json:"offset_y,omitempty" minimum:"0" maximum:"200"`
+	ZIndex          *int       `json:"z_index,omitempty" minimum:"0" maximum:"2147483647" doc:"0 = the default, above the page"`
 	Launcher        *string    `json:"launcher,omitempty" enum:"icon,label"`
 	LauncherLabel   *string    `json:"launcher_label,omitempty" maxLength:"200"`
 	Radius          *string    `json:"radius,omitempty" enum:"square,soft,round"`
@@ -169,6 +170,10 @@ func applyPatch(ctx context.Context, q db.Querier, wid uuid.UUID, w hd.WidgetSet
 	if b.OffsetY != nil {
 		w.OffsetY = *b.OffsetY
 		fields = append(fields, "offset_y")
+	}
+	if b.ZIndex != nil {
+		w.ZIndex = *b.ZIndex
+		fields = append(fields, "z_index")
 	}
 	for name, t := range map[string]struct {
 		in  *string

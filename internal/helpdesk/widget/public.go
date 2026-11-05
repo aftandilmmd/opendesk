@@ -165,6 +165,7 @@ type widgetConfig struct {
 		Position        string        `json:"position" enum:"right,left"`
 		OffsetX         int           `json:"offset_x"`
 		OffsetY         int           `json:"offset_y"`
+		ZIndex          int           `json:"z_index" doc:"The widget's stacking order on the page; 0 = the default"`
 		Launcher        string        `json:"launcher" enum:"icon,label"`
 		LauncherLabel   string        `json:"launcher_label"`
 		Radius          string        `json:"radius" enum:"square,soft,round"`
@@ -317,7 +318,7 @@ func (h *handler) registerPublic(api huma.API) {
 				b.AvatarURL = g.Logo
 			}
 			b.LauncherIconURL = domain.Avatar(g.Images["launcher"])
-			b.Theme, b.Position, b.OffsetX, b.OffsetY = ws.Theme, ws.Position, ws.OffsetX, ws.OffsetY
+			b.Theme, b.Position, b.OffsetX, b.OffsetY, b.ZIndex = ws.Theme, ws.Position, ws.OffsetX, ws.OffsetY, ws.ZIndex
 			b.Launcher, b.LauncherLabel, b.Radius = ws.Launcher, ws.LauncherLabel, ws.Radius
 			b.Title, b.Subtitle, b.Suggestions, b.Sound = ws.Title, ws.Subtitle, ws.Suggestions, ws.Sound
 			b.Attachments = ws.Attachments

@@ -96,6 +96,7 @@ export function resolveConfig(raw: Partial<WidgetConfig> | null | undefined): Wi
     position: oneOf(r.position, ["right", "left"] as const, "right"),
     offset_x: clamp(r.offset_x, 0, 200, 20),
     offset_y: clamp(r.offset_y, 0, 200, 20),
+    z_index: clamp(r.z_index, 0, MAX_Z_INDEX, 0),
     launcher: oneOf(r.launcher, ["icon", "label"] as const, "icon"),
     launcher_label: str(r.launcher_label, 24),
     radius: oneOf(r.radius, ["square", "soft", "round"] as const, "soft"),
@@ -155,6 +156,10 @@ export const RADII: Record<WidgetRadius, { panel: number; bubble: number; launch
   round: { panel: 24, bubble: 20, launcher: "999px", ctl: "999px", card: 16, bar: 22, av: "999px" },
 };
 
+/** Above nearly any page; a workspace lowers it (z_index) so its own drawers and dialogs cover the widget. */
+export const DEFAULT_Z_INDEX = 2147483000;
+const MAX_Z_INDEX = 2147483647;
+
 /** CSS custom properties on the widget host for a resolved config. */
 export function hostVars(c: WidgetConfig): Record<string, string> {
   const r = RADII[c.radius ?? "soft"];
@@ -168,6 +173,7 @@ export function hostVars(c: WidgetConfig): Record<string, string> {
     "--r-av": r.av,
     "--ox": `${c.offset_x ?? 20}px`,
     "--oy": `${c.offset_y ?? 20}px`,
+    "--oz": String(c.z_index || DEFAULT_Z_INDEX),
   };
   if (isHex(c.brand_color)) {
     const hex = c.brand_color.startsWith("#") ? c.brand_color : `#${c.brand_color}`;

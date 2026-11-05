@@ -984,6 +984,7 @@ interface WidgetSettings {
   position: "right" | "left"            // default "right"
   offset_x: number                      // 0..200 px from the side, default 20
   offset_y: number                      // 0..200 px from the bottom, default 20
+  z_index: number                       // 0..2147483647, the widget's stacking order on the page; default 0 = 2147483000, above the page
   launcher: "icon" | "label"            // default "icon"; "label" shows the icon and launcher_label
   launcher_label: string                // up to 24 chars; "" = the translated "Chat with us"
   radius: "square" | "soft" | "round"   // corner style of the panel, bubbles and launcher, default "soft"
@@ -1014,6 +1015,7 @@ interface WidgetConfig {
   avatar_url: string | null             // the widget's avatar, else the brand logo, else the workspace logo
   launcher_icon_url: string | null
   theme: "auto" | "light" | "dark"; position: "right" | "left"; offset_x: number; offset_y: number
+  z_index: number                       // the widget's stacking order on the page; 0 = the default (2147483000)
   launcher: "icon" | "label"; launcher_label: string; radius: "square" | "soft" | "round"
   title: string                         // the widget's title, else the brand name
   subtitle: string; suggestions: string[]; sound: boolean

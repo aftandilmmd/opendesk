@@ -91,6 +91,7 @@ function withDefaults(s: WS): WS {
     position: s.position ?? "right",
     offset_x: s.offset_x ?? 20,
     offset_y: s.offset_y ?? 20,
+    z_index: s.z_index ?? 0,
     launcher: s.launcher ?? "icon",
     launcher_label: s.launcher_label ?? "",
     radius: s.radius ?? "soft",
@@ -407,6 +408,22 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
                   <span className="text-xs text-fg-3">{t("widget.offsetXShort")}</span>
                   <Stepper value={s.offset_y} onChange={(offset_y) => set({ offset_y })} min={0} max={200} step={4} suffix="px" aria-label={t("widget.offsetY")} className="ml-2 w-[124px]" />
                   <span className="text-xs text-fg-3">{t("widget.offsetYShort")}</span>
+                </div>
+              </Row>
+              <Row label={t("widget.zIndex")} description={t("widget.zIndexHint")} stack>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Segmented
+                    size="xs"
+                    value={s.z_index ? "custom" : "default"}
+                    onChange={(v) => set({ z_index: v === "custom" ? s.z_index || 1000 : 0 })}
+                    options={[
+                      { value: "default", label: t("widget.zIndexDefault") },
+                      { value: "custom", label: t("widget.zIndexCustom") },
+                    ]}
+                  />
+                  {s.z_index > 0 && (
+                    <Stepper value={s.z_index} onChange={(z_index) => set({ z_index })} min={1} max={2147483647} step={10} aria-label={t("widget.zIndex")} className="w-[160px]" />
+                  )}
                 </div>
               </Row>
               <Row label={t("widget.radius")} description={t("widget.radiusHint")}>
