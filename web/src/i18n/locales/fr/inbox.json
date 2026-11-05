@@ -667,6 +667,8 @@
     "subjectPlaceholder": "De quoi s’agit-il ?",
     "toPlaceholder": "Recherchez des contacts ou saisissez une adresse e-mail",
     "noContacts": "Aucun contact. Saisissez une adresse e-mail complète pour l’utiliser.",
+    "toPlaceholderChat": "Rechercher des contacts",
+    "noContactsChat": "Aucun contact ne correspond.",
     "startTyping": "Commencez à écrire",
     "use": "Utiliser",
     "change": "Changer",

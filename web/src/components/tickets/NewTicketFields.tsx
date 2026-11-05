@@ -74,8 +74,8 @@ export function NewTicketTo({ s }: { s: NewTicketState }) {
             items={toItems}
             value={null}
             width={380}
-            placeholder={tr("newTicket.toPlaceholder")}
-            emptyText={toQuery ? tr("newTicket.noContacts") : tr("newTicket.startTyping")}
+            placeholder={chat ? tr("newTicket.toPlaceholderChat") : tr("newTicket.toPlaceholder")}
+            emptyText={toQuery ? (chat ? tr("newTicket.noContactsChat") : tr("newTicket.noContacts")) : tr("newTicket.startTyping")}
             onSelect={(v) => {
               const contact = contacts.data?.data.find((c) => c.id === v);
               // The page's contact card shows them at once, before its own fetch answers.
@@ -90,7 +90,7 @@ export function NewTicketTo({ s }: { s: NewTicketState }) {
                 type="button"
                 className="flex h-8 w-full items-center rounded-md border border-line bg-surface px-2.5 text-left text-sm text-fg-4 outline-none transition-colors hover:border-line-strong focus-visible:border-fg-4 focus-visible:shadow-[0_0_0_3px_var(--focus)]"
               >
-                {tr("newTicket.toPlaceholder")}
+                {chat ? tr("newTicket.toPlaceholderChat") : tr("newTicket.toPlaceholder")}
               </button>
             }
             onQueryChange={setToQuery}

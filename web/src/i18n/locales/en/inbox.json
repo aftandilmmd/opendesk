@@ -687,6 +687,8 @@
     "subjectPlaceholder": "What is this about?",
     "toPlaceholder": "Search contacts or type an email",
     "noContacts": "No contacts. Type a full email to use it.",
+    "toPlaceholderChat": "Search contacts",
+    "noContactsChat": "No contacts match.",
     "startTyping": "Start typing",
     "use": "Use",
     "change": "Change",
