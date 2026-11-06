@@ -135,7 +135,7 @@ struct AccountPasskeysSection: View {
                 }
                 if !store.passkeys.isEmpty { AccountDivider() }
                 Button(action: add) {
-                    AccountRow(symbol: "plus", tone: .green, title: store.passkeys.isEmpty ? "Add a passkey" : "Add another passkey", subtitle: store.passkeys.isEmpty ? "Saved on this iPhone and in iCloud Keychain" : nil) {
+                    AccountRow(symbol: "plus", tone: .green, title: store.passkeys.isEmpty ? "Add a passkey" : "Add another passkey", subtitle: store.passkeys.isEmpty ? "Saved on this \(AppInfo.device) and in iCloud Keychain" : nil) {
                         if adding { ProgressView().controlSize(.small) }
                     }
                 }
@@ -196,7 +196,7 @@ struct AccountPasskeysSection: View {
             } catch let failure as AccountPasskeyRegistrar.Failure where failure == .cancelled {
                 return
             } catch let error as APIError where error.code == "passkey_exists" {
-                env.toasts.show("This iPhone already has a passkey for your account.", kind: .info)
+                env.toasts.show("This \(AppInfo.device) already has a passkey for your account.", kind: .info)
             } catch let error as APIError where error.code == "passkey_limit" {
                 env.toasts.show("An account can have 25 passkeys. Remove one to add another.", kind: .error)
             } catch {

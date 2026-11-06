@@ -50,7 +50,7 @@ struct KBListView: View {
                 if env.session.canWrite {
                     HeaderPrimaryButton(symbol: "plus", label: store.mode == .changelog ? "New update" : "New article") {
                         Haptics.tap()
-                        env.router.push(store.mode == .changelog ? .changelogEntry("new") : .article("new"))
+                        env.router.pick(store.mode == .changelog ? .changelogEntry("new") : .article("new"))
                     }
                 }
             }
@@ -147,7 +147,7 @@ struct KBListView: View {
                         drafts: store.draftCount,
                         views: store.totalViews,
                         top: store.topArticle,
-                        onTop: { env.router.push(.article($0.id)) },
+                        onTop: { env.router.pick(.article($0.id)) },
                         onDrafts: { withAnimation(Motion.snappy) { store.status = .draft } }
                     )
                     .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 6, trailing: 16))
@@ -157,7 +157,7 @@ struct KBListView: View {
                     if canDraft {
                         KBOllieCard {
                             KBDraftIntent.request()
-                            env.router.push(.article("new"))
+                            env.router.pick(.article("new"))
                         }
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowSeparator(.hidden)
@@ -190,7 +190,7 @@ struct KBListView: View {
 
                 ForEach(store.articles) { article in
                     Button {
-                        env.router.push(.article(article.id))
+                        env.router.pick(.article(article.id))
                     } label: {
                         KBArticleRow(
                             article: article,
@@ -249,7 +249,7 @@ struct KBListView: View {
                 title: "Write your first article",
                 message: "Articles answer the questions customers ask most. Published ones show on your help center and help Ollie answer.",
                 actionTitle: env.session.canWrite ? "New article" : nil
-            ) { env.router.push(.article("new")) }
+            ) { env.router.pick(.article("new")) }
         } else if store.status == .draft {
             EmptyState(symbol: "doc.badge.ellipsis", title: "No drafts", message: "Articles you save without publishing wait here.")
         } else if store.status == .published {
@@ -260,13 +260,13 @@ struct KBListView: View {
                 title: "This collection is empty",
                 message: "Move an article here from its details, or write a new one.",
                 actionTitle: env.session.canWrite ? "New article" : nil
-            ) { env.router.push(.article("new")) }
+            ) { env.router.pick(.article("new")) }
         }
     }
 
     @ViewBuilder
     private func menu(_ article: KBArticle) -> some View {
-        Button { env.router.push(.article(article.id)) } label: { Label("Open", systemImage: "doc.text") }
+        Button { env.router.pick(.article(article.id)) } label: { Label("Open", systemImage: "doc.text") }
         if let url = store.publicURL(for: article) {
             Link(destination: url) { Label("Open in help center", systemImage: "arrow.up.right.square") }
             Button {
@@ -377,7 +377,7 @@ struct KBListView: View {
 
             ForEach(entries) { entry in
                 Button {
-                    env.router.push(.changelogEntry(entry.id))
+                    env.router.pick(.changelogEntry(entry.id))
                 } label: {
                     ChangelogRow(entry: entry)
                 }
@@ -420,7 +420,7 @@ struct KBListView: View {
                 title: "No updates yet",
                 message: "Tell customers what's new, improved and fixed. Updates show on your help center's changelog and in its feed.",
                 actionTitle: env.session.canWrite ? "New update" : nil
-            ) { env.router.push(.changelogEntry("new")) }
+            ) { env.router.pick(.changelogEntry("new")) }
         } else {
             EmptyState(symbol: "line.3.horizontal.decrease", title: "Nothing here", message: "No updates match these filters.", actionTitle: "Show all updates") {
                 withAnimation(Motion.snappy) {
@@ -433,7 +433,7 @@ struct KBListView: View {
 
     @ViewBuilder
     private func changelogMenu(_ entry: ChangelogEntry) -> some View {
-        Button { env.router.push(.changelogEntry(entry.id)) } label: { Label("Open", systemImage: "doc.text") }
+        Button { env.router.pick(.changelogEntry(entry.id)) } label: { Label("Open", systemImage: "doc.text") }
         if let url = changelog.publicURL(for: entry, helpCenter: store.helpCenterURL) {
             Link(destination: url) { Label("Open in help center", systemImage: "arrow.up.right.square") }
             Button {
@@ -465,7 +465,7 @@ struct KBListView: View {
             store.collectionID = nil
         case "kb-new-draft":
             KBDraftIntent.request()
-            env.router.push(.article("new"))
+            env.router.pick(.article("new"))
         default:
             if action.hasPrefix("kb-collection-"), let n = Int(action.dropFirst("kb-collection-".count)), store.collections.indices.contains(n - 1) {
                 store.collectionID = store.collections[n - 1].id

@@ -14,6 +14,9 @@ enum Preferences {
         static let appearance = "appearance"
         static let askedPush = "push.asked"
         static func workspace(_ server: String) -> String { "workspace." + server }
+        static func accountWorkspace(_ account: String) -> String { "workspace.account." + account }
+        static func pushAccount(_ server: String) -> String { "push.account." + server }
+        static func pushToken(_ account: String) -> String { "push.token." + account }
         static func device(_ server: String) -> String { "push.device." + server }
         static func folder(_ server: String) -> String { "inbox.folder." + server }
         static func sort(_ list: String) -> String { "inbox.sort." + list }
@@ -39,6 +42,33 @@ enum Preferences {
 
     static func setWorkspaceID(_ id: String?, for instance: Instance) {
         defaults.set(id, forKey: Key.workspace(instance.storageKey))
+    }
+
+    /// The workspace an account last had open; each account on a server keeps its own.
+    static func workspaceID(for account: DeviceAccount) -> String? {
+        defaults.string(forKey: Key.accountWorkspace(account.id))
+    }
+
+    static func setWorkspaceID(_ id: String?, for account: DeviceAccount) {
+        defaults.set(id, forKey: Key.accountWorkspace(account.id))
+    }
+
+    /// The account this phone's push device on a server belongs to (a server keeps one device per token).
+    static func pushAccount(for instance: Instance) -> String? {
+        defaults.string(forKey: Key.pushAccount(instance.storageKey))
+    }
+
+    static func setPushAccount(_ id: String?, for instance: Instance) {
+        defaults.set(id, forKey: Key.pushAccount(instance.storageKey))
+    }
+
+    /// A digest of the APNs token last registered for an account, so it is sent again only when it changes.
+    static func pushTokenDigest(for accountID: String) -> String? {
+        defaults.string(forKey: Key.pushToken(accountID))
+    }
+
+    static func setPushTokenDigest(_ digest: String?, for accountID: String) {
+        defaults.set(digest, forKey: Key.pushToken(accountID))
     }
 
     /// The `Device` id this install registered on a server, for PATCH and DELETE.

@@ -154,7 +154,7 @@ struct AccountPasswordSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                AccountSheetHeader(title: "Change password", subtitle: "Other devices are signed out. This iPhone stays signed in.") { dismiss() }
+                AccountSheetHeader(title: "Change password", subtitle: "Other devices are signed out. This \(AppInfo.device) stays signed in.") { dismiss() }
                 ODTextField(label: "Current password", text: $current, secure: true, contentType: .password)
                 VStack(alignment: .leading, spacing: 8) {
                     ODTextField(label: "New password", text: $next, secure: true, contentType: .newPassword, submitLabel: .done) { save() }

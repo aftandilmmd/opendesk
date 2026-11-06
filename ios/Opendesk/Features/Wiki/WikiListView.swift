@@ -109,7 +109,7 @@ struct WikiListView: View {
                 .buttonStyle(RowPressStyle())
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
-                .listRowBackground(Theme.surface)
+                .listRowBackground(rowBackground(node.id))
                 .contextMenu { menu(node) }
             }
         }
@@ -122,7 +122,7 @@ struct WikiListView: View {
             }, onOpen: { open(item.node.id) })
             .listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
-            .listRowBackground(Theme.surface)
+            .listRowBackground(rowBackground(item.node.id))
             .contextMenu { menu(item.node) }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if env.session.canWrite {
@@ -174,9 +174,14 @@ struct WikiListView: View {
                     .buttonStyle(RowPressStyle())
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
-                    .listRowBackground(Theme.surface)
+                    .listRowBackground(rowBackground(hit.id))
             }
         }
+    }
+
+    /// The page open beside the list stands out in it.
+    private func rowBackground(_ id: String) -> Color {
+        env.router.picked == .wikiPage(id) ? Theme.hover : Theme.surface
     }
 
     private func header(_ text: String) -> some View {
@@ -258,7 +263,7 @@ struct WikiListView: View {
     }
 
     private func open(_ id: String) {
-        env.router.push(.wikiPage(id))
+        env.router.pick(.wikiPage(id))
     }
 
     private func create(_ body: WikiPageCreate) {

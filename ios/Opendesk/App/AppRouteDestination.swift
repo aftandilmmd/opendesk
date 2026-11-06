@@ -18,12 +18,31 @@ struct AppRouteDestination: View {
     }
 }
 
-/// The Inbox tab's root for the area picked in the menu.
+/// Beside an area's list in columns, before a row opens anything.
+struct AreaPlaceholder: View {
+    @Environment(AppEnvironment.self) private var env
+
+    var body: some View {
+        switch env.router.shownArea {
+        case .tickets: ColumnPlaceholder(symbol: "tray", title: "Pick a ticket", message: "Its conversation opens here, beside the list.")
+        case .mail: ColumnPlaceholder(symbol: "envelope", title: "Pick a conversation", message: "It opens here, beside your mail.")
+        case .contacts: ColumnPlaceholder(symbol: "person.2", title: "Pick a contact", message: "Their details and tickets open here.")
+        case .companies: ColumnPlaceholder(symbol: "building.2", title: "Pick a company", message: "Its people and tickets open here.")
+        case .kb: ColumnPlaceholder(symbol: "book.closed", title: "Pick an article", message: "It opens here to read or edit.")
+        case .wiki: ColumnPlaceholder(symbol: "book.pages", title: "Pick a page", message: "It opens here to read or edit.")
+        case .reports: ColumnPlaceholder(symbol: "chart.bar.xaxis", title: "Reports", message: "Pick a report in the list.")
+        case .everywhere: ColumnPlaceholder(symbol: "globe", title: "Pick a row", message: "This workspace's open here. Another workspace's open in that workspace.")
+        }
+    }
+}
+
+/// The Inbox tab's root for the area picked in the menu (the workspace's home while the
+/// picked one is turned off).
 struct AreaRootView: View {
     @Environment(AppEnvironment.self) private var env
 
     var body: some View {
-        switch env.router.area {
+        switch env.router.shownArea {
         case .tickets: InboxListView()
         case .mail: MailListView()
         case .contacts: ContactsListView()
@@ -31,6 +50,7 @@ struct AreaRootView: View {
         case .kb: KBListView()
         case .wiki: WikiListView()
         case .reports: ReportsView()
+        case .everywhere: EverywhereListView()
         }
     }
 }

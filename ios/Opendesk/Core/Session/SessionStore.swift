@@ -8,7 +8,12 @@ enum SignInOutcome: Sendable, Equatable {
     case link(token: String, email: String)
 }
 
-/// The signed-in person, the server they're on, and the open workspace.
+/// The accounts signed in on this phone, the open one (its person, server and
+/// workspace), and moving between them.
+///
+/// Each account keeps its own session: a refresh token in the Keychain under its
+/// own item (`DeviceAccount.tokenKey`) and one `APIClient` for the app's life, so
+/// its refreshes never race. Accounts may be on different servers.
 @MainActor
 @Observable
 final class SessionStore {
@@ -21,29 +26,41 @@ final class SessionStore {
     }
 
     private(set) var phase: Phase = .launching
-    private(set) var instance: Instance = Preferences.instance ?? .cloud
+    /// The open account's server (the last one used while signed out).
+    private(set) var instance: Instance
     private(set) var authConfig: AuthConfig?
-    private(set) var authConfigError: String?
     private(set) var user: User? {
         // Times of day follow the signed-in person's clock.
         didSet { ClockSetting.shared.format = TimeFormat(user?.timeFormat) }
     }
     private(set) var memberships: [Membership] = []
     private(set) var workspace: Membership?
+    /// Every account on this phone, in the order they were added.
+    private(set) var accounts: [DeviceAccount] = []
+    private(set) var activeAccountID: String?
+    /// The signed-out screen's sign-in.
+    let signInFlow: SignInFlow
 
     @ObservationIgnored private(set) var api: APIClient
     @ObservationIgnored private(set) var attest: AppAttestClient
+    @ObservationIgnored private var clients: [String: APIClient] = [:]
+    @ObservationIgnored private var configs: [String: AuthConfig] = [:]
+    @ObservationIgnored private var switching = false
 
-    /// Set by the environment: start and stop everything that belongs to a workspace.
+    /// Set by the environment: start everything that belongs to a workspace.
     @ObservationIgnored var onReady: ((Membership) -> Void)?
-    @ObservationIgnored var onEnded: ((_ instance: Instance) async -> Void)?
+    /// Set by the environment: stop everything that belongs to the open account.
+    @ObservationIgnored var onLeave: (() -> Void)?
+    /// Set by the environment: an account left this phone (signed out, expired or deleted).
+    @ObservationIgnored var onAccountEnded: ((_ account: DeviceAccount, _ remaining: [DeviceAccount]) -> Void)?
 
     init() {
         let start = Self.launchInstance()
         instance = start
         api = APIClient(instance: start)
         attest = AppAttestClient(api: api)
-        installSignedOutHandler()
+        signInFlow = SignInFlow(instance: start, adding: false)
+        signInFlow.onSignedIn = { [weak self] client, config in try await self?.signedIn(client, config: config) }
     }
 
     private static func launchInstance() -> Instance {
@@ -63,16 +80,6 @@ final class SessionStore {
         return Preferences.instance ?? .cloud
     }
 
-    private func installSignedOutHandler() {
-        let client = api
-        Task { [weak self] in
-            await client.setSignedOutHandler { [weak self] in
-                await self?.sessionExpired(for: client)
-            }
-            _ = self
-        }
-    }
-
     // MARK: Roles
 
     var role: Role { workspace?.role ?? .viewer }
@@ -83,23 +90,19 @@ final class SessionStore {
     // MARK: Launch
 
     func bootstrap() async {
-        Task { await loadAuthConfig() }
-        guard api.hasRefreshToken else {
-            phase = .signedOut
+        let saved = AccountKeyring.load()
+        accounts = saved.accounts
+        guard let target = accounts.first(where: { $0.id == saved.active }) ?? accounts.first else {
+            // A version with one account kept its token under the server alone: it becomes the first account.
+            let legacy = AccountKeyring.legacyTokenKey(for: signInFlow.instance)
+            guard KeychainStore.get(legacy) != nil else {
+                phase = .signedOut
+                return
+            }
+            await open(makeClient(signInFlow.instance, tokenKey: legacy), account: nil)
             return
         }
-        do {
-            try await api.refresh()
-            try await loadMe()
-            enterWorkspace(preferred: Preferences.workspaceID(for: instance))
-        } catch let error as APIError where error.isTransport {
-            phase = .unreachable(error.userMessage)
-        } catch let error as APIError where error.status >= 500 {
-            phase = .unreachable(error.userMessage)
-        } catch {
-            await api.clearTokens()
-            phase = .signedOut
-        }
+        await open(client(for: target), account: target)
     }
 
     func retryLaunch() async {
@@ -107,157 +110,157 @@ final class SessionStore {
         await bootstrap()
     }
 
-    func loadAuthConfig() async {
+    /// The open server's sign-in options (push mode, App Attest), cached per server.
+    private func loadAuthConfig() async {
+        let target = instance
+        guard let config = try? await InstanceResolver().authConfig(for: target.apiURL) else { return }
+        configs[target.storageKey] = config
+        if target == instance { authConfig = config }
+    }
+
+    /// Another server's sign-in options (its push mode), cached per server.
+    func authConfig(for instance: Instance) async -> AuthConfig? {
+        if let config = configs[instance.storageKey] { return config }
+        guard let config = try? await InstanceResolver().authConfig(for: instance.apiURL) else { return nil }
+        configs[instance.storageKey] = config
+        return config
+    }
+
+    // MARK: Accounts
+
+    var activeAccount: DeviceAccount? { accounts.first { $0.id == activeAccountID } }
+
+    /// The client for `account`: one for the app's life, so one refresh at a time rotates its token.
+    func client(for account: DeviceAccount) -> APIClient {
+        if let client = clients[account.id] { return client }
+        let client = makeClient(account.instance, tokenKey: account.tokenKey)
+        clients[account.id] = client
+        return client
+    }
+
+    private func makeClient(_ instance: Instance, tokenKey: String?) -> APIClient {
+        APIClient(instance: instance, tokenKey: tokenKey) { [weak self] client in
+            await self?.sessionExpired(for: client)
+        }
+    }
+
+    /// A sign-in for another account, starting on the open account's server.
+    func makeAddFlow() -> SignInFlow {
+        let flow = SignInFlow(instance: instance, config: authConfig, adding: true)
+        flow.onSignedIn = { [weak self] client, config in try await self?.signedIn(client, config: config) }
+        return flow
+    }
+
+    /// Opens another signed-in account: everything of the open one stops, and the next starts fresh.
+    func switchAccount(to id: String) async {
+        guard !switching, let account = accounts.first(where: { $0.id == id }) else { return }
+        if id == activeAccountID, phase == .ready { return }
+        switching = true
+        defer { switching = false }
+        onLeave?()
+        await open(client(for: account), account: account)
+    }
+
+    /// Loads who `client` signs in as (refreshing its session first), files the account and enters its workspace.
+    /// A server out of reach leaves the account chosen, on the unreachable screen, to try again.
+    private func open(_ client: APIClient, account: DeviceAccount?) async {
+        phase = .launching
+        api = client
+        instance = client.instance
+        attest = AppAttestClient(api: client)
+        authConfig = configs[client.instance.storageKey]
+        user = nil
+        memberships = []
+        workspace = nil
+        if let account {
+            activeAccountID = account.id
+            persist()
+        }
         do {
-            authConfig = try await InstanceResolver().authConfig(for: instance.apiURL)
-            authConfigError = nil
+            let me: Me = try await client.get("v1/me", workspace: .none)
+            await adopt(client, me: me, config: nil)
+        } catch let error as APIError where error.status == 401 || error.status == 403 {
+            if let account {
+                await remove(account, revoke: false)
+            } else {
+                await client.clearTokens()
+                reset(endedOn: client.instance)
+            }
         } catch {
-            authConfigError = error.userMessage
+            phase = .unreachable(error.userMessage)
         }
     }
 
-    // MARK: Server
-
-    /// Moves to another server (only while signed out; the account screen signs out first).
-    func useInstance(_ next: Instance, config: AuthConfig?) {
-        instance = next
-        Preferences.instance = next
-        authConfig = config
-        authConfigError = nil
-        api = APIClient(instance: next)
-        attest = AppAttestClient(api: api)
-        installSignedOutHandler()
-        if config == nil { Task { await loadAuthConfig() } }
-    }
-
-    // MARK: Sign-in
-
-    private func humanCheck(_ action: AppAttestClient.Action) async throws -> AppAttestProof? {
-        let config: AuthConfig
-        if let authConfig {
-            config = authConfig
-        } else {
-            await loadAuthConfig()
-            guard let authConfig else { throw APIError.transport(URLError(.cannotConnectToHost)) }
-            config = authConfig
-        }
-        guard config.humanCheckRequired else { return nil }
-        guard config.native.appAttest else { throw SignInError.humanCheckUnavailable }
-        return try await attest.proof(for: action)
-    }
-
-    func signIn(email: String, password: String) async throws -> SignInOutcome {
-        struct Body: Encodable, Sendable {
-            let email: String
-            let password: String
-            let app_attest: AppAttestProof?
-        }
-        let proof = try await humanCheck(.login)
-        let result: AuthResult = try await withAttestRetry {
-            try await self.api.post("v1/auth/login", body: Body(email: email, password: password, app_attest: proof), workspace: .none, authorized: false)
-        }
-        return try await complete(result)
-    }
-
-    func verifyMFA(token: String, code: String) async throws {
-        struct Body: Encodable, Sendable {
-            let mfa_token: String
-            let code: String
-        }
-        let cleaned = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result: AuthResult = try await api.post("v1/auth/mfa", body: Body(mfa_token: token, code: cleaned), workspace: .none, authorized: false)
-        _ = try await complete(result)
-    }
-
-    func register(name: String, email: String, password: String) async throws -> SignInOutcome {
-        struct Body: Encodable, Sendable {
-            let name: String
-            let email: String
-            let password: String
-            let app_attest: AppAttestProof?
-        }
-        let proof = try await humanCheck(.register)
-        let result: AuthResult = try await withAttestRetry {
-            try await self.api.post("v1/auth/register", body: Body(name: name, email: email, password: password, app_attest: proof), workspace: .none, authorized: false)
-        }
-        return try await complete(result)
-    }
-
-    func forgotPassword(email: String) async throws {
-        struct Body: Encodable, Sendable {
-            let email: String
-            let app_attest: AppAttestProof?
-        }
-        let proof = try await humanCheck(.passwordForgot)
-        let _: EmptyBody = try await withAttestRetry {
-            try await self.api.post("v1/auth/password/forgot", body: Body(email: email, app_attest: proof), workspace: .none, authorized: false)
-        }
-    }
-
-    /// A refused proof can mean the server lost this install's key: forget it so the next try registers a new one.
-    private func withAttestRetry<T>(_ body: () async throws -> T) async throws -> T {
+    /// A sign-in finished: the new session becomes an account and opens. Signing in again to an
+    /// account already here ends its earlier session, as a browser does.
+    private func signedIn(_ client: APIClient, config: AuthConfig?) async throws {
+        let me: Me
         do {
-            return try await body()
-        } catch let error as APIError where error.code == "captcha_failed" {
-            await attest.forgetKey()
+            me = try await client.get("v1/me", workspace: .none)
+        } catch {
+            await client.signOut()
             throw error
         }
-    }
-
-    /// `{apiUrl}/v1/auth/oauth/{provider}/start?client=native&code_challenge=…`
-    func oauthStartURL(provider: String, challenge: String) -> URL? {
-        var components = URLComponents(url: instance.apiURL.appending(path: "v1/auth/oauth/\(provider)/start"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "client", value: "native"),
-            URLQueryItem(name: "code_challenge", value: challenge),
-            URLQueryItem(name: "redirect_to", value: "/inbox"),
-        ]
-        return components?.url
-    }
-
-    func exchangeOAuth(code: String, verifier: String) async throws -> SignInOutcome {
-        struct Body: Encodable, Sendable {
-            let code: String
-            let code_verifier: String
+        let id = DeviceAccount.id(instance: client.instance, userID: me.user.id)
+        if accounts.contains(where: { $0.id == id }) {
+            if let earlier = clients.removeValue(forKey: id), earlier !== client {
+                if id == activeAccountID { onLeave?() }
+                await earlier.signOut()
+            }
+        } else if accounts.count >= AccountKeyring.maxAccounts {
+            await client.signOut()
+            throw SignInError.tooManyAccounts
         }
-        let result: AuthResult = try await api.post("v1/auth/oauth/exchange", body: Body(code: code, code_verifier: verifier), workspace: .none, authorized: false)
-        return try await complete(result)
+        await client.setSignedOutHandler { [weak self] client in await self?.sessionExpired(for: client) }
+        onLeave?()
+        phase = .launching
+        await adopt(client, me: me, config: config)
     }
 
-    func linkAccount(token: String, password: String) async throws -> SignInOutcome {
-        struct Body: Encodable, Sendable {
-            let link_token: String
-            let password: String
+    /// Files `client`'s account (token under its own item) without opening it.
+    @discardableResult
+    private func file(_ client: APIClient, me: Me) async -> DeviceAccount {
+        let account = DeviceAccount(instance: client.instance, me: me)
+        await client.bind(to: account.tokenKey)
+        clients[account.id] = client
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index] = account
+        } else {
+            accounts.append(account)
         }
-        let result: AuthResult = try await api.post("v1/auth/oauth/link", body: Body(link_token: token, password: password), workspace: .none, authorized: false)
-        return try await complete(result)
+        persist()
+        return account
     }
 
-    func beginPasskey() async throws -> PasskeyBegin {
-        try await api.post("v1/auth/passkey/login/begin", workspace: .none, authorized: false)
+    /// Makes `client`'s account the open one and enters its workspace.
+    private func adopt(_ client: APIClient, me: Me, config: AuthConfig?) async {
+        let account = await file(client, me: me)
+        activeAccountID = account.id
+        persist()
+        api = client
+        instance = client.instance
+        attest = AppAttestClient(api: client)
+        if let config { configs[instance.storageKey] = config }
+        authConfig = configs[instance.storageKey]
+        if authConfig == nil { Task { await loadAuthConfig() } }
+        user = me.user
+        memberships = me.memberships
+        workspace = nil
+        await client.setWorkspace(nil)
+        enterWorkspace(preferred: Preferences.workspaceID(for: account) ?? Preferences.workspaceID(for: account.instance))
     }
 
-    func finishPasskey(token: String, credential: JSONValue) async throws -> SignInOutcome {
-        struct Body: Encodable, Sendable {
-            let passkey_token: String
-            let credential: JSONValue
-        }
-        let result: AuthResult = try await api.post("v1/auth/passkey/login/finish", body: Body(passkey_token: token, credential: credential), workspace: .none, authorized: false)
-        return try await complete(result)
+    private func persist() {
+        AccountKeyring.save(AccountKeyring.Saved(active: activeAccountID, accounts: accounts))
     }
 
-    private func complete(_ result: AuthResult) async throws -> SignInOutcome {
-        if result.linkRequired, let token = result.linkToken {
-            return .link(token: token, email: result.email ?? "")
-        }
-        if result.mfaRequired, let token = result.mfaToken {
-            return .mfa(token: token)
-        }
-        guard result.accessToken != nil else { throw APIError.decoding }
-        await api.adopt(result)
-        try await loadMe()
-        enterWorkspace(preferred: Preferences.workspaceID(for: instance))
-        return .signedIn
+    /// Keeps the open account's name, photo and workspaces current in the list.
+    private func refreshRecord() {
+        guard let user, let index = accounts.firstIndex(where: { $0.id == activeAccountID }) else { return }
+        let fresh = DeviceAccount(instance: instance, me: Me(user: user, memberships: memberships))
+        guard fresh != accounts[index] else { return }
+        accounts[index] = fresh
+        persist()
     }
 
     // MARK: Account and workspaces
@@ -269,6 +272,7 @@ final class SessionStore {
         if let current = workspace, let fresh = me.memberships.first(where: { $0.id == current.id }) {
             workspace = fresh
         }
+        refreshRecord()
     }
 
     /// Reloads the account after a membership event; leaves the workspace if access is gone.
@@ -298,10 +302,13 @@ final class SessionStore {
 
     func select(_ membership: Membership) {
         workspace = membership
+        if let account = activeAccount { Preferences.setWorkspaceID(membership.id, for: account) }
         Preferences.setWorkspaceID(membership.id, for: instance)
         let client = api
         Task {
             await client.setWorkspace(membership.id)
+            // Another account opened meanwhile.
+            guard client === self.api else { return }
             self.phase = .ready
             self.onReady?(membership)
         }
@@ -324,6 +331,7 @@ final class SessionStore {
         struct Body: Encodable, Sendable { let name: String }
         let updated: User = try await api.patch("v1/me", body: Body(name: name), workspace: .none)
         user = updated
+        refreshRecord()
     }
 
     /// The clock times are shown in, account-wide (`PATCH /v1/me {time_format}`).
@@ -347,14 +355,29 @@ final class SessionStore {
 
     // MARK: Ending
 
+    /// Signs out of the open account. The next account opens, or sign-in when none is left.
     func signOut() async {
-        let ended = instance
-        await onEnded?(ended)
-        await api.signOut()
-        reset()
-        #if DEBUG
-        if DemoMode.isOn, !DemoMode.launchedInDemo { leaveDemo() }
-        #endif
+        guard let account = activeAccount else {
+            // Nothing filed yet: a launch that couldn't reach the server.
+            onLeave?()
+            await api.signOut()
+            reset(endedOn: instance)
+            return
+        }
+        await remove(account, revoke: true)
+    }
+
+    /// Signs out of one account, open or not.
+    func signOut(_ account: DeviceAccount) async {
+        await remove(account, revoke: true)
+    }
+
+    /// Signs out of every account on this phone.
+    func signOutAll() async {
+        for account in accounts where account.id != activeAccountID {
+            await remove(account, revoke: true)
+        }
+        await signOut()
     }
 
     #if DEBUG
@@ -363,14 +386,39 @@ final class SessionStore {
         DemoMode.enter()
         await DemoBackend.shared.restart()
         phase = .launching
-        useInstance(DemoMode.instance, config: DemoMode.authConfig)
+        clients = [:]
+        accounts = []
+        activeAccountID = nil
+        signInFlow.useInstance(DemoMode.instance, config: DemoMode.authConfig)
         await bootstrap()
+    }
+
+    /// The demo's second person signed in beside the open one, without opening it (for the switcher's screenshots).
+    func addDemoAccount() async {
+        guard DemoMode.isOn, accounts.count < 2 else { return }
+        let client = makeClient(DemoMode.instance, tokenKey: nil)
+        struct Body: Encodable, Sendable {
+            let email: String
+            let password: String
+        }
+        let login: AuthResult? = try? await client.post("v1/auth/login", body: Body(email: DemoPerson.theo.email, password: "demo"), workspace: .none, authorized: false)
+        guard let login else { return }
+        await client.adopt(login)
+        let me: Me? = try? await client.get("v1/me", workspace: .none)
+        guard let me else { return }
+        await file(client, me: me)
     }
 
     /// Back to the server chosen before the demo, signed out.
     private func leaveDemo() {
         DemoMode.leave()
-        useInstance(Preferences.instance ?? .cloud, config: nil)
+        clients = [:]
+        let saved = AccountKeyring.load()
+        accounts = saved.accounts
+        signInFlow.useInstance(Preferences.instance ?? .cloud, config: nil)
+        if let next = accounts.first(where: { $0.id == saved.active }) ?? accounts.first {
+            Task { await open(client(for: next), account: next) }
+        }
     }
     #endif
 
@@ -380,34 +428,68 @@ final class SessionStore {
             let code: String?
         }
         try await api.delete("v1/me", body: Body(password: password?.isEmpty == true ? nil : password, code: code?.isEmpty == true ? nil : code), workspace: .none)
-        await onEnded?(instance)
-        await api.clearTokens()
-        reset()
+        if let account = activeAccount {
+            await remove(account, revoke: false)
+        } else {
+            onLeave?()
+            await api.clearTokens()
+            reset(endedOn: instance)
+        }
     }
 
+    /// The server refused an account's session (revoked, expired or replayed).
     private func sessionExpired(for client: APIClient) async {
-        guard client === api, phase != .signedOut else { return }
-        await onEnded?(instance)
-        reset()
+        if let account = accounts.first(where: { clients[$0.id] === client }) {
+            await remove(account, revoke: false)
+        } else if client === api, activeAccountID == nil, phase != .signedOut {
+            onLeave?()
+            reset(endedOn: client.instance)
+        }
     }
 
-    private func reset() {
+    /// Takes an account off this phone: ends its session on the server when `revoke` (which also
+    /// removes its push device), forgets its token, and opens the next account when it was the open one.
+    private func remove(_ account: DeviceAccount, revoke: Bool) async {
+        // The list changes before anything waits, so a second call for the same account finds nothing.
+        guard let index = accounts.firstIndex(where: { $0.id == account.id }) else { return }
+        let wasActive = account.id == activeAccountID
+        accounts.remove(at: index)
+        let client = clients.removeValue(forKey: account.id) ?? APIClient(instance: account.instance, tokenKey: account.tokenKey)
+        let next = accounts.isEmpty ? nil : accounts[min(index, accounts.count - 1)]
+        // Told while `activeAccountID` still names the account, when it was the open one.
+        onAccountEnded?(account, accounts)
+        if wasActive {
+            activeAccountID = next?.id
+            onLeave?()
+            phase = .launching
+        }
+        persist()
+        if revoke { await client.signOut() } else { await client.clearTokens() }
+        guard wasActive else { return }
+        if let next {
+            await open(self.client(for: next), account: next)
+        } else {
+            reset(endedOn: account.instance)
+        }
+    }
+
+    private func reset(endedOn ended: Instance) {
         user = nil
         memberships = []
         workspace = nil
-        phase = .signedOut
+        activeAccountID = nil
+        authConfig = nil
+        persist()
         let client = api
         Task { await client.setWorkspace(nil) }
-    }
-}
-
-enum SignInError: LocalizedError {
-    case humanCheckUnavailable
-
-    var errorDescription: String? {
-        switch self {
-        case .humanCheckUnavailable:
-            "This server checks sign-ins with a captcha the app can't show. Use another sign-in option, or sign in on the web."
+        phase = .signedOut
+        #if DEBUG
+        if DemoMode.isOn, !DemoMode.launchedInDemo, accounts.isEmpty {
+            leaveDemo()
+            return
         }
+        #endif
+        // The sign-in screen offers the server just left.
+        if signInFlow.instance != ended { signInFlow.useInstance(ended, config: configs[ended.storageKey]) }
     }
 }

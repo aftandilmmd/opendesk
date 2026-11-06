@@ -144,7 +144,7 @@ struct AccountTwoFactorSetupSheet: View {
                 Button {
                     openURL(url)
                 } label: {
-                    ButtonLabel(title: "Open in an authenticator on this iPhone", symbol: "arrow.up.forward.app")
+                    ButtonLabel(title: "Open in an authenticator on this \(AppInfo.device)", symbol: "arrow.up.forward.app")
                 }
                 .buttonStyle(OutlineButtonStyle(height: 44))
             }

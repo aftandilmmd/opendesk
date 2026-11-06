@@ -18,7 +18,7 @@ struct AccountAboutView: View {
                     .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
                     .accessibilityHidden(true)
                 VStack(spacing: 3) {
-                    Text("opendesk for iPhone").font(ODFont.sans(18, weight: .semibold)).foregroundStyle(Theme.fg)
+                    Text("opendesk for \(AppInfo.device)").font(ODFont.sans(18, weight: .semibold)).foregroundStyle(Theme.fg)
                     Text("Version \(AppInfo.version) (\(AppInfo.build))").font(ODFont.mono(12.5)).foregroundStyle(Theme.fg3)
                 }
             }

@@ -5,6 +5,7 @@ import SwiftUI
 /// and says plainly when push or App Attest isn't available there.
 struct ServerSheet: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(SignInFlow.self) private var flow
     @Environment(\.dismiss) private var dismiss
 
     enum Choice: Hashable { case cloud, selfHosted, local, demo }
@@ -30,8 +31,10 @@ struct ServerSheet: View {
                         #if DEBUG
                         Hairline(inset: 50)
                         option(.local, title: "Local development", subtitle: "localhost:8080 on this Mac", symbol: "hammer")
-                        Hairline(inset: 50)
-                        option(.demo, title: "Demo workspace", subtitle: "Sample data on this phone, nothing sent", symbol: "play.rectangle")
+                        if !flow.adding {
+                            Hairline(inset: 50)
+                            option(.demo, title: "Demo workspace", subtitle: "Sample data on this phone, nothing sent", symbol: "play.rectangle")
+                        }
                         #endif
                     }
 
@@ -81,7 +84,7 @@ struct ServerSheet: View {
             }
         }
         .onAppear {
-            let current = env.session.instance
+            let current = flow.instance
             #if DEBUG
             if current == Instance.localDev {
                 choice = .local
@@ -141,7 +144,7 @@ struct ServerSheet: View {
     }
 
     private func use(_ result: (Instance, AuthConfig)) {
-        env.session.useInstance(result.0, config: result.1)
+        flow.useInstance(result.0, config: result.1)
         Haptics.success()
         dismiss()
     }

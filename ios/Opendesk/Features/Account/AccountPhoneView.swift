@@ -11,7 +11,7 @@ struct AccountPhoneView: View {
     private var push: PushManager { env.push }
 
     var body: some View {
-        AccountPage(title: "This iPhone") {
+        AccountPage(title: "This \(AppInfo.device)") {
             AccountPushStatusCard(asking: asking, ask: ask)
             if push.mode != .off, let device = push.device {
                 mutes(device)
@@ -38,8 +38,8 @@ struct AccountPhoneView: View {
 
     private func mutes(_ device: PushDevice) -> some View {
         AccountSection(
-            title: "On this iPhone",
-            footer: "Turning a type off here mutes it on this iPhone only. Your other devices and email follow Notifications."
+            title: "On this \(AppInfo.device)",
+            footer: "Turning a type off here mutes it on this \(AppInfo.device) only. Your other devices and email follow Notifications."
         ) {
             ForEach(Array(kinds.enumerated()), id: \.element) { index, kind in
                 if index > 0 { AccountDivider() }
@@ -93,13 +93,13 @@ struct AccountPushStatusCard: View {
             return Status(symbol: "bell.slash", tone: .amber, title: "Notifications are off for opendesk",
                          message: "Allow them in Settings to hear about assignments, mentions and replies.", action: "Open Settings")
         case .notDetermined:
-            return Status(symbol: "bell.badge", tone: .blue, title: "Get notified on this iPhone",
+            return Status(symbol: "bell.badge", tone: .blue, title: "Get notified on this \(AppInfo.device)",
                          message: "Know when a ticket is assigned to you, someone mentions you, or a customer replies.", action: "Turn on notifications")
         default:
             let via = push.mode == .relay
                 ? "\(host) sends them through the opendesk push relay to Apple."
                 : "\(host) sends them to Apple directly."
-            let device = push.device.map { " This iPhone is registered as \u{201C}\($0.name ?? "iPhone")\u{201D}." } ?? ""
+            let device = push.device.map { " This \(AppInfo.device) is registered as \u{201C}\($0.name ?? "iPhone")\u{201D}." } ?? ""
             return Status(symbol: "bell.badge.fill", tone: .green, title: "Notifications are on", message: via + device)
         }
     }

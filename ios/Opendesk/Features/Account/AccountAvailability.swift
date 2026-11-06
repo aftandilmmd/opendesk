@@ -50,7 +50,7 @@ struct AccountProfileCard: View {
     var body: some View {
         let session = env.session
         Panel {
-            NavigationLink(value: AccountRoute.profile) {
+            AccountLink(route: .profile) {
                 HStack(spacing: 14) {
                     AccountAvatar(size: 58)
                         .overlay(alignment: .bottomTrailing) { AccountPresenceDot() }
@@ -80,7 +80,6 @@ struct AccountProfileCard: View {
                 .padding(16)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowPressStyle())
             Hairline()
             AccountAvailabilityPicker()
                 .padding(.horizontal, 16)

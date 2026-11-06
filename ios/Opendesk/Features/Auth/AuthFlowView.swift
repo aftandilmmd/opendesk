@@ -8,9 +8,13 @@ enum AuthRoute: Hashable {
 }
 
 /// Sign-in: the server, then every way the server offers (OAuth providers,
-/// passkeys on Cloud, email and password), then 2FA or account linking.
+/// passkeys on Cloud, email and password), then 2FA or account linking. The
+/// signed-out screen runs the session's own flow; "Add another account" runs
+/// one of its own in a sheet (`flow.adding`), beside the accounts already in.
 struct AuthFlowView: View {
-    @Environment(AppEnvironment.self) private var env
+    let flow: SignInFlow
+    /// Closes the sheet when adding an account.
+    var onClose: (() -> Void)?
     @State private var path: [AuthRoute] = Self.debugPath
     @State private var showServer = false
 
@@ -20,14 +24,14 @@ struct AuthFlowView: View {
         case "register": [.register]
         case "forgot": [.forgot]
         case "mfa": [.mfa(token: "")]
-        case "link": [.link(token: "", email: "[EMAIL]")]
+        case "link": [.link(token: "", email: "maya@margin.app")]
         default: []
         }
     }
 
     var body: some View {
         NavigationStack(path: $path) {
-            SignInView(path: $path, showServer: $showServer)
+            SignInView(path: $path, showServer: $showServer, onClose: onClose)
                 .navigationDestination(for: AuthRoute.self) { route in
                     switch route {
                     case .register: RegisterView(path: $path)
@@ -38,8 +42,10 @@ struct AuthFlowView: View {
                 }
         }
         .tint(Theme.fg)
+        .environment(flow)
         .sheet(isPresented: $showServer) {
             ServerSheet()
+                .environment(flow)
                 .presentationDetents([.large])
                 .presentationCornerRadius(Theme.Radius.sheet)
         }
@@ -48,8 +54,10 @@ struct AuthFlowView: View {
 
 struct SignInView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(SignInFlow.self) private var flow
     @Binding var path: [AuthRoute]
     @Binding var showServer: Bool
+    var onClose: (() -> Void)?
 
     @State private var email = AppInfo.debugValue("OPENDESK_DEBUG_EMAIL") ?? ""
     @State private var password = AppInfo.debugValue("OPENDESK_DEBUG_PASSWORD") ?? ""
@@ -58,14 +66,13 @@ struct SignInView: View {
     @State private var oauth = OAuthSignIn()
     @State private var passkey = PasskeySignIn()
 
-    private var session: SessionStore { env.session }
-    private var config: AuthConfig? { session.authConfig }
+    private var config: AuthConfig? { flow.authConfig }
 
     @State private var emailOpen = false
 
     /// Ways in besides email: the server's providers, and passkeys on Cloud.
     private func hasChoices(_ config: AuthConfig) -> Bool {
-        !config.providers.isEmpty || (config.passkeys && session.instance.passkeysSupported)
+        !config.providers.isEmpty || (config.passkeys && flow.instance.passkeysSupported)
     }
 
     var body: some View {
@@ -80,20 +87,32 @@ struct SignInView: View {
         .motion(Motion.fade, value: error)
         .motion(Motion.smooth, value: emailOpen)
         .task {
-            if session.authConfig == nil { await session.loadAuthConfig() }
+            if flow.authConfig == nil { await flow.loadAuthConfig() }
         }
     }
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 26) {
-            serverChip
+            HStack {
+                serverChip
+                Spacer(minLength: 8)
+                if let onClose { closeButton(onClose) }
+            }
             VStack(alignment: .leading, spacing: 14) {
                 ODWordmark(size: 22, color: .white)
-                HeroTitle(
-                    title: "Every conversation, shared with your team.",
-                    subtitle: emailOpen ? nil : "Support email, live chat and your team's own mail in one inbox, with Ollie drafting replies.",
-                    size: 31
-                )
+                if flow.adding {
+                    HeroTitle(
+                        title: "Add another account.",
+                        subtitle: emailOpen ? nil : "Stay signed in to every account and switch between them from Account. Each one can be on its own server.",
+                        size: 31
+                    )
+                } else {
+                    HeroTitle(
+                        title: "Every conversation, shared with your team.",
+                        subtitle: emailOpen ? nil : "Support email, live chat and your team's own mail in one inbox, with Ollie drafting replies.",
+                        size: 31
+                    )
+                }
             }
         }
     }
@@ -148,9 +167,9 @@ struct SignInView: View {
                 .padding(.top, 2)
             }
             demoButton
-        } else if let failure = session.authConfigError {
-            ErrorState(title: "Can't reach \(session.instance.displayHost)", message: failure) {
-                Task { await session.loadAuthConfig() }
+        } else if let failure = flow.authConfigError {
+            ErrorState(title: "Can't reach \(flow.instance.displayHost)", message: failure) {
+                Task { await flow.loadAuthConfig() }
             }
             demoButton
         } else {
@@ -174,7 +193,7 @@ struct SignInView: View {
                 .buttonStyle(OutlineButtonStyle(height: 50))
                 .disabled(busy != nil)
             }
-            if config.passkeys && session.instance.passkeysSupported {
+            if config.passkeys && flow.instance.passkeysSupported {
                 Button {
                     Task { await passkeySignIn() }
                 } label: {
@@ -205,21 +224,36 @@ struct SignInView: View {
     @ViewBuilder
     private var demoButton: some View {
         #if DEBUG
-        Button {
-            Haptics.tap()
-            Task { await session.enterDemo() }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "play.rectangle").font(.system(size: 13, weight: .semibold))
-                Text("No server handy? Explore the demo")
+        // Adding an account stays off the demo: it has a Keychain of its own.
+        if !flow.adding {
+            Button {
+                Haptics.tap()
+                Task { await env.session.enterDemo() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "play.rectangle").font(.system(size: 13, weight: .semibold))
+                    Text("No server handy? Explore the demo")
+                }
+                .font(ODFont.sans(13.5, weight: .medium))
+                .foregroundStyle(Theme.fg3)
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
             }
-            .font(ODFont.sans(13.5, weight: .medium))
-            .foregroundStyle(Theme.fg3)
-            .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         #endif
+    }
+
+    private func closeButton(_ close: @escaping () -> Void) -> some View {
+        Button(action: close) {
+            Image(systemName: "xmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .glassEffect(.clear.interactive(), in: Circle())
+        }
+        .buttonStyle(TapScaleStyle())
+        .accessibilityLabel("Close")
     }
 
     private var serverChip: some View {
@@ -228,9 +262,9 @@ struct SignInView: View {
         } label: {
             HStack(spacing: 8) {
                 ODLogoMark().fill(.white).frame(width: 15, height: 15)
-                Text(session.instance.displayHost)
+                Text(flow.instance.displayHost)
                     .font(ODFont.sans(14, weight: .medium))
-                Text(session.instance.isCloud ? "Cloud" : "Self-hosted")
+                Text(flow.instance.isCloud ? "Cloud" : "Self-hosted")
                     .font(ODFont.sans(11.5, weight: .medium))
                     .foregroundStyle(.white.opacity(0.78))
                 Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.78))
@@ -241,7 +275,7 @@ struct SignInView: View {
             .glassEffect(.clear.interactive(), in: Capsule())
         }
         .buttonStyle(TapScaleStyle())
-        .accessibilityLabel("Server: \(session.instance.displayHost). Change server")
+        .accessibilityLabel("Server: \(flow.instance.displayHost). Change server")
     }
 
     @ViewBuilder
@@ -273,7 +307,7 @@ struct SignInView: View {
         error = nil
         defer { busy = nil }
         do {
-            let outcome = try await session.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
+            let outcome = try await flow.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
             route(outcome)
         } catch {
             Haptics.error()
@@ -287,10 +321,10 @@ struct SignInView: View {
         error = nil
         defer { busy = nil }
         let verifier = PKCE.verifier()
-        guard let url = session.oauthStartURL(provider: provider.id, challenge: PKCE.challenge(for: verifier)) else { return }
+        guard let url = flow.oauthStartURL(provider: provider.id, challenge: PKCE.challenge(for: verifier)) else { return }
         do {
             let code = try await oauth.run(startURL: url)
-            let outcome = try await session.exchangeOAuth(code: code, verifier: verifier)
+            let outcome = try await flow.exchangeOAuth(code: code, verifier: verifier)
             route(outcome)
         } catch OAuthSignIn.Failure.cancelled {
             return
@@ -306,9 +340,9 @@ struct SignInView: View {
         error = nil
         defer { busy = nil }
         do {
-            let begin = try await session.beginPasskey()
-            let credential = try await passkey.assert(options: begin.options, fallbackRP: session.instance.appOrigin.host() ?? "app.opendesk.sh")
-            let outcome = try await session.finishPasskey(token: begin.passkeyToken, credential: credential)
+            let begin = try await flow.beginPasskey()
+            let credential = try await passkey.assert(options: begin.options, fallbackRP: flow.instance.appOrigin.host() ?? "app.opendesk.sh")
+            let outcome = try await flow.finishPasskey(token: begin.passkeyToken, credential: credential)
             route(outcome)
         } catch PasskeySignIn.Failure.cancelled {
             return
@@ -366,7 +400,7 @@ struct ProviderGlyph: View {
 // MARK: - Two-factor
 
 struct MFAView: View {
-    @Environment(AppEnvironment.self) private var env
+    @Environment(SignInFlow.self) private var flow
     let token: String
     @State private var code = ""
     @State private var busy = false
@@ -414,7 +448,7 @@ struct MFAView: View {
         error = nil
         defer { busy = false }
         do {
-            try await env.session.verifyMFA(token: token, code: code)
+            try await flow.verifyMFA(token: token, code: code)
             Haptics.success()
         } catch {
             Haptics.error()
@@ -427,7 +461,7 @@ struct MFAView: View {
 // MARK: - Link an existing account
 
 struct LinkAccountView: View {
-    @Environment(AppEnvironment.self) private var env
+    @Environment(SignInFlow.self) private var flow
     let token: String
     let email: String
     @Binding var path: [AuthRoute]
@@ -457,7 +491,7 @@ struct LinkAccountView: View {
         error = nil
         defer { busy = false }
         do {
-            let outcome = try await env.session.linkAccount(token: token, password: password)
+            let outcome = try await flow.linkAccount(token: token, password: password)
             if case let .mfa(mfaToken) = outcome { path.append(.mfa(token: mfaToken)) }
         } catch {
             Haptics.error()
@@ -469,7 +503,7 @@ struct LinkAccountView: View {
 // MARK: - Register
 
 struct RegisterView: View {
-    @Environment(AppEnvironment.self) private var env
+    @Environment(SignInFlow.self) private var flow
     @Binding var path: [AuthRoute]
     @State private var name = ""
     @State private var email = ""
@@ -485,8 +519,8 @@ struct RegisterView: View {
     }
 
     var body: some View {
-        AuthPage(title: "Create your account", subtitle: "Your team's inbox on \(env.session.instance.displayHost).", painting: .meadow) {
-            if env.session.authConfig?.emailSignInAvailable == false {
+        AuthPage(title: "Create your account", subtitle: "Your team's inbox on \(flow.instance.displayHost).", painting: .meadow) {
+            if flow.authConfig?.emailSignInAvailable == false {
                 Notice(text: "This server checks new accounts with a captcha the app can't show. Create your account on the web.", tone: .amber, symbol: "exclamationmark.triangle")
             }
             VStack(spacing: 14) {
@@ -518,7 +552,7 @@ struct RegisterView: View {
         error = nil
         defer { busy = false }
         do {
-            let outcome = try await env.session.register(name: name.trimmingCharacters(in: .whitespaces), email: email.trimmingCharacters(in: .whitespaces), password: password)
+            let outcome = try await flow.register(name: name.trimmingCharacters(in: .whitespaces), email: email.trimmingCharacters(in: .whitespaces), password: password)
             if case let .mfa(token) = outcome { path.append(.mfa(token: token)) }
         } catch {
             Haptics.error()
@@ -530,7 +564,7 @@ struct RegisterView: View {
 // MARK: - Forgot password
 
 struct ForgotPasswordView: View {
-    @Environment(AppEnvironment.self) private var env
+    @Environment(SignInFlow.self) private var flow
     @State private var email = ""
     @State private var busy = false
     @State private var sent = false
@@ -567,7 +601,7 @@ struct ForgotPasswordView: View {
         error = nil
         defer { busy = false }
         do {
-            try await env.session.forgotPassword(email: email.trimmingCharacters(in: .whitespaces))
+            try await flow.forgotPassword(email: email.trimmingCharacters(in: .whitespaces))
             sent = true
         } catch {
             self.error = error.userMessage

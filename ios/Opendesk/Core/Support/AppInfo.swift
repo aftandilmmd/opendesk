@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 enum AppInfo {
     static var version: String {
@@ -8,6 +8,9 @@ enum AppInfo {
     static var build: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
     }
+
+    /// What the app calls the device it runs on: "iPhone" (iPhone Duo included) or "iPad".
+    @MainActor static var device: String { UIDevice.current.model }
 
     /// `OD-Client: ios/<version>` marks a native request (contracts/native.md):
     /// sessions answer with the refresh token in the body, never a cookie.

@@ -173,7 +173,7 @@ struct MailListView: View {
                 .buttonStyle(RowPressStyle())
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
-                .listRowBackground(Theme.surface)
+                .listRowBackground(env.router.picked == .mailThread(thread.id) ? Theme.hover : Theme.surface)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     if env.session.canWrite { trailing(thread) }
                 }
@@ -426,7 +426,7 @@ struct MailListView: View {
             Task { await openDraft(thread) }
             return
         }
-        env.router.push(.mailThread(thread.id))
+        env.router.pick(.mailThread(thread.id))
     }
 
     /// A draft that starts a conversation opens in the composer, as in a mail app.
@@ -434,7 +434,7 @@ struct MailListView: View {
         do {
             let detail: MailThreadDetail = try await env.session.api.get("v1/collab/threads/\(thread.id)")
             guard let draft = detail.messages.last(where: \.draft), !detail.messages.contains(where: { !$0.draft }) else {
-                env.router.push(.mailThread(thread.id))
+                env.router.pick(.mailThread(thread.id))
                 return
             }
             composing = MailComposeRequest(mode: .new, draft: draft, senders: MailStore.senders(of: detail.account))
@@ -525,6 +525,8 @@ struct MailTabs: View {
                 }
                 .padding(.horizontal, 16)
             }
+            // The strip ends where the list does, not under a side status bar.
+            .clipped()
             .onChange(of: mail.scope) { _, scope in
                 withAnimation(Motion.snappy) { proxy.scrollTo(scope.folderID ?? scope.box.rawValue, anchor: .center) }
             }
@@ -602,6 +604,7 @@ struct MailCategoryBar: View {
                 }
                 .padding(.horizontal, 12)
             }
+            .clipped()
             .onChange(of: active) { _, key in
                 guard let key else { return }
                 withAnimation(Motion.snappy) { proxy.scrollTo(key, anchor: .center) }

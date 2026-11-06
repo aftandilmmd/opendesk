@@ -120,7 +120,7 @@ struct AccountNotificationSettingsView: View {
             let device = TimeZone.current.identifier
             AccountRow(title: "Time zone", subtitle: prefs.timezone.replacingOccurrences(of: "_", with: " ")) {
                 if device != prefs.timezone {
-                    Button("Use this iPhone's") {
+                    Button("Use this \(AppInfo.device)'s") {
                         update(NotificationPreferencesPatch(timezone: device)) { $0.timezone = device }
                     }
                     .buttonStyle(ChipButtonStyle())
@@ -180,7 +180,7 @@ struct AccountNotificationSettingsView: View {
             }
             teams(prefs)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Phone: the opendesk iPhone app. Each phone can also mute types of its own, in This iPhone.")
+                Text("Phone: the opendesk app on iPhone and iPad. Each one can also mute types of its own, in This \(AppInfo.device).")
                 Text("Desktop: the opendesk desktop app, or a browser that allowed notifications.")
             }
             .font(ODFont.footnote)

@@ -67,7 +67,7 @@ extension DemoBackend {
         }
         for (at, mailbox) in ws.ticketExtras.mailboxes.enumerated() {
             guard var object = mailbox.object, object["id"]?.string == DemoSeed.supportMailbox else { continue }
-            object["aliases"] = .array([.string("[EMAIL]")])
+            object["aliases"] = .array([.string("help@margin.app")])
             object["personal_replies"] = .object(["enabled": .null, "reply_to": .null, "accounts": .string("any")])
             ws.ticketExtras.mailboxes[at] = .object(object)
         }

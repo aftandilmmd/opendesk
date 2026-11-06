@@ -26,7 +26,7 @@ struct AccountAppearanceView: View {
                 .contentTransition(.opacity)
                 .motion(Motion.fade, value: env.appearance)
             AccountClockSection()
-            AccountSection(title: "Tickets", footer: "The customer's messages on the left, your team's replies and notes on the right, like a chat. Applies to this iPhone.") {
+            AccountSection(title: "Tickets", footer: "The customer's messages on the left, your team's replies and notes on the right, like a chat. Applies to this \(AppInfo.device).") {
                 AccountToggleRow(symbol: "bubble.left.and.bubble.right", tone: .blue, title: "Conversation layout", isOn: $conversation)
             }
             AccountSection(footer: "Also after sending with a status that takes the ticket out of the list. The next ticket of the list you came from opens, with its filters and sort; after the last one, you are back on the list. Undoing the send brings you back to the ticket.") {
@@ -51,9 +51,9 @@ struct AccountAppearanceView: View {
 
     private var footer: String {
         switch env.appearance {
-        case .system: "opendesk follows your iPhone, light by day and dark at night if you set it to change."
-        case .light: "opendesk stays light, whatever your iPhone uses."
-        case .dark: "opendesk stays dark, whatever your iPhone uses."
+        case .system: "opendesk follows your \(AppInfo.device), light by day and dark at night if you set it to change."
+        case .light: "opendesk stays light, whatever your \(AppInfo.device) uses."
+        case .dark: "opendesk stays dark, whatever your \(AppInfo.device) uses."
         }
     }
 }

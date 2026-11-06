@@ -29,7 +29,7 @@ struct AccountSessionsSection: View {
                     Button {
                         confirm = AccountConfirm(
                             title: "Sign out other devices?",
-                            message: "\(Format.plural(others.count, "other session")) end now. This iPhone stays signed in.",
+                            message: "\(Format.plural(others.count, "other session")) end now. This \(AppInfo.device) stays signed in.",
                             confirmTitle: "Sign out others"
                         ) { await revokeOthers() }
                     } label: {

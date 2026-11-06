@@ -135,17 +135,37 @@ struct AccountDisclosure: View {
     }
 }
 
-/// A row that pushes an Account page.
+/// A row that opens an Account page: pushed on the stack, or from the tab's home in
+/// columns, beside it (`Router.pick`), where the open page's row stays marked.
 struct AccountLinkRow: View {
     let route: AccountRoute
     var value: String?
     var subtitle: String?
 
     var body: some View {
-        NavigationLink(value: route) {
+        AccountLink(route: route) {
             AccountRow(symbol: route.symbol, tone: route.tone, title: route.title, subtitle: subtitle) {
                 AccountDisclosure(value: value)
             }
+        }
+    }
+}
+
+/// Opens `route` as `AccountLinkRow` does, around any label.
+struct AccountLink<Label: View>: View {
+    let route: AccountRoute
+    @ViewBuilder var label: () -> Label
+
+    @Environment(AppEnvironment.self) private var env
+    @Environment(\.inDetailColumn) private var inDetailColumn
+
+    private var open: Bool { env.router.columns && !inDetailColumn && env.router.accountPath.first == route }
+
+    var body: some View {
+        Button {
+            if inDetailColumn { env.router.accountPath.append(route) } else { env.router.pick(route) }
+        } label: {
+            label().background(open ? Theme.hover : Color.clear)
         }
         .buttonStyle(RowPressStyle())
     }

@@ -78,7 +78,7 @@ struct CompaniesListView: View {
                 env.toasts.show("Company created", kind: .success)
                 Task {
                     try? await Task.sleep(for: .milliseconds(350))
-                    env.router.push(.company(company.id))
+                    env.router.pick(.company(company.id))
                 }
             }
             .presentationCornerRadius(Theme.Radius.sheet)
@@ -136,7 +136,7 @@ struct CompaniesListView: View {
 
     private func row(_ company: Company) -> some View {
         Button {
-            env.router.push(.company(company.id))
+            env.router.pick(.company(company.id))
         } label: {
             CompanyRow(company: company)
         }

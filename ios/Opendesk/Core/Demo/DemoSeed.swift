@@ -57,6 +57,7 @@ struct DemoWorkspace: Sendable {
     var directory = DemoDirectory()
     var mail = DemoMail()
     var kb = DemoKB()
+    var settings = DemoSettings()
 
     var id: String { workspace.id }
 }
@@ -153,6 +154,7 @@ enum DemoSeed {
         ws.directory = DemoDirectory.seed(ws)
         ws.mail = DemoMail.seed(ws)
         ws.kb = DemoKB.seed(ws)
+        ws.settings = DemoSettings.seed(ws)
     }
 }
 

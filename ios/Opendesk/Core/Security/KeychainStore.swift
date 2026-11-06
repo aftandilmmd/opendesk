@@ -1,9 +1,10 @@
 import Foundation
 import Security
 
-/// Generic-password Keychain items for this app: refresh tokens and App
-/// Attest key ids, one per server. Readable after first unlock (push wakes
-/// and background refresh) and never synced or backed up to another device.
+/// Generic-password Keychain items for this app: the signed-in accounts and
+/// their refresh tokens (one item per account), and App Attest key ids (one per
+/// server). Readable after first unlock (push wakes and background refresh) and
+/// never synced or backed up to another device.
 enum KeychainStore {
     private static let service = "sh.opendesk.app"
 

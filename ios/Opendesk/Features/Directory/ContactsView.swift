@@ -68,7 +68,7 @@ struct ContactsListView: View {
                 env.toasts.show("Contact created", kind: .success)
                 Task {
                     try? await Task.sleep(for: .milliseconds(350))
-                    env.router.push(.contact(contact.id))
+                    env.router.pick(.contact(contact.id))
                 }
             }
             .presentationCornerRadius(Theme.Radius.sheet)
@@ -176,7 +176,7 @@ struct ContactsListView: View {
 
     private func row(_ contact: Contact) -> some View {
         Button {
-            env.router.push(.contact(contact.id))
+            env.router.pick(.contact(contact.id))
         } label: {
             ContactRow(contact: contact, showsDate: store.sort == .recent)
         }
@@ -209,7 +209,7 @@ struct ContactsListView: View {
                 Button { DirectoryActions.open(tel) } label: { Label("Call", systemImage: "phone") }
             }
             if let company = contact.company {
-                Button { env.router.push(.company(company.id)) } label: { Label("Open \(company.name)", systemImage: "building.2") }
+                Button { env.router.pick(.company(company.id)) } label: { Label("Open \(company.name)", systemImage: "building.2") }
             }
             if env.session.canWrite {
                 Divider()

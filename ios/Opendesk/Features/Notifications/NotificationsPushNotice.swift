@@ -31,7 +31,7 @@ struct NotificationsPushNotice: View {
                     .frame(width: 30, height: 30)
                     .background(kind == .denied ? Tone.amber.soft : Tone.blue.soft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(kind == .denied ? "Notifications are off" : "Hear about it on this iPhone")
+                    Text(kind == .denied ? "Notifications are off" : "Hear about it on this \(AppInfo.device)")
                         .font(ODFont.sans(14, weight: .semibold))
                         .foregroundStyle(Theme.fg)
                     Text(kind == .denied ? "Turn them on in Settings to know when you're needed." : "Assignments, mentions and replies, even when the app is closed.")

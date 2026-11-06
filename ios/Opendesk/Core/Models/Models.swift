@@ -130,6 +130,8 @@ struct WorkspaceSettings: Codable, Hashable, Sendable {
     var undoSendSeconds: Int?
     /// The same for chat replies (default 0).
     var undoSendChatSeconds: Int?
+    /// Ticketing is on for the workspace (default true); off, the app is Mail only.
+    var ticketsEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case brandColor = "brand_color"
@@ -141,6 +143,7 @@ struct WorkspaceSettings: Codable, Hashable, Sendable {
         case collabTicketReplyTo = "collab_ticket_reply_to"
         case undoSendSeconds = "undo_send_seconds"
         case undoSendChatSeconds = "undo_send_chat_seconds"
+        case ticketsEnabled = "tickets_enabled"
     }
 }
 
@@ -156,6 +159,7 @@ extension WorkspaceSettings {
         collabTicketReplyTo = c.lenient(String.self, forKey: .collabTicketReplyTo)
         undoSendSeconds = c.lenient(Int.self, forKey: .undoSendSeconds)
         undoSendChatSeconds = c.lenient(Int.self, forKey: .undoSendChatSeconds)
+        ticketsEnabled = c.lenient(Bool.self, forKey: .ticketsEnabled)
     }
 }
 
@@ -166,12 +170,21 @@ struct Workspace: Codable, Hashable, Sendable, Identifiable {
     var avatarURL: String?
     var settings: WorkspaceSettings?
     var createdAt: Date?
+    /// Mail after the instance, plan and workspace settings (absent: available).
+    var mailAvailable: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, name, slug, settings
         case avatarURL = "avatar_url"
         case createdAt = "created_at"
+        case mailAvailable = "mail_available"
     }
+}
+
+/// What the workspace offers (contracts/api.md, `tickets_enabled` and `mail_available`): both until it says otherwise.
+extension Workspace {
+    var ticketsOn: Bool { settings?.ticketsEnabled != false }
+    var mailOn: Bool { mailAvailable != false }
 }
 
 struct Membership: Codable, Hashable, Sendable, Identifiable {

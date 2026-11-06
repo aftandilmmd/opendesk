@@ -36,7 +36,7 @@ final class KBStore {
     /// Binds the store to the session's workspace; a new workspace starts from nothing.
     func attach(api: APIClient, workspaceID: String?, helpFallback: URL?) {
         fallbackHelpURL = helpFallback
-        if self.workspaceID == workspaceID, self.api != nil { return }
+        if self.workspaceID == workspaceID, self.api === api { return }
         self.api = api
         self.workspaceID = workspaceID
         collections = []

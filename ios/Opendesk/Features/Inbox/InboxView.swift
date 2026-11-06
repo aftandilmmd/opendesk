@@ -7,15 +7,16 @@ struct InboxRootView: View {
 
     var body: some View {
         @Bindable var router = env.router
-        NavigationStack(path: $router.inboxPath) {
+        AdaptiveStack(path: $router.inboxPath) {
             AreaRootView()
-                .navigationDestination(for: AppRoute.self) { route in
-                    AppRouteDestination(route: route)
-                }
+        } destination: { route in
+            AppRouteDestination(route: route)
+        } placeholder: {
+            AreaPlaceholder()
         }
         .environment(alerts)
         .overlay(alignment: .top) {
-            if let ticket = alerts.banner {
+            if let ticket = alerts.banner, env.products.tickets {
                 InboxChatBanner(
                     ticket: ticket,
                     quiet: alerts.quiet,
@@ -202,7 +203,7 @@ struct InboxListView: View {
             NewTicketSheet { ticket in
                 Task {
                     try? await Task.sleep(for: .milliseconds(350))
-                    env.router.openTicket(ticket)
+                    env.router.pick(.ticket(ticket))
                 }
             }
             .presentationDetents([.large])
@@ -281,7 +282,7 @@ struct InboxListView: View {
                 }
                 if !waitingChats.isEmpty, inbox.search.isEmpty, !selecting {
                     WaitingBanner(tickets: waitingChats, quiet: alerts?.quiet, onQuiet: alerts.map { alerts in { alerts.quiet.toggle() } }) {
-                        env.router.openTicket($0)
+                        env.router.pick(.ticket($0))
                     }
                     .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 4, trailing: 12))
                     .listRowSeparator(.hidden)
@@ -291,7 +292,7 @@ struct InboxListView: View {
                     row(ticket)
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
-                        .listRowBackground(selecting && (allMatching || selected.contains(ticket.id)) ? Theme.hover : Theme.surface)
+                        .listRowBackground(selecting && (allMatching || selected.contains(ticket.id)) || env.router.isPicked(ticket) ? Theme.hover : Theme.surface)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             if env.session.canWrite, !selecting { trailingActions(ticket) }
                         }
@@ -345,7 +346,7 @@ struct InboxListView: View {
                     }
                 }
             } else {
-                env.router.openTicket(ticket)
+                env.router.pick(.ticket(ticket))
             }
         } label: {
             HStack(spacing: 0) {
@@ -393,7 +394,7 @@ struct InboxListView: View {
     private func openSearch(_ text: String) {
         InboxSearchHandoff.query = text
         searchFocused = false
-        env.router.push(.search)
+        env.router.pick(.search)
     }
 
     @ViewBuilder

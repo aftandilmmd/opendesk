@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Search everywhere, folders with live counts, team inboxes, the workspace's views,
-/// then the app's other areas.
+/// The app's menu: the Space and workspace switcher, search everywhere, then the picked Space's
+/// rows, or the workspace's own: folders with live counts, team inboxes, views and other areas.
 struct ScopeSheet: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
@@ -10,17 +10,11 @@ struct ScopeSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if let workspace = env.session.workspace?.workspace {
-                        HStack(spacing: 10) {
-                            WorkspaceAvatar(workspace: workspace, size: 28)
-                            Text(workspace.name).font(ODFont.sans(16, weight: .semibold)).foregroundStyle(Theme.fg)
-                            Spacer()
-                            RealtimeDot(status: env.realtime.status)
-                        }
-                    }
+                    // A Space or the workspace, as on the web's switcher (contracts/spaces.md).
+                    SpaceSwitcherButton { switching = true }
                     Button {
                         Haptics.selection()
-                        env.router.show(.tickets, [.search])
+                        env.router.show(env.router.shownArea, [.search])
                         dismiss()
                     } label: {
                         HStack(spacing: 10) {
@@ -37,59 +31,87 @@ struct ScopeSheet: View {
                     .buttonStyle(TapScaleStyle())
                     .accessibilityHint("Tickets, contacts and articles")
 
-                    Panel {
-                        ForEach(Array(Folder.allCases.enumerated()), id: \.element) { index, folder in
-                            if index > 0 { Hairline(inset: 46) }
-                            row(scope: .folder(folder), title: folder.title, symbol: folder.symbol, count: folder.count(in: env.directory.counts))
+                    if let space = SpacesStore.shared.picked {
+                        SpaceSidebar(space: space, onOpen: { dismiss() }, onEdit: { editing = SpaceDraft(space: space, isNew: false) })
+                    } else {
+                        if env.products.tickets {
+                            ticketScopes
                         }
-                    }
-                    if !myTeams.isEmpty {
-                        SectionLabel("Teams")
+                        SectionLabel("Workspace")
                         Panel {
-                            teamRow(id: InboxScope.myTeams, title: "My teams", count: env.directory.counts?.myTeams)
-                            ForEach(myTeams) { team in
-                                Hairline(inset: 46)
-                                teamRow(id: team.id, title: team.name, count: env.directory.counts?.teams[team.id])
-                            }
-                        }
-                    }
-                    if !env.directory.views.isEmpty {
-                        SectionLabel("Views")
-                        Panel {
-                            ForEach(Array(ViewSections.group(env.directory.views).enumerated()), id: \.element.id) { index, entry in
+                            ForEach(Array(areas.enumerated()), id: \.element) { index, area in
                                 if index > 0 { Hairline(inset: 46) }
-                                switch entry {
-                                case let .view(view):
-                                    viewRow(view)
-                                case let .section(key, name, views):
-                                    sectionRow(key: key, name: name, views: views)
-                                    if !folded.contains(key) {
-                                        ForEach(views) { view in
-                                            Hairline(inset: 46)
-                                            viewRow(view, nested: true)
-                                        }
-                                    }
-                                }
+                                areaRow(area)
                             }
-                        }
-                    }
-                    SectionLabel("Workspace")
-                    Panel {
-                        ForEach(Array(areas.enumerated()), id: \.element) { index, area in
-                            if index > 0 { Hairline(inset: 46) }
-                            areaRow(area)
                         }
                     }
                 }
                 .padding(20)
+                .motion(Motion.snappy, value: SpacesStore.shared.pickedID)
             }
             .background(Theme.chrome.ignoresSafeArea())
-            .navigationTitle("Inbox")
+            .navigationTitle(SpacesStore.shared.picked?.name ?? (env.products.tickets ? "Inbox" : "Workspace"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .onAppear { folded = ViewSections.folded(key: foldedKey) }
+        }
+        .followsOverview()
+        .sheet(isPresented: $switching) {
+            SpaceSwitcherSheet(onLeave: { dismiss() })
+                .presentationDetents([.medium, .large])
+                .presentationCornerRadius(Theme.Radius.sheet)
+        }
+        .sheet(item: $editing) { draft in
+            SpaceEditorSheet(draft: draft)
+                .presentationDetents([.large])
+                .presentationCornerRadius(Theme.Radius.sheet)
+                .interactiveDismissDisabled()
+        }
+    }
+
+    @State private var switching = false
+    @State private var editing: SpaceDraft?
+
+    /// Folders with live counts, team inboxes and views: the ticket part, gone while Tickets is off.
+    @ViewBuilder
+    private var ticketScopes: some View {
+        Panel {
+            ForEach(Array(Folder.allCases.enumerated()), id: \.element) { index, folder in
+                if index > 0 { Hairline(inset: 46) }
+                row(scope: .folder(folder), title: folder.title, symbol: folder.symbol, count: folder.count(in: env.directory.counts))
+            }
+        }
+        if !myTeams.isEmpty {
+            SectionLabel("Teams")
+            Panel {
+                teamRow(id: InboxScope.myTeams, title: "My teams", count: env.directory.counts?.myTeams)
+                ForEach(myTeams) { team in
+                    Hairline(inset: 46)
+                    teamRow(id: team.id, title: team.name, count: env.directory.counts?.teams[team.id])
+                }
+            }
+        }
+        if !env.directory.views.isEmpty {
+            SectionLabel("Views")
+            Panel {
+                ForEach(Array(ViewSections.group(env.directory.views).enumerated()), id: \.element.id) { index, entry in
+                    if index > 0 { Hairline(inset: 46) }
+                    switch entry {
+                    case let .view(view):
+                        viewRow(view)
+                    case let .section(key, name, views):
+                        sectionRow(key: key, name: name, views: views)
+                        if !folded.contains(key) {
+                            ForEach(views) { view in
+                                Hairline(inset: 46)
+                                viewRow(view, nested: true)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -161,7 +183,12 @@ struct ScopeSheet: View {
     }
 
     private var areas: [AppArea] {
-        AppArea.allCases.filter { $0 != .tickets && ($0 != .mail || env.directory.collab.enabled) }
+        // With Tickets off the home is Mail, so it is listed with the rest.
+        let products = env.products
+        return AppArea.allCases.filter { area in
+            guard products.allows(area), area != .tickets, area != .everywhere else { return false }
+            return area != .mail || env.directory.collab.enabled
+        }
     }
 
     private func areaRow(_ area: AppArea) -> some View {

@@ -31,6 +31,8 @@ enum AppRoute: Hashable {
 /// What the Inbox tab shows at its root, chosen from the menu.
 enum AppArea: String, CaseIterable, Identifiable, Sendable {
     case tickets, mail, contacts, companies, kb, wiki, reports
+    /// An Everywhere list across workspaces (`Router.everywhere` says which).
+    case everywhere
 
     var id: String { rawValue }
 
@@ -43,6 +45,7 @@ enum AppArea: String, CaseIterable, Identifiable, Sendable {
         case .kb: "Knowledge base"
         case .wiki: "Wiki"
         case .reports: "Reports"
+        case .everywhere: "Everywhere"
         }
     }
 
@@ -55,6 +58,7 @@ enum AppArea: String, CaseIterable, Identifiable, Sendable {
         case .kb: "book.closed"
         case .wiki: "book.pages"
         case .reports: "chart.bar.xaxis"
+        case .everywhere: "globe"
         }
     }
 }
@@ -66,12 +70,21 @@ enum AppArea: String, CaseIterable, Identifiable, Sendable {
 final class Router {
     var tab: AppTab = .inbox
     var area: AppArea = .tickets
+    /// The Everywhere list the Inbox tab shows while `area` is `.everywhere`.
+    var everywhere: EverywhereList = .mine
     var inboxPath: [AppRoute] = []
     var notificationsPath: [AppRoute] = []
     var accountPath: [AccountRoute] = []
     var showOllie = false
     /// The ticket on screen, so a push for it stays quiet in the foreground.
     var visibleTicketID: String?
+    /// On while the window is wide enough for a list beside what it opened (iPhone Duo open).
+    var wide = false
+    /// The tab on screen shows its list and its stack side by side (`AdaptiveStack`): in a wide
+    /// window, for every tab but Reports, which is one page of its own.
+    var columns: Bool { wide && !(tab == .inbox && shownArea == .reports) }
+    /// The list column's width while `columns` is on.
+    var listWidth: CGFloat = 360
 
     @ObservationIgnored weak var environment: AppEnvironment?
     @ObservationIgnored private var pending: DeepLink.Target?
@@ -113,7 +126,13 @@ final class Router {
             return
         }
         if let server = target.server, let url = URL(string: server), PushPayload.origin(url) != PushPayload.origin(session.instance.apiURL) {
-            env.toasts.show("That's from another opendesk server (\(url.host() ?? server)). Switch servers in Account to open it.")
+            // An account signed in on that server opens first (SessionStore accounts).
+            if let account = session.accounts.first(where: { PushPayload.origin($0.instance.apiURL) == PushPayload.origin(url) }) {
+                pending = target
+                Task { await session.switchAccount(to: account.id) }
+                return
+            }
+            env.toasts.show("That's from another opendesk server (\(url.host() ?? server)). Add an account there in Account to open it.")
             return
         }
         if let workspaceID = target.workspaceID, workspaceID != session.workspace?.id {
@@ -130,12 +149,14 @@ final class Router {
 
     /// Opens what waited for sign-in or a workspace switch.
     func workspaceReady() {
+        keepAreaAvailable()
         #if DEBUG
         if let screen = pendingDemoScreen {
             pendingDemoScreen = nil
             openDemo(screen)
         }
         #endif
+        if let env = environment { SpacesStore.shared.workspaceReady(env) }
         guard let target = pending else { return }
         pending = nil
         open(target)
@@ -175,11 +196,36 @@ final class Router {
         }
     }
 
-    /// The Inbox tab at `area` with `path` on top of it.
+    /// The Inbox tab at `area` with `path` on top of it. An area the workspace has turned off
+    /// gives way to its home, without the tickets that were to open in it (as the web redirects).
     func show(_ area: AppArea, _ path: [AppRoute]) {
-        self.area = area
+        let products = environment?.products ?? Products()
+        if products.allows(area) {
+            self.area = area
+            inboxPath = path
+        } else {
+            self.area = products.home
+            inboxPath = path.filter { if case .ticket = $0 { false } else { true } }
+            if path.contains(where: { if case .ticket = $0 { true } else { false } }) {
+                environment?.toasts.show("Tickets are turned off in this workspace.")
+            }
+        }
         tab = .inbox
-        inboxPath = path
+    }
+
+    /// Never leaves the Inbox tab on an area the workspace no longer offers (a switch, or a
+    /// product turned off while it was open).
+    func keepAreaAvailable() {
+        let products = environment?.products ?? Products()
+        guard !products.allows(area) else { return }
+        area = products.home
+        inboxPath = []
+    }
+
+    /// The area the Inbox tab draws: the picked one, or the workspace's home while it is off.
+    var shownArea: AppArea {
+        let products = environment?.products ?? Products()
+        return products.allows(area) ? area : products.home
     }
 
     /// Pushes `route` on the stack of the tab on screen.
@@ -188,6 +234,33 @@ final class Router {
         case .notifications: notificationsPath.append(route)
         default: inboxPath.append(route)
         }
+    }
+
+    /// Opens `route` from the list at the root of the tab on screen: beside the list in
+    /// `columns`, in place of what was open there, and pushed on the stack otherwise.
+    func pick(_ route: AppRoute) {
+        guard columns else { return push(route) }
+        switch tab {
+        case .notifications: notificationsPath = [route]
+        default: inboxPath = [route]
+        }
+    }
+
+    /// Opens an Account page from the tab's home, as `pick` does.
+    func pick(_ route: AccountRoute) {
+        if columns { accountPath = [route] } else { accountPath.append(route) }
+    }
+
+    /// What the list at the root of the tab on screen has open beside it.
+    var picked: AppRoute? {
+        guard columns else { return nil }
+        return tab == .notifications ? notificationsPath.first : inboxPath.first
+    }
+
+    /// Whether `ticket` is open beside its list; a link may name it by id or by number.
+    func isPicked(_ ticket: Ticket) -> Bool {
+        guard case let .ticket(route)? = picked else { return false }
+        return route.id == ticket.id || route.id == String(ticket.number)
     }
 
     /// What Ollie is told about the screen behind it (contracts/ai.md page context).
@@ -200,7 +273,7 @@ final class Router {
         if case let .wikiPage(id)? = top {
             return AssistantPageContext(page: "wiki", path: "/wiki/\(id)", wikiPageID: id)
         }
-        switch (tab, area) {
+        switch (tab, shownArea) {
         case (.inbox, .tickets):
             var context = AssistantPageContext(page: "inbox", path: env.inbox.scope.webPath())
             switch env.inbox.scope {
@@ -251,7 +324,7 @@ final class Router {
         case "account":
             showOllie = false
             tab = .account
-            accountPath = parts.dropFirst().compactMap(AccountRoute.init(rawValue:))
+            accountPath = AccountRoute.stack(from: Array(parts.dropFirst()))
         case "ollie":
             showOllie = true
         case "inbox" where parts.count == 1:
@@ -266,6 +339,9 @@ final class Router {
         case "search":
             showOllie = false
             show(area, [.search])
+        case "everywhere":
+            showOllie = false
+            openEverywhere(parts.count > 1 ? EverywhereList(rawValue: parts[1]) ?? .mine : .mine)
         case "demo":
             demoAction = parts.dropFirst().joined(separator: "/")
         default:

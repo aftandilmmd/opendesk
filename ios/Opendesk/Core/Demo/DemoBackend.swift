@@ -22,6 +22,8 @@ actor DemoBackend {
     /// Seconds past the anchor for things made in this run, so they sort after the seed.
     var tick = 0
     var serial = 0
+    /// Who holds a demo session, so "Add another account" signs in the second person (`DemoAccounts.swift`).
+    var signedIn: Set<DemoPerson> = []
 
     struct PendingAction {
         var workspace: String
@@ -44,6 +46,8 @@ actor DemoBackend {
         var workspace: String?
         var body: JSONValue
         var raw: Data
+        /// The `Authorization: Bearer` token: which demo person is asking.
+        var bearer: String?
 
         /// The wildcards of `pattern` (`tickets/*/messages`) when the call is `method` on it.
         func match(_ method: String, _ pattern: String) -> [String]? {
@@ -80,6 +84,7 @@ actor DemoBackend {
         uploads = [:]
         tick = 0
         serial = 0
+        signedIn = []
     }
 
     func listen(_ handler: @escaping @Sendable (Envelope) -> Void) {
@@ -115,7 +120,7 @@ actor DemoBackend {
         let call = Self.call(from: request)
         let beats: [Beat]
         do {
-            if let extra = try streamRoutes(call) {
+            if let extra = try streamRoutes(call) ?? agentStreamRoutes(call) {
                 beats = extra
             } else if let session = call.match("POST", "assistant/sessions/*/messages")?.first {
                 beats = try assistantRun(call, session: session)
@@ -152,22 +157,18 @@ actor DemoBackend {
         let raw = request.httpBody ?? Data()
         let isJSON = request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("application/json") ?? false
         let body = isJSON ? ((try? JSONValue.parse(raw)) ?? .null) : .null
-        return Call(method: request.httpMethod ?? "GET", path: path, query: query, workspace: request.value(forHTTPHeaderField: "OD-Workspace"), body: body, raw: raw)
+        let bearer = request.value(forHTTPHeaderField: "Authorization").flatMap { $0.hasPrefix("Bearer ") ? String($0.dropFirst(7)) : nil }
+        return Call(method: request.httpMethod ?? "GET", path: path, query: query, workspace: request.value(forHTTPHeaderField: "OD-Workspace"), body: body, raw: raw, bearer: bearer)
     }
 
     // MARK: Routes
 
     /// The answer's body, or nil for 204.
     func handle(_ call: Call) throws -> Data? {
+        if let answer = try accountsRoutes(call) { return answer }
         if let answer = try meRoutes(call) { return answer }
-        // Signing in: any email and password open Maya's account.
-        for route in ["auth/login", "auth/register", "auth/mfa", "auth/oauth/exchange", "auth/oauth/link", "auth/passkey/login/finish", "auth/refresh"] where call.match("POST", route) != nil {
-            return encode(JSONValue.object([
-                "access_token": .string("demo-access-token"), "expires_in": .number(86400),
-                "refresh_token": .string(Self.refreshToken), "user": DemoSeed.json(world.user),
-            ]))
-        }
-        if call.match("POST", "auth/logout") != nil || call.match("POST", "auth/password/forgot") != nil || call.match("POST", "auth/password/reset") != nil { return nil }
+        if let answer = try spacesRoutes(call) { return answer }
+        if call.match("POST", "auth/password/forgot") != nil || call.match("POST", "auth/password/reset") != nil { return nil }
         if call.path.first == "auth" { throw Failure(status: 400, code: "captcha_failed", detail: "The demo signs in with email and password.") }
 
         // The account.
@@ -208,6 +209,7 @@ actor DemoBackend {
     }
 
     func handle(_ call: Call, in ws: inout DemoWorkspace) throws -> Data? {
+        if let answer = try settingsRoutes(call, in: &ws) { return answer }
         if let answer = try ticketRoutes(call, in: &ws) { return answer }
         if let answer = try inboxRoutes(call, in: &ws) { return answer }
         if let answer = try accountRoutes(call, in: &ws) { return answer }

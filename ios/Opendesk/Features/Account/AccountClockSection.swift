@@ -10,7 +10,7 @@ struct AccountClockSection: View {
     private var chosen: TimeFormat { TimeFormat(env.session.user?.timeFormat) }
 
     var body: some View {
-        AccountSection(title: "Time format", footer: "For times in the app and in your notification emails, on every device. Automatic follows your iPhone's settings here and uses 24-hour in emails.") {
+        AccountSection(title: "Time format", footer: "For times in the app and in your notification emails, on every device. Automatic follows your \(AppInfo.device)'s settings here and uses 24-hour in emails.") {
             ForEach(Array(TimeFormat.allCases.enumerated()), id: \.element) { index, option in
                 if index > 0 { AccountDivider(tiles: false) }
                 AccountChoiceRow(title: option.title, subtitle: option.example, chosen: chosen == option) {

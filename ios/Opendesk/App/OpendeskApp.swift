@@ -41,13 +41,14 @@ struct RootView: View {
                 case .launching:
                     LaunchView()
                 case .signedOut:
-                    AuthFlowView()
+                    AuthFlowView(flow: env.session.signInFlow)
                 case let .unreachable(message):
                     UnreachableView(message: message)
                 case .needsWorkspace:
                     WorkspacePickerView()
                 case .ready:
-                    MainTabView()
+                    // Nothing of one account's screens survives into another's.
+                    MainTabView().id(env.session.activeAccountID)
                 }
             }
             .transition(.opacity)
@@ -111,7 +112,14 @@ struct UnreachableView: View {
                 }
                 .buttonStyle(InkButtonStyle())
                 .padding(.horizontal, 32)
-                Button("Sign out of this server") {
+                if let other = env.session.accounts.first(where: { $0.id != env.session.activeAccountID }) {
+                    Button("Use \(other.email) instead") {
+                        env.switchAccount(to: other.id)
+                    }
+                    .font(ODFont.sans(14, weight: .medium))
+                    .foregroundStyle(Theme.fg2)
+                }
+                Button(env.session.accounts.count > 1 ? "Sign out of this account" : "Sign out of this server") {
                     Task { await env.session.signOut() }
                 }
                 .font(ODFont.sans(14, weight: .medium))

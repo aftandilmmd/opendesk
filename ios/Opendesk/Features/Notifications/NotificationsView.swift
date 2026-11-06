@@ -6,11 +6,12 @@ struct NotificationsView: View {
 
     var body: some View {
         @Bindable var router = env.router
-        NavigationStack(path: $router.notificationsPath) {
+        AdaptiveStack(path: $router.notificationsPath) {
             NotificationsList()
-                .navigationDestination(for: AppRoute.self) { route in
-                    AppRouteDestination(route: route)
-                }
+        } destination: { route in
+            AppRouteDestination(route: route)
+        } placeholder: {
+            ColumnPlaceholder(symbol: "bell", title: "Pick a notification", message: "What it's about opens here.")
         }
     }
 }
@@ -31,7 +32,9 @@ private struct NotificationsList: View {
 
     private var days: [Day] {
         var result: [Day] = []
-        for item in store.items {
+        // With Tickets off, notifications about tickets are left out, as on the web.
+        let tickets = env.products.tickets
+        for item in store.items where tickets || item.ticket == nil {
             let label = Format.dayLabel(item.createdAt)
             if result.last?.id == label { result[result.count - 1].items.append(item) } else { result.append(Day(id: label, items: [item])) }
         }
@@ -209,8 +212,8 @@ private struct NotificationsList: View {
         Haptics.tap()
         Task { await store.markRead(item) }
         switch NotificationStyle.target(of: item) {
-        case let .ticket(id): env.router.push(.ticket(TicketRoute(id: id)))
-        case let .mailThread(id): env.router.push(.mailThread(id))
+        case let .ticket(id): env.router.pick(.ticket(TicketRoute(id: id)))
+        case let .mailThread(id): env.router.pick(.mailThread(id))
         case .mail:
             env.router.area = .mail
             env.router.inboxPath = []

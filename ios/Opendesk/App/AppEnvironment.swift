@@ -47,7 +47,8 @@ final class AppEnvironment {
         router.environment = self
         PushManager.shared.environment = self
         session.onReady = { [weak self] membership in self?.workspaceReady(membership) }
-        session.onEnded = { [weak self] instance in self?.sessionEnded(instance) }
+        session.onLeave = { [weak self] in self?.leaveAccount() }
+        session.onAccountEnded = { account, remaining in PushManager.shared.accountEnded(account, remaining: remaining) }
         realtime.onNotification = { [weak self] notification in self?.notifications.received(notification) }
         realtime.onMembershipChanged = { [weak self] in
             guard let self else { return }
@@ -71,6 +72,7 @@ final class AppEnvironment {
             self.directory.handle(update)
             self.inbox.handle(update)
             self.notifications.handle(update)
+            self.productsHeard(update)
         }
         directory.start(api: api)
         inbox.start(api: api, me: user.id)
@@ -78,10 +80,11 @@ final class AppEnvironment {
         push.sessionReady()
         startHeartbeat()
         router.workspaceReady()
-        if let tap = push.takePendingTap() { router.open(tap.target) }
+        push.openPendingTap()
     }
 
-    private func sessionEnded(_ instance: Instance) {
+    /// The open account is closing (switching, signing out or expired): stop everything that belongs to it.
+    private func leaveAccount() {
         heartbeat?.cancel()
         heartbeat = nil
         realtime.unsubscribe(listener)
@@ -90,8 +93,15 @@ final class AppEnvironment {
         directory.reset()
         inbox.stop()
         notifications.stop()
-        push.sessionEnded(instance)
+        push.accountClosed()
         router.reset()
+    }
+
+    /// Opens another signed-in account, as a workspace switch does but for everything.
+    func switchAccount(to id: String) {
+        guard id != session.activeAccountID else { return }
+        Haptics.success()
+        Task { await session.switchAccount(to: id) }
     }
 
     /// Switching workspaces keeps the session and restarts everything scoped to the workspace.

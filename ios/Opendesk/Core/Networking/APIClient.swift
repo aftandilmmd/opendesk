@@ -31,9 +31,12 @@ struct SSEEvent: Sendable {
     func json() -> JSONValue? { try? JSONValue.parse(Data(data.utf8)) }
 }
 
-/// The API for one instance. Holds the access token in memory and the
-/// refresh token in the Keychain; refreshes once for every caller at a time
-/// and retries a request once when the access token expired underneath it.
+/// The API for one signed-in account on one instance. Holds the access token
+/// in memory and the refresh token in the Keychain under the account's own key
+/// (`DeviceAccount.tokenKey`); refreshes once for every caller at a time and
+/// retries a request once when the access token expired underneath it. A
+/// client made for a sign-in keeps its refresh token in memory until the
+/// account is known and `bind(to:)` files it.
 actor APIClient {
     nonisolated let instance: Instance
     private let session: URLSession
@@ -42,10 +45,15 @@ actor APIClient {
     private var accessExpiry: Date = .distantPast
     private var workspaceID: String?
     private var refreshing: Task<Void, Error>?
-    private var onSignedOut: (@Sendable () async -> Void)?
+    private var onSignedOut: (@Sendable (APIClient) async -> Void)?
+    /// Where the refresh token is kept: a Keychain item, or memory until `bind(to:)`.
+    private var tokenKey: String?
+    private var pendingRefresh: String?
 
-    init(instance: Instance) {
+    init(instance: Instance, tokenKey: String? = nil, onSignedOut: (@Sendable (APIClient) async -> Void)? = nil) {
         self.instance = instance
+        self.tokenKey = tokenKey
+        self.onSignedOut = onSignedOut
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
@@ -58,14 +66,35 @@ actor APIClient {
 
     // MARK: Session state
 
-    private var refreshAccount: String { "refresh." + instance.storageKey }
+    private var storedRefresh: String? {
+        guard let tokenKey else { return pendingRefresh }
+        return KeychainStore.get(tokenKey)
+    }
 
-    nonisolated var hasRefreshToken: Bool { KeychainStore.get("refresh." + instance.storageKey) != nil }
+    private func storeRefresh(_ value: String?) {
+        guard let tokenKey else {
+            pendingRefresh = value
+            return
+        }
+        if let value { KeychainStore.set(value, for: tokenKey) } else { KeychainStore.remove(tokenKey) }
+    }
+
+    func hasRefreshToken() -> Bool { storedRefresh != nil }
+
+    /// Files the refresh token under `key` (the account's own item), moving it from memory or an earlier item.
+    func bind(to key: String) {
+        guard key != tokenKey else { return }
+        let token = storedRefresh
+        if let previous = tokenKey { KeychainStore.remove(previous) }
+        pendingRefresh = nil
+        tokenKey = key
+        storeRefresh(token)
+    }
 
     func setWorkspace(_ id: String?) { workspaceID = id }
     func currentWorkspace() -> String? { workspaceID }
 
-    func setSignedOutHandler(_ handler: @escaping @Sendable () async -> Void) { onSignedOut = handler }
+    func setSignedOutHandler(_ handler: @escaping @Sendable (APIClient) async -> Void) { onSignedOut = handler }
 
     /// Stores the tokens of a session-issuing answer.
     func adopt(_ result: AuthResult) {
@@ -74,7 +103,7 @@ actor APIClient {
             accessExpiry = Date.now.addingTimeInterval(TimeInterval(max((result.expiresIn ?? 900) - 30, 30)))
         }
         if let refresh = result.refreshToken, !refresh.isEmpty {
-            KeychainStore.set(refresh, for: refreshAccount)
+            storeRefresh(refresh)
         }
     }
 
@@ -88,9 +117,10 @@ actor APIClient {
 
     /// Ends the session on the server (`refresh_token` in the body), then forgets it here.
     func signOut() async {
-        if let refresh = KeychainStore.get(refreshAccount) {
+        if let refresh = storedRefresh {
             struct Body: Encodable { let refresh_token: String }
             var request = APIRequest(method: "POST", path: "v1/auth/logout", body: try? APICoding.encoder.encode(Body(refresh_token: refresh)))
+            request.authorized = false
             request.workspace = .none
             request.timeout = 10
             _ = try? await perform(request, allowRefresh: false)
@@ -103,13 +133,13 @@ actor APIClient {
         accessExpiry = .distantPast
         refreshing?.cancel()
         refreshing = nil
-        KeychainStore.remove(refreshAccount)
+        storeRefresh(nil)
     }
 
     /// Single-flight refresh: every caller waiting on an expired token shares one call.
     func refresh() async throws {
         if let refreshing { return try await refreshing.value }
-        guard let token = KeychainStore.get(refreshAccount) else { throw APIError.signedOut }
+        guard let token = storedRefresh else { throw APIError.signedOut }
         let task = Task { try await self.performRefresh(token) }
         refreshing = task
         defer { refreshing = nil }
@@ -130,7 +160,7 @@ actor APIClient {
             // The refresh token was revoked, rotated elsewhere or expired.
             clearTokens()
             let handler = onSignedOut
-            Task { await handler?() }
+            Task { await handler?(self) }
             throw APIError.signedOut
         }
     }

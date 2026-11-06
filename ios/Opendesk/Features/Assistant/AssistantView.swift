@@ -165,6 +165,8 @@ private struct AssistantScreen: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 4)
+            // A short screen scrolls the greeting under the tip; the strip hides it.
+            .background(Theme.surface)
             .transition(reduceMotion ? .opacity : .scale(scale: 0.96, anchor: .top).combined(with: .opacity))
         }
     }
