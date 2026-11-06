@@ -154,6 +154,14 @@ function describe(a: Activity, t: TFunction<"inbox">, { teams, members, tags, fi
     }
     case "assigned": {
       const to = ref(d.to, members);
+      // A customer's follow-up of a closed ticket, given to whoever had that ticket.
+      if (to && d.via === "previous_ticket") {
+        // A closed ticket in another, private team is not named.
+        if (typeof d.previous_ticket_number === "number") {
+          return { icon: <UserRound />, text: line("activity.assignedFollowUp", { to: to.name, number: d.previous_ticket_number }) };
+        }
+        return { icon: <UserRound />, text: line("activity.assignedFollowUpHidden", { to: to.name }) };
+      }
       return {
         icon: <UserRound />,
         text: to ? (a.actor.user?.id === to.id && !isAIActor(a.actor) ? line("activity.took") : line("activity.assigned", { to: to.name })) : line("activity.unassigned"),
