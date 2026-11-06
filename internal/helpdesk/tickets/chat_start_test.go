@@ -1,11 +1,13 @@
 package tickets_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/useopendesk/opendesk/internal/crypto"
 	"github.com/useopendesk/opendesk/internal/domain"
@@ -101,8 +103,20 @@ func TestAgentStartsChat(t *testing.T) {
 		t.Fatal("a claimed email saw the chat")
 	}
 
-	// Reading it: no longer unread, and the team sees when.
+	// Fetching it is not reading it: the widget fetches in the background, closed or not.
 	e.Do("GET", "/v1/widget/conversations/"+tk.ID.String()+"/messages", va, nil).Want(t, 200)
+	e.Do("GET", "/v1/widget/conversations", va, nil).Want(t, 200).JSON(t, &list)
+	if list.Data[0].Unread != 1 {
+		t.Fatal("a fetch read it", list.Data[0].Unread)
+	}
+	var fetched domain.Ticket
+	e.Do("GET", "/v1/tickets/"+tk.ID.String(), ws.Agent.As(ws), nil).Want(t, 200).JSON(t, &fetched)
+	if fetched.VisitorReadAt != nil {
+		t.Fatal("visitor_read_at set by a fetch")
+	}
+
+	// Reading it on screen (/seen): no longer unread, and the team sees when.
+	e.Do("POST", "/v1/widget/conversations/"+tk.ID.String()+"/seen", va, nil).Want(t, 204)
 	e.Do("GET", "/v1/widget/conversations", va, nil).Want(t, 200).JSON(t, &list)
 	if list.Data[0].Unread != 0 {
 		t.Fatal("still unread after reading")
@@ -150,6 +164,128 @@ func TestChatStartReach(t *testing.T) {
 	e.Do("GET", "/v1/contacts/"+verified.String(), agent, nil).Want(t, 200).JSON(t, &c)
 	if c.ChatReachable {
 		t.Fatal("a blocked contact shows as reachable")
+	}
+}
+
+// An address a visitor types proves nothing: once mail from it joins their contact, the
+// chat reaches that contact only through a verified identity.
+func TestChatStartTypedEmail(t *testing.T) {
+	e, ws := chatEnv(t)
+	agent := ws.Agent.As(ws)
+	ctx := context.Background()
+	reachable := func(id uuid.UUID) bool {
+		var c domain.Contact
+		e.Do("GET", "/v1/contacts/"+id.String(), agent, nil).Want(t, 200).JSON(t, &c)
+		return c.ChatReachable
+	}
+
+	at := "@" + "shop.test"
+	typed := "ana" + at
+
+	// A visitor types a free address: the widget's contact takes it, and holds only the chat.
+	s := visitorSession(t, e, map[string]any{"key": ws.WidgetKey, "email": typed})
+	if s.Contact.Email == nil || *s.Contact.Email != typed {
+		t.Fatalf("contact %+v", s.Contact)
+	}
+	va := hdtest.Auth{Visitor: s.VisitorToken}
+	e.Do("POST", "/v1/widget/conversations", va, map[string]any{"body": "Hello"}).Want(t, 201)
+	if !reachable(s.Contact.ID) {
+		t.Fatal("a pure widget visitor is not reachable")
+	}
+	startChat(e, ws, agent, map[string]any{"contact_id": s.Contact.ID}).Want(t, 201)
+
+	// Mail from that address arrives: it joins the same contact.
+	err := e.D.DB.Tx(ctx, func(tx pgx.Tx) error {
+		cid, _, err := domain.UpsertContactByEmail(ctx, tx, ws.ID, typed, "Ana")
+		if err != nil {
+			return err
+		}
+		if cid != s.Contact.ID {
+			t.Fatalf("mail made another contact %s", cid)
+		}
+		_, err = domain.CreateTicket(ctx, tx, domain.NewTicket{WorkspaceID: ws.ID, Subject: "My invoice", Channel: domain.ChannelEmail, ContactID: &cid})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := startChat(e, ws, agent, map[string]any{"contact_id": s.Contact.ID}).Want(t, http.StatusUnprocessableEntity)
+	if !strings.Contains(string(r.Body), "chat_unreachable") {
+		t.Fatal(string(r.Body))
+	}
+	if reachable(s.Contact.ID) {
+		t.Fatal("a contact holding mail shows as reachable")
+	}
+
+	// The same when the mail answers the chat itself (a reply to its follow-up email).
+	other := visitorSession(t, e, map[string]any{"key": ws.WidgetKey, "email": "ben" + at})
+	var conv struct {
+		Conversation struct{ ID uuid.UUID } `json:"conversation"`
+	}
+	e.Do("POST", "/v1/widget/conversations", hdtest.Auth{Visitor: other.VisitorToken}, map[string]any{"body": "Hi"}).Want(t, 201).JSON(t, &conv)
+	if !reachable(other.Contact.ID) {
+		t.Fatal("a pure widget visitor is not reachable")
+	}
+	e.Exec(`INSERT INTO messages (workspace_id, ticket_id, kind, direction, author_type, author_contact_id, body_text, email_message_id)
+		VALUES ($1, $2, 'reply', 'inbound', 'contact', $3, 'by mail', '<reply-1@mail.test>')`, ws.ID, conv.Conversation.ID, other.Contact.ID)
+	startChat(e, ws, agent, map[string]any{"contact_id": other.Contact.ID}).Want(t, http.StatusUnprocessableEntity)
+	if reachable(other.Contact.ID) {
+		t.Fatal("a chat answered by mail shows as reachable")
+	}
+
+	// A verified identity is reached whatever else their contact holds.
+	e.Exec(`UPDATE contacts SET external_id = 'user-ana' WHERE id = $1`, s.Contact.ID)
+	startChat(e, ws, agent, map[string]any{"contact_id": s.Contact.ID}).Want(t, 201)
+	if !reachable(s.Contact.ID) {
+		t.Fatal("a verified contact is not reachable")
+	}
+}
+
+// The list's flag and the start check are one rule: a session counts in a widget that is on,
+// and a chat of a brand needs the visitor to have used that brand's chat.
+func TestChatStartBrandAndWidget(t *testing.T) {
+	e, ws := chatEnv(t)
+	agent := ws.Agent.As(ws)
+	s := visitorSession(t, e, map[string]any{"key": ws.WidgetKey})
+	var c domain.Contact
+	e.Do("GET", "/v1/contacts/"+s.Contact.ID.String(), agent, nil).Want(t, 200).JSON(t, &c)
+	if !c.ChatReachable {
+		t.Fatal("a visitor with a live session is not reachable")
+	}
+	// Another brand's widget does not show this brand's visitor a chat.
+	brand := newBrand(e, ws)
+	e.Exec(`INSERT INTO widgets (id, workspace_id, brand_id, name, key) VALUES ($1, $2, $3, 'Other', $4)`, ids.New(), ws.ID, brand, "wk_other_"+brand.String())
+	r := startChat(e, ws, agent, map[string]any{"contact_id": s.Contact.ID, "brand_id": brand}).Want(t, http.StatusUnprocessableEntity)
+	if !strings.Contains(string(r.Body), "chat_unreachable") {
+		t.Fatal(string(r.Body))
+	}
+	// Their only widget turned off: reachable nowhere, by either.
+	e.SetWidgetSettings(ws, ws.WidgetID, map[string]any{"enabled": false})
+	e.Do("GET", "/v1/contacts/"+s.Contact.ID.String(), agent, nil).Want(t, 200).JSON(t, &c)
+	if c.ChatReachable {
+		t.Fatal("a session in a widget that is off shows as reachable")
+	}
+	startChat(e, ws, agent, map[string]any{"contact_id": s.Contact.ID}).Want(t, http.StatusUnprocessableEntity)
+}
+
+// A chat without a subject is named after its first message as the visitor reads it.
+func TestChatStartSubjectFilled(t *testing.T) {
+	e, ws := chatEnv(t)
+	s := visitorSession(t, e, map[string]any{"key": ws.WidgetKey, "name": "Ana Lopez"})
+	var tk domain.Ticket
+	startChat(e, ws, ws.Agent.As(ws), map[string]any{"contact_id": s.Contact.ID,
+		"body_html": "<p>Hi {{ contact.first_name }}, your order shipped</p>"}).Want(t, 201).JSON(t, &tk)
+	if tk.Subject != "Hi Ana, your order shipped" {
+		t.Fatalf("subject %q", tk.Subject)
+	}
+	var list struct {
+		Data []struct {
+			Subject string `json:"subject"`
+		} `json:"data"`
+	}
+	e.Do("GET", "/v1/widget/conversations", hdtest.Auth{Visitor: s.VisitorToken}, nil).Want(t, 200).JSON(t, &list)
+	if len(list.Data) != 1 || list.Data[0].Subject != "Hi Ana, your order shipped" {
+		t.Fatalf("widget conversations %+v", list.Data)
 	}
 }
 
@@ -201,6 +337,10 @@ func TestChatStartLimit(t *testing.T) {
 	ext := "user-2"
 	contact := newContact(e, ws, "l@example.com", &ext)
 	agent := ws.Agent.As(ws)
+	// Starts refused for another reason spend nothing.
+	for i := 0; i < 3; i++ {
+		startChat(e, ws, agent, map[string]any{"contact_id": contact, "body_html": "<p> </p>"}).Want(t, http.StatusUnprocessableEntity)
+	}
 	for i := 0; i < 10; i++ {
 		startChat(e, ws, agent, map[string]any{"contact_id": contact}).Want(t, 201)
 	}
@@ -227,6 +367,6 @@ func TestStartedChatReachesVerifiedVisitor(t *testing.T) {
 
 func newBrand(e *hdtest.Env, ws hdtest.WS) uuid.UUID {
 	id := ids.New()
-	e.Exec(`INSERT INTO brands (id, workspace_id, name, slug) VALUES ($1, $2, 'Other', $3)`, id, ws.ID, "other-"+id.String()[:8])
+	e.Exec(`INSERT INTO brands (id, workspace_id, name, slug) VALUES ($1, $2, 'Other', $3)`, id, ws.ID, "other-"+id.String())
 	return id
 }

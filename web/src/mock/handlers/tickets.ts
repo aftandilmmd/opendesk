@@ -851,7 +851,7 @@ function startChat(ctx: Ctx) {
   if ((s(ctx, "kind") ?? "reply") !== "reply") throw invalid("a chat starts with a reply, not a note");
   if (s(ctx, "mailbox_id") || strArr(ctx.body.cc)?.length || strArr(ctx.body.bcc)?.length) throw invalid("mailbox_id, cc and bcc are for email");
   if (contact.blocked) throw invalid("this contact is blocked");
-  if (!chatReachable(ws, contact)) throw new HttpError(422, "chat_unreachable", "This contact hasn't used the chat on your site yet. Send an email instead.");
+  if (!chatReachable(ws, contact)) throw new HttpError(422, "chat_unreachable", "The chat can't reach this contact. Send an email instead.");
   const body = s(ctx, "body_html") ?? "";
   const text = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   if (!text) throw invalid("a chat starts with a message or a file");

@@ -779,7 +779,7 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 		}
 	}
 	if nt.Channel == domain.ChannelChat {
-		widgetID, err := chatWidget(ctx, tx, d, wid, *nt.ContactID, b.WidgetID, askedBrand)
+		widgetID, err := chatWidget(ctx, tx, wid, *nt.ContactID, b.WidgetID, askedBrand)
 		if err != nil {
 			return domain.Ticket{}, err
 		}
@@ -807,17 +807,16 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 	}
 	bodyHTML := hd.SanitizeRich(b.BodyHTML)
 	bodyText := hd.HTMLToText(bodyHTML)
+	// A chat without a subject is named after its first message as the visitor reads it: a
+	// message with template tags is named once they are filled, after the ticket exists.
+	nameAfterBody := nt.Channel == domain.ChannelChat && strings.TrimSpace(nt.Subject) == ""
 	if nt.Channel == domain.ChannelChat {
 		if bodyText == "" && len(attIDs) == 0 {
 			return domain.Ticket{}, httpx.Validation("a chat starts with a message or a file")
 		}
-		if strings.TrimSpace(nt.Subject) == "" {
-			// Named like a chat the visitor starts: after its words, else its first file.
-			if nt.Subject = hd.Excerpt(bodyText, 80); nt.Subject == "" {
-				if err := tx.QueryRow(ctx, `SELECT filename FROM attachments WHERE workspace_id = $1 AND id = $2`, wid, attIDs[0]).Scan(&nt.Subject); err != nil {
-					return domain.Ticket{}, err
-				}
-				nt.Subject = hd.Excerpt(nt.Subject, 80)
+		if nameAfterBody && !templates.HasTags(b.BodyHTML) {
+			if nt.Subject, err = chatSubject(ctx, tx, wid, bodyText, attIDs); err != nil {
+				return domain.Ticket{}, err
 			}
 		}
 	}
@@ -849,6 +848,10 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 	if err := hd.CheckAssigneeOnTeam(ctx, tx, wid, nt.TeamID, nt.AssigneeID); err != nil {
 		return domain.Ticket{}, err
 	}
+	// A chat start spends the contact's hourly slot only once nothing above refused it.
+	if nt.Channel == domain.ChannelChat && !d.Limiter.Shared(ctx, "chat-start:"+wid.String()+":"+nt.ContactID.String(), chatStartsPerHour, time.Hour) {
+		return domain.Ticket{}, httpx.RateLimited()
+	}
 
 	t, err := domain.CreateTicket(ctx, tx, nt)
 	if err != nil {
@@ -879,6 +882,11 @@ func createTicket(ctx context.Context, tx pgx.Tx, d *deps.Deps, p *auth.Principa
 				return domain.Ticket{}, err
 			}
 			bodyText = hd.HTMLToText(bodyHTML)
+			if nameAfterBody {
+				if t, err = nameChat(ctx, tx, wid, t, bodyText, attIDs); err != nil {
+					return domain.Ticket{}, err
+				}
+			}
 		}
 		authorType := actor.Type
 		if authorType == "ai" {
@@ -1124,7 +1132,7 @@ const chatStartsPerHour = 10
 // chatWidget returns the widget a new chat with the contact opens in: the one asked for,
 // else the contact's latest of the brand, else the brand's first. The widget must be on and
 // reach the contact.
-func chatWidget(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, contactID uuid.UUID, raw string, askedBrand *uuid.UUID) (uuid.UUID, error) {
+func chatWidget(ctx context.Context, tx pgx.Tx, wid, contactID uuid.UUID, raw string, askedBrand *uuid.UUID) (uuid.UUID, error) {
 	var widgetID, brandID uuid.UUID
 	if raw != "" {
 		id, err := hd.ParseRef(raw, "widget_id")
@@ -1172,10 +1180,36 @@ func chatWidget(ctx context.Context, tx pgx.Tx, d *deps.Deps, wid, contactID uui
 		return uuid.Nil, err
 	}
 	if !ok {
-		return uuid.Nil, httpx.E(http.StatusUnprocessableEntity, "chat_unreachable", "This contact hasn't used the chat on your site yet. Send an email instead.")
-	}
-	if !d.Limiter.Shared(ctx, "chat-start:"+wid.String()+":"+contactID.String(), chatStartsPerHour, time.Hour) {
-		return uuid.Nil, httpx.RateLimited()
+		return uuid.Nil, httpx.E(http.StatusUnprocessableEntity, "chat_unreachable", "The chat can't reach this contact. Send an email instead.")
 	}
 	return widgetID, nil
+}
+
+// chatSubject names a chat like one the visitor starts: after its words, else its first file.
+func chatSubject(ctx context.Context, tx pgx.Tx, wid uuid.UUID, text string, attIDs []uuid.UUID) (string, error) {
+	if s := hd.Excerpt(text, 80); s != "" || len(attIDs) == 0 {
+		return s, nil
+	}
+	var name string
+	if err := tx.QueryRow(ctx, `SELECT filename FROM attachments WHERE workspace_id = $1 AND id = $2`, wid, attIDs[0]).Scan(&name); err != nil {
+		return "", err
+	}
+	return hd.Excerpt(name, 80), nil
+}
+
+// nameChat names a new chat after its filled first message (chatSubject) and says so
+// (ticket.updated). A message that fills to nothing, without a file, is refused.
+func nameChat(ctx context.Context, tx pgx.Tx, wid uuid.UUID, t domain.Ticket, text string, attIDs []uuid.UUID) (domain.Ticket, error) {
+	if text == "" && len(attIDs) == 0 {
+		return t, httpx.Validation("a chat starts with a message or a file")
+	}
+	subject, err := chatSubject(ctx, tx, wid, text, attIDs)
+	if err != nil {
+		return t, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE tickets SET subject = $3 WHERE workspace_id = $1 AND id = $2`, wid, t.ID, subject); err != nil {
+		return t, err
+	}
+	t.Subject = subject
+	return t, domain.PublishTicketUpdated(ctx, tx, wid, t.ID, []string{"subject"})
 }

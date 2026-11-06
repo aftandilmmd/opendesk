@@ -169,7 +169,7 @@ curl https://api.opendesk.sh/v1/tickets \
   }'
 ```
 
-The widget knows a contact who signed in through [identity verification](/guides/live-chat/identity-verification/), or a visitor who used the chat in the last 90 days from the same browser. Contacts carry `chat_reachable` to say so. Anyone else, such as a contact known only by email, answers `422 chat_unreachable`: email them instead. An email a visitor typed in the widget never links them to an existing contact, so it never reveals a chat to them.
+A chat reaches only someone whose identity the widget proves: a contact who signed in through [identity verification](/guides/live-chat/identity-verification/), or a visitor who used the chat in the last 90 days from the same browser and whom you know only from the chat. An email address a visitor types proves nothing, so once mail from that address, a call or any other ticket is on their contact, only identity verification reaches them. Contacts carry `chat_reachable` when a chat reaches them in some brand's widget; a chat in one brand needs them to have used that brand's chat, or to be verified. Anyone else answers `422 chat_unreachable`: email them instead.
 
 Without `widget_id`, the chat opens in the widget the contact used last, else the brand's first widget that is on. The visitor sees it the next time the widget loads, with a count on the launcher and a preview of the message; while they are away it also goes to their email when the widget's email follow-up is on. A chat a person starts stays with the team: Ollie does not answer in it. The team can start at most 10 chats with one contact an hour.
 

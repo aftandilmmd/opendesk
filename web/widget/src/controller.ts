@@ -144,7 +144,10 @@ export class Controller {
       },
     );
     this.live.start();
-    if (!this.sweepTimer) this.sweepTimer = setInterval(() => this.sweep(), 4000);
+    if (!this.sweepTimer) {
+      this.sweepTimer = setInterval(() => this.sweep(), 4000);
+      if (typeof document !== "undefined") document.addEventListener("visibilitychange", this.onVisible);
+    }
     await this.loadConversations();
   }
 
@@ -179,6 +182,7 @@ export class Controller {
     if (this.s.open) return;
     this.set({ open: true, unread: 0, teaser: null });
     this.emit("open");
+    if (this.s.view === "thread" && this.s.active) this.markSeen(this.s.active);
   }
   close() {
     if (!this.s.open) return;
@@ -261,8 +265,30 @@ export class Controller {
       this.applyMessages(id, msgs, true);
     } catch {
       this.set((s) => ({ messages: { ...s.messages, [id]: s.messages[id] ?? [] } }));
+      return;
     }
+    this.markSeen(id);
   }
+
+  /**
+   * The visitor has the conversation in front of them: the widget is open on it and the page
+   * is showing. Only then is it marked seen, so the API neither emails its replies nor counts
+   * them unread. A fetch alone never reads it: the widget fetches while closed too.
+   */
+  private markSeen(id: string) {
+    const s = this.s;
+    if (!s.open || s.view !== "thread" || s.active !== id || s.preview) return;
+    if (typeof document === "undefined" || document.hidden) return;
+    if (s.conversations?.some((c) => c.id === id && c.unread)) {
+      this.set((st) => ({ conversations: st.conversations?.map((c) => (c.id === id ? { ...c, unread: 0 } : c)) ?? null }));
+    }
+    void this.api.seen(id).catch(() => {});
+  }
+
+  /** The page came back into view with a conversation open: the visitor sees it now. */
+  private onVisible = () => {
+    if (typeof document !== "undefined" && !document.hidden && this.s.active) this.markSeen(this.s.active);
+  };
 
   /** Merge server messages into a thread and let them replace any live preview. */
   private applyMessages(tid: string, msgs: Message[], create: boolean) {
@@ -540,9 +566,7 @@ export class Controller {
     else if (!viewing) void this.loadConversations();
     // A reply read on screen: tell the API the visitor is here and has read it, so it is not
     // emailed too and does not show as unread on their next visit.
-    if (viewing && !s.preview && typeof document !== "undefined" && !document.hidden) {
-      void this.api.seen(tid).catch(() => {});
-    }
+    if (viewing) this.markSeen(tid);
     if (s.config?.sound && !s.preview && typeof document !== "undefined" && document.hidden) chime();
     const who = this.senderName(m);
     const text = (m.body_text || plainText(m.body_html.replace(/<[^>]+>/g, " "))).slice(0, 200);
@@ -565,6 +589,7 @@ export class Controller {
     this.live = null;
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = null;
+    if (typeof document !== "undefined") document.removeEventListener("visibilitychange", this.onVisible);
     Object.values(this.typingTimers).forEach(clearTimeout);
   }
 }

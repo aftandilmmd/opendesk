@@ -298,10 +298,9 @@ func (h *handler) registerConversations(api huma.API) {
 			if err != nil {
 				return nil, httpx.Wrap(err)
 			}
+			// Present, not read: the widget fetches in the background too, closed or not, so
+			// only /seen, sent while the conversation is on screen, reads it.
 			if err := h.seen(ctx, p); err != nil {
-				return nil, httpx.Wrap(err)
-			}
-			if err := h.read(ctx, p, c); err != nil {
 				return nil, httpx.Wrap(err)
 			}
 			for i := range msgs {
@@ -312,7 +311,9 @@ func (h *handler) registerConversations(api huma.API) {
 
 	huma.Register(api, huma.Operation{OperationID: "widget-seen", Method: http.MethodPost, Path: "/v1/widget/conversations/{id}/seen",
 		Summary: "Mark a conversation seen", Tags: []string{"Widget"}, DefaultStatus: http.StatusNoContent,
-		Description: "The widget calls this while a conversation is on screen and a reply arrives: a visitor who is there does not get the reply by email (email_follow_up)."},
+		Description: "The widget calls this while the widget is open with the conversation on screen: when it opens or shows the conversation, " +
+			"and when a reply arrives there. A visitor who is there does not get the reply by email (email_follow_up), and the conversation is read: " +
+			"the team's replies so far no longer count as unread, and the ticket's visitor_read_at says when."},
 		func(ctx context.Context, in *struct {
 			ID     string `path:"id"`
 			Origin string `header:"Origin"`

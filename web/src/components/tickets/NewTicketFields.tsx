@@ -128,7 +128,8 @@ function NewTicketWidget({ s }: { s: NewTicketState }) {
   const { data: widgets } = useQuery(q.widgets());
   const choices = (widgets ?? []).filter((w) => w.settings.enabled !== false && (!s.teams.multiBrand || !s.brand || w.brand_id === s.brand));
   return (
-    <Field label={tr("newTicket.widget")}>
+    // "Reachable" means in some brand's widget; another brand's says what it needs.
+    <Field label={tr("newTicket.widget")} hint={s.teams.multiBrand ? tr("newTicket.widgetHint") : undefined}>
       {({ id }) => (
         <Select
           id={id}

@@ -227,3 +227,47 @@ describe("replies that came while the visitor was away", () => {
     mock.dispose();
   });
 });
+
+describe("reading a conversation", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("marks it seen only while the widget is open on it, never on a background fetch", async () => {
+    const mock = createMock({ seed: "demo", latency: 5 });
+    const seen: string[] = [];
+    const fetcher = (url: string, init: RequestInit) => {
+      const m = /\/v1\/widget\/conversations\/([^/]+)\/seen$/.exec(url);
+      if (m) {
+        seen.push(decodeURIComponent(m[1]));
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return mock.fetch(url, init);
+    };
+    const c = new Controller({ base: "https://mock.invalid", key: "wk_seen", fetcher, socketFactory: mock.socket, persist: false });
+    const boot = c.boot(demoConfig("wk_seen"));
+    await vi.advanceTimersByTimeAsync(200);
+    await boot;
+    const id = c.store.get().conversations?.[0]?.id ?? mock.showcaseId;
+
+    // Fetched while the widget is closed (the last conversation stays selected): not read.
+    const closed = c.openConversation(id);
+    await vi.advanceTimersByTimeAsync(50);
+    await closed;
+    expect(c.store.get().messages[id]).toBeDefined();
+    expect(seen).toEqual([]);
+
+    // Opened on it: read.
+    c.open();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(seen).toEqual([id]);
+
+    // Closed again, a background fetch reads nothing more.
+    c.close();
+    const again = c.openConversation(id);
+    await vi.advanceTimersByTimeAsync(50);
+    await again;
+    expect(seen).toEqual([id]);
+    c.stop();
+    mock.dispose();
+  });
+});
