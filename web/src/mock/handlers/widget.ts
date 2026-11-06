@@ -82,6 +82,10 @@ const CHECKS: Partial<Record<keyof WidgetSettings, Check>> = {
   position: oneOf("position", ["right", "left"] as const),
   offset_x: offset("offset_x"),
   offset_y: offset("offset_y"),
+  z_index: (v) => {
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 2147483647) throw invalid("z_index must be a whole number from 0 to 2147483647");
+    return v;
+  },
   launcher: oneOf("launcher", ["icon", "label"] as const),
   launcher_label: text("launcher_label", 24),
   radius: oneOf("radius", ["square", "soft", "round"] as const),
@@ -159,6 +163,7 @@ export function widgetConfig(ws: WsData, widget?: Widget): WidgetConfig {
     position: w.position,
     offset_x: w.offset_x,
     offset_y: w.offset_y,
+    z_index: w.z_index ?? 0,
     launcher: w.launcher,
     launcher_label: w.launcher_label,
     radius: w.radius,

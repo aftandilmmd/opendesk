@@ -165,6 +165,7 @@ type widgetConfig struct {
 		Position        string        `json:"position" enum:"right,left"`
 		OffsetX         int           `json:"offset_x"`
 		OffsetY         int           `json:"offset_y"`
+		ZIndex          int           `json:"z_index" doc:"The widget's stacking order on the page; 0 = the default"`
 		Launcher        string        `json:"launcher" enum:"icon,label"`
 		LauncherLabel   string        `json:"launcher_label"`
 		Radius          string        `json:"radius" enum:"square,soft,round"`
@@ -266,10 +267,11 @@ type widgetSessionInput struct {
 
 type widgetSession struct {
 	Body struct {
-		VisitorToken string            `json:"visitor_token"`
-		Contact      domain.ContactRef `json:"contact"`
-		WSToken      string            `json:"ws_token"`
-		GatewayURL   string            `json:"gateway_url"`
+		VisitorToken   string            `json:"visitor_token"`
+		Contact        domain.ContactRef `json:"contact"`
+		WSToken        string            `json:"ws_token"`
+		GatewayURL     string            `json:"gateway_url"`
+		EmailCollected bool              `json:"email_collected" doc:"The visitor supplied an address, including an unverified address held by another contact"`
 		// Unread is the team's replies the visitor has not read in this widget's chats, and
 		// UnreadLatest the newest of them, so the widget shows both without another request.
 		Unread       int             `json:"unread"`
@@ -321,7 +323,7 @@ func (h *handler) registerPublic(api huma.API) {
 				b.AvatarURL = g.Logo
 			}
 			b.LauncherIconURL = domain.Avatar(g.Images["launcher"])
-			b.Theme, b.Position, b.OffsetX, b.OffsetY = ws.Theme, ws.Position, ws.OffsetX, ws.OffsetY
+			b.Theme, b.Position, b.OffsetX, b.OffsetY, b.ZIndex = ws.Theme, ws.Position, ws.OffsetX, ws.OffsetY, ws.ZIndex
 			b.Launcher, b.LauncherLabel, b.Radius = ws.Launcher, ws.LauncherLabel, ws.Radius
 			b.Title, b.Subtitle, b.Suggestions, b.Sound = ws.Title, ws.Subtitle, ws.Suggestions, ws.Sound
 			b.Attachments = ws.Attachments
@@ -520,9 +522,6 @@ func (h *handler) session(ctx context.Context, in *widgetSessionInput) (*widgetS
 		if c.Blocked {
 			return httpx.E(http.StatusForbidden, "blocked", "This conversation is not available.")
 		}
-		if wset.RequireEmail && c.Email == nil && email == "" {
-			return httpx.E(http.StatusUnprocessableEntity, "email_required", "Enter your email address to start a chat.")
-		}
 		if token == "" {
 			token = "od_vis_" + crypto.RandomToken(32)
 			if _, err := tx.Exec(ctx, `INSERT INTO widget_sessions (id, workspace_id, contact_id, token_hash, verified, user_agent, widget_id)
@@ -539,6 +538,7 @@ func (h *handler) session(ctx context.Context, in *widgetSessionInput) (*widgetS
 			return err
 		}
 		out.Body.VisitorToken = token
+		out.Body.EmailCollected = widgetEmailCollected(c)
 		out.Body.Contact = domain.ContactRef{ID: c.ID, Email: c.Email, Name: c.Name, AvatarURL: c.AvatarURL}
 		out.Body.WSToken = wsToken
 		out.Body.GatewayURL = h.d.Cfg.GatewayURL + "/widget" // the widget socket, open to any origin
@@ -634,7 +634,14 @@ func (h *handler) fillContact(ctx context.Context, tx pgx.Tx, wid, id uuid.UUID,
 		if err != nil {
 			return err
 		}
-		if !taken {
+		if taken {
+			tag, err := tx.Exec(ctx, `UPDATE contacts SET custom = jsonb_set(custom, '{widget_email}', to_jsonb($3::text)), updated_at = now()
+				WHERE workspace_id = $1 AND id = $2 AND email IS NULL AND custom->>'widget_email' IS DISTINCT FROM $3`, wid, id, email)
+			if err != nil {
+				return err
+			}
+			changed = changed || tag.RowsAffected() > 0
+		} else {
 			tag, err := tx.Exec(ctx, `UPDATE contacts SET email = $3, updated_at = now() WHERE workspace_id = $1 AND id = $2 AND email IS NULL`, wid, id, email)
 			if err != nil {
 				return err
@@ -707,4 +714,13 @@ func unreadFor(ctx context.Context, tx pgx.Tx, wid, contactID, brandID uuid.UUID
 	}
 	m = publicMessage(m)
 	return n, &m, nil
+}
+
+// widgetEmailCollected recognizes supplied addresses without linking an unverified visitor to another contact.
+func widgetEmailCollected(c domain.Contact) bool {
+	if c.Email != nil && *c.Email != "" {
+		return true
+	}
+	claimed, _ := c.Custom["widget_email"].(string)
+	return claimed != ""
 }

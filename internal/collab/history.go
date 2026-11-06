@@ -311,8 +311,8 @@ const (
 
 // fetchEach runs fetch for each id, at most n at once, each with a provider
 // of its own (a token refresh writes to its account copy). It returns the results and the
-// errors in the order of ids. Once the provider stays busy or unreachable past a call's own
-// waits, the ids not yet fetched get that error without a call.
+// errors in the order of ids. Once the provider refuses every call (isRefusing) past a call's
+// own waits, the ids not yet fetched get that error without a call.
 func fetchEach[P any, T any](ctx context.Context, n int, ids []string, open func() P, fetch func(context.Context, P, string) (T, error)) ([]T, []error) {
 	out := make([]T, len(ids))
 	errs := make([]error, len(ids))
@@ -334,7 +334,7 @@ func fetchEach[P any, T any](ctx context.Context, n int, ids []string, open func
 					continue
 				}
 				out[i], errs[i] = fetch(ctx, prov, ids[i])
-				if isPassing(errs[i]) {
+				if isRefusing(errs[i]) {
 					mu.Lock()
 					stop = errs[i]
 					mu.Unlock()

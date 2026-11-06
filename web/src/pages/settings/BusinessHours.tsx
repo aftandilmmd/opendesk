@@ -31,6 +31,7 @@ import { q, qk } from "@/lib/queries";
 import { atLeast, useRole } from "@/lib/session";
 import { tone } from "@/lib/tones";
 import { DateField } from "@/components/ui/date-picker";
+import { sameJSON } from "@/lib/sameJSON";
 
 export const WEEK: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri"];
@@ -119,7 +120,7 @@ export default function BusinessHours() {
   }
 
   const base = norm(data);
-  const dirty = JSON.stringify(base) !== JSON.stringify(draft);
+  const dirty = !sameJSON(base, draft);
   const errors = WEEK.map((d) => dayError(draft.schedule[d]));
   const invalid = errors.some(Boolean);
   const total = weeklyMinutes(draft.schedule);

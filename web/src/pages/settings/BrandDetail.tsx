@@ -42,6 +42,7 @@ import { atLeast, useRole, useWorkspace } from "@/lib/session";
 import { tone } from "@/lib/tones";
 import { SLUG } from "./Brands";
 import { WIDGET_SECRET_ANCHOR, WidgetSecretDialog, WidgetSecretLaterDialog } from "./WidgetDetail";
+import { sameJSON } from "@/lib/sameJSON";
 
 export type BrandTab = "overview" | "addresses" | "widgets" | "help";
 
@@ -101,11 +102,11 @@ function BrandEditor({ brand, brands }: { brand: Brand; brands: Brand[] }) {
   const [draft, setDraft] = useState<Draft>(base);
   const [prevBase, setPrevBase] = useState(base);
   useEffect(() => {
-    if (JSON.stringify(draft) === JSON.stringify(prevBase)) setDraft(base);
+    if (sameJSON(draft, prevBase)) setDraft(base);
     setPrevBase(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = !sameJSON(draft, base);
   const slugBad = !SLUG.test(draft.slug);
   const addresses = (mailboxes ?? []).filter((m) => m.brand_id === brand.id);
   const brandWidgets = (widgets ?? []).filter((w) => w.brand_id === brand.id).sort((a, b) => a.position - b.position);
@@ -117,7 +118,7 @@ function BrandEditor({ brand, brands }: { brand: Brand; brands: Brand[] }) {
         ...(draft.color !== base.color ? { color: draft.color } : {}),
         ...(draft.locale !== base.locale ? { locale: draft.locale } : {}),
         ...(draft.slug !== base.slug ? { slug: draft.slug } : {}),
-        ...(JSON.stringify(draft.help_center) !== JSON.stringify(base.help_center) ? { help_center: { ...draft.help_center, title: draft.help_center.title.trim() } } : {}),
+        ...(!sameJSON(draft.help_center, base.help_center) ? { help_center: { ...draft.help_center, title: draft.help_center.title.trim() } } : {}),
       }),
     onSuccess: (b) => {
       upsertInList(qc, qk.brands, b);

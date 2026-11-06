@@ -35,6 +35,7 @@ import { cn } from "@/lib/cn";
 import { q, qk, removeFromList, upsertInList } from "@/lib/queries";
 import { atLeast, useRole, useUser } from "@/lib/session";
 import { DayRow, Holidays, WEEK, dayError, norm, timezones } from "./BusinessHours";
+import { sameJSON } from "@/lib/sameJSON";
 
 const ROLES: TeamRole[] = ["lead", "member", "observer"];
 const MODES: AssignMode[] = ["none", "round_robin", "load_balanced"];
@@ -108,11 +109,11 @@ function TeamEditor({ team }: { team: Team }) {
   const [prevBase, setPrevBase] = useState(base);
   useEffect(() => {
     // Someone else saved: take their version unless we are mid-edit.
-    if (JSON.stringify(draft) === JSON.stringify(prevBase)) setDraft(base);
+    if (sameJSON(draft, prevBase)) setDraft(base);
     setPrevBase(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = !sameJSON(draft, base);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const signatureHtml = draft.signature_html;
   const previewBody = useMemo<TemplatePreviewBody>(() => ({ kind: "signature", team_id: team.id, body_html: signatureHtml }), [team.id, signatureHtml]);
@@ -123,7 +124,7 @@ function TeamEditor({ team }: { team: Team }) {
     mutationFn: () => {
       const body: Partial<Draft> = {};
       for (const k of Object.keys(draft) as (keyof Draft)[])
-        if (JSON.stringify(draft[k]) !== JSON.stringify(base[k])) (body as Record<string, unknown>)[k] = draft[k];
+        if (!sameJSON(draft[k], base[k])) (body as Record<string, unknown>)[k] = draft[k];
       if (body.name !== undefined) body.name = body.name.trim();
       if (body.description !== undefined) body.description = body.description.trim();
       return api.teams.update(team.id, body);

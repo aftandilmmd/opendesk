@@ -1019,7 +1019,8 @@
     "discountCodes_one": "Discount code",
     "discountCodes_other": "Discount codes",
     "refunded": "{{amount}} refunded",
-    "openLink": "Open {{name}}"
+    "openLink": "Open {{name}}",
+    "copyValue": "Copy {{name}}"
   },
   "print": {
     "action": "Print or save as PDF",

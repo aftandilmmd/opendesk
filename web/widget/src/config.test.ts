@@ -185,7 +185,16 @@ describe("widget config", () => {
     expect(v["--brand-fg"]).toBe("#0a0a0a");
     expect(v["--r-launcher"]).toBe("999px");
     expect(v["--ox"]).toBe("32px");
+    expect(v["--oz"]).toBe("2147483000");
     expect(hostVars(resolveConfig(null))["--brand"]).toBeUndefined();
+  });
+
+  it("stacks at the workspace's z_index, else above the page", () => {
+    const base = { workspace_name: "A", brand_color: null, greeting: "", help_center_url: null, require_email: false };
+    expect(hostVars(resolveConfig({ ...base, z_index: 40 }))["--oz"]).toBe("40");
+    expect(resolveConfig({ ...base, z_index: -5 }).z_index).toBe(0);
+    expect(resolveConfig({ ...base, z_index: 1e12 }).z_index).toBe(2147483647);
+    expect(resolveConfig({ ...base, z_index: "9" as never }).z_index).toBe(0);
   });
 
   it("reports the page URL over https only, without fragment, capped at 500", () => {

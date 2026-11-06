@@ -24,10 +24,11 @@ import (
 )
 
 type session struct {
-	VisitorToken string            `json:"visitor_token"`
-	Contact      domain.ContactRef `json:"contact"`
-	WSToken      string            `json:"ws_token"`
-	GatewayURL   string            `json:"gateway_url"`
+	EmailCollected bool              `json:"email_collected"`
+	VisitorToken   string            `json:"visitor_token"`
+	Contact        domain.ContactRef `json:"contact"`
+	WSToken        string            `json:"ws_token"`
+	GatewayURL     string            `json:"gateway_url"`
 }
 
 func setup(t *testing.T) (*hdtest.Env, hdtest.WS) {
@@ -188,7 +189,14 @@ func TestBlockedAndRequireEmailAndOrigins(t *testing.T) {
 
 	e.SetWidgetSettings(ws, uuid.Nil, map[string]any{"enabled": true, "require_email": true, "allowed_origins": []string{"https://shop.example"}})
 	allowed := hdtest.Auth{Header: map[string]string{"Origin": "https://shop.example"}}
-	e.Do("POST", "/v1/widget/session", allowed, map[string]any{"key": ws.WidgetKey}).Want(t, 422)
+	// An anonymous visitor gets a session (the widget's email form needs one); the first
+	// conversation is what asks for the address.
+	var anon session
+	e.Do("POST", "/v1/widget/session", allowed, map[string]any{"key": ws.WidgetKey}).Want(t, 200).JSON(t, &anon)
+	anonAuth := hdtest.Auth{Visitor: anon.VisitorToken, Header: allowed.Header}
+	e.Do("POST", "/v1/widget/conversations", anonAuth, map[string]any{"body": "Hi"}).Want(t, 422)
+	e.Do("POST", "/v1/widget/session", allowed, map[string]any{"key": ws.WidgetKey, "visitor_token": anon.VisitorToken, "email": "anon@example.com"}).Want(t, 200)
+	e.Do("POST", "/v1/widget/conversations", anonAuth, map[string]any{"body": "Hi"}).Want(t, 201)
 	e.Do("POST", "/v1/widget/session", hdtest.Auth{Header: map[string]string{"Origin": "https://evil.example"}},
 		map[string]any{"key": ws.WidgetKey, "email": "a@example.com"}).Want(t, 403)
 	e.Do("POST", "/v1/widget/session", hdtest.Auth{}, map[string]any{"key": ws.WidgetKey, "email": "a@example.com"}).Want(t, 403)

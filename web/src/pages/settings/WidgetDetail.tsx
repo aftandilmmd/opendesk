@@ -43,6 +43,7 @@ import type { Brand, Widget, WidgetSettings as WS } from "@/lib/api/types";
 import { useAI } from "@/lib/ai";
 import { appOrigin, config } from "@/lib/config";
 import { q, qk, removeFromList, upsertInList } from "@/lib/queries";
+import { sameJSON } from "@/lib/sameJSON";
 import { atLeast, useRole, useWorkspace } from "@/lib/session";
 import { AI_TONE, tone } from "@/lib/tones";
 import { cn } from "@/lib/cn";
@@ -91,6 +92,7 @@ function withDefaults(s: WS): WS {
     position: s.position ?? "right",
     offset_x: s.offset_x ?? 20,
     offset_y: s.offset_y ?? 20,
+    z_index: s.z_index ?? 0,
     launcher: s.launcher ?? "icon",
     launcher_label: s.launcher_label ?? "",
     radius: s.radius ?? "soft",
@@ -188,7 +190,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
 
   useEffect(() => {
     // Someone else saved: take their version unless we are mid-edit.
-    if (JSON.stringify(draft) === JSON.stringify(prevBase)) setDraft(base);
+    if (sameJSON(draft, prevBase)) setDraft(base);
     setPrevBase(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
@@ -199,7 +201,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
   }, [draft.settings.theme]);
 
   const s = draft.settings;
-  const dirty = JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = !sameJSON(draft, base);
   const agentOn = ai.enabled && agentSettings(ai.features).widget_answers;
   const hasFollowUpMailbox = mailboxes?.some(
     (m) =>
@@ -251,7 +253,7 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
       // PATCH merges, so only what changed goes up.
       const patch: Partial<WS> = {};
       for (const k of Object.keys(d.settings) as (keyof WS)[]) {
-        if (JSON.stringify(d.settings[k]) !== JSON.stringify(base.settings[k])) (patch as Record<string, unknown>)[k] = d.settings[k];
+        if (!sameJSON(d.settings[k], base.settings[k])) (patch as Record<string, unknown>)[k] = d.settings[k];
       }
       if (patch.suggestions) patch.suggestions = patch.suggestions.map(tidy);
       if (patch.topics) patch.topics = topicsForSave(patch.topics);
@@ -407,6 +409,22 @@ function WidgetEditor({ widget, brand, back }: { widget: Widget; brand: Brand | 
                   <span className="text-xs text-fg-3">{t("widget.offsetXShort")}</span>
                   <Stepper value={s.offset_y} onChange={(offset_y) => set({ offset_y })} min={0} max={200} step={4} suffix="px" aria-label={t("widget.offsetY")} className="ml-2 w-[124px]" />
                   <span className="text-xs text-fg-3">{t("widget.offsetYShort")}</span>
+                </div>
+              </Row>
+              <Row label={t("widget.zIndex")} description={t("widget.zIndexHint")} stack>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Segmented
+                    size="xs"
+                    value={s.z_index ? "custom" : "default"}
+                    onChange={(v) => set({ z_index: v === "custom" ? s.z_index || 1000 : 0 })}
+                    options={[
+                      { value: "default", label: t("widget.zIndexDefault") },
+                      { value: "custom", label: t("widget.zIndexCustom") },
+                    ]}
+                  />
+                  {s.z_index > 0 && (
+                    <Stepper value={s.z_index} onChange={(z_index) => set({ z_index })} min={1} max={2147483647} step={10} aria-label={t("widget.zIndex")} className="w-[160px]" />
+                  )}
                 </div>
               </Row>
               <Row label={t("widget.radius")} description={t("widget.radiusHint")}>

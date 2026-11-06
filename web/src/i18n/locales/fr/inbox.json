@@ -1001,7 +1001,8 @@
     "discountCodes_many": "Codes de réduction",
     "discountCodes_other": "Codes de réduction",
     "refunded": "Remboursé : {{amount}}",
-    "openLink": "Ouvrir {{name}}"
+    "openLink": "Ouvrir {{name}}",
+    "copyValue": "Copier {{name}}"
   },
   "print": {
     "action": "Imprimer ou enregistrer en PDF",

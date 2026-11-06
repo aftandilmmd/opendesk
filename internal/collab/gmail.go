@@ -601,6 +601,29 @@ func (s *service) importGmailWindow(ctx context.Context, p *pass, g *gmailProvid
 	return s.applyGmailChanges(ctx, p, g, changes, backlog)
 }
 
+// checkReads tells a batch's reads that Gmail would not answer (a 5xx past the call's own
+// waits) apart from Gmail being down. It answers nil when those are the messages' own: Gmail
+// answered another read of the batch, or a call for the profile now. It answers the error
+// that ends the pass when Gmail refuses every call, or does not answer the profile either.
+func (g *gmailProvider) checkReads(ctx context.Context, errs []error) error {
+	failed, answered := false, false
+	for _, err := range errs {
+		switch {
+		case isRefusing(err):
+			return err
+		case isPassing(err):
+			failed = true
+		default:
+			answered = true
+		}
+	}
+	if !failed || answered {
+		return nil
+	}
+	_, err := g.profileHistoryID(ctx)
+	return err
+}
+
 // gmailRefused reports Gmail refusing a request as invalid (a 4xx other than a missing
 // history id or a refused grant), which asking again the same way will not fix.
 func gmailRefused(err error) bool {
@@ -615,7 +638,9 @@ func gmailRefused(err error) bool {
 //
 // At most initialMax new messages are fetched a pass: this pass's own first, the newest
 // first, then the backlog's, the newest first. It returns the backlog left: what did not
-// fit, oldest first, at most gmailBacklogMax.
+// fit, oldest first, at most gmailBacklogMax. A message Gmail would not hand over while it
+// answers the rest goes to the backlog's old end, so the mail after it is not held up; a
+// stored one whose labels Gmail would not give keeps the ones it has until its next change.
 func (s *service) applyGmailChanges(ctx context.Context, p *pass, g *gmailProvider, changes []gmailChange, backlog []string) ([]string, error) {
 	inChanges := make(map[string]bool, len(changes))
 	all := make([]string, 0, len(changes))
@@ -676,11 +701,7 @@ func (s *service) applyGmailChanges(ctx context.Context, p *pass, g *gmailProvid
 	}
 	slices.Reverse(kept)
 	slices.Reverse(later)
-	next := append(kept, later...)
-	if n := len(next) - gmailBacklogMax; n > 0 {
-		s.log.Info("collab gmail backlog full, leaving out the oldest new mail", "account_id", p.a.ID, "left_out", n)
-		next = next[n:]
-	}
+	unread := []string{} // new mail Gmail would not hand over this pass
 
 	for len(changes) > 0 {
 		n := min(len(changes), syncBatch)
@@ -722,6 +743,9 @@ func (s *service) applyGmailChanges(ctx context.Context, p *pass, g *gmailProvid
 			m, raw, err := gp.getRaw(ctx, id)
 			return gmailFetched{m: m, raw: raw}, err
 		})
+		if err := g.checkReads(ctx, errs); err != nil {
+			return nil, err
+		}
 		fetched := map[string]*newMessage{}
 		for k, err := range errs {
 			c := &chunk[at[k]]
@@ -731,6 +755,15 @@ func (s *service) applyGmailChanges(ctx context.Context, p *pass, g *gmailProvid
 				continue
 			case err == errTooLarge:
 				s.log.Info("collab skipping oversized message", "account_id", p.a.ID)
+				continue
+			case isPassing(err):
+				attrs := syncFailure(p.a, err, 0, false)
+				s.log.Info("collab gmail message not read, trying again later", "account_id", p.a.ID, "known", known[c.ID] != nil,
+					"endpoint", attrs["endpoint"], "status", attrs["status"], "code", attrs["code"])
+				if known[c.ID] == nil {
+					unread = append(unread, c.ID)
+				}
+				c.Labels = false
 				continue
 			case err != nil:
 				return nil, err
@@ -775,6 +808,15 @@ func (s *service) applyGmailChanges(ctx context.Context, p *pass, g *gmailProvid
 		if err != nil {
 			return nil, err
 		}
+	}
+	if len(unread) > 0 {
+		s.d.Analytics.Capture("workspace:"+p.a.WorkspaceID.String(), p.a.WorkspaceID.String(), "collab_messages_deferred",
+			map[string]any{"provider": p.a.Provider, "count": len(unread)})
+	}
+	next := append(append(unread, kept...), later...)
+	if n := len(next) - gmailBacklogMax; n > 0 {
+		s.log.Info("collab gmail backlog full, leaving out the oldest new mail", "account_id", p.a.ID, "left_out", n)
+		next = next[n:]
 	}
 	return next, nil
 }

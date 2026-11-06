@@ -72,19 +72,25 @@ type fakeGmail struct {
 	gone            bool // history answers 404
 	status          int  // every call answers this when set
 	busy            int  // the next calls answer 429 rateLimitExceeded
-	categoryModify  []map[string]any
-	categoryStatus  int // refuse only category mutations
-	minimalGets     int
-	expireBefore    int // history baseline older than this is expired
-	modify          []map[string]any
-	trashed         []string
-	sent            []string // multipart bodies
-	gets            int
+	// limitedUntil makes every call answer 429 with Gmail's "Retry after" this time.
+	limitedUntil   time.Time
+	requests       int
+	categoryModify []map[string]any
+	categoryStatus int // refuse only category mutations
+	minimalGets    int
+	expireBefore   int // history baseline older than this is expired
+	modify         []map[string]any
+	trashed        []string
+	sent           []string // multipart bodies
+	gets           int
 	// failRawAfter makes raw reads past this many answer 503 (history_test.go); 0 never.
 	failRawAfter     int
 	failMinimalAfter int
-	threadGets       int
-	failThreadAfter  int
+	profileStatus    int // the profile answers this when set
+	// unreadable are messages whose every read answers 500, as Gmail does for some.
+	unreadable      map[string]bool
+	threadGets      int
+	failThreadAfter int
 	// settings is the account's sendAs and vacation (settings_test.go).
 	settings fakeGmailSettings
 	// drafts are the drafts API and label colours (drafts_test.go).
@@ -160,6 +166,13 @@ func (g *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
+	g.requests++
+	if !g.limitedUntil.IsZero() {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"code":429,"message":"User-rate limit exceeded.  Retry after ` +
+			g.limitedUntil.UTC().Format("2006-01-02T15:04:05.000Z") + `","errors":[{"reason":"rateLimitExceeded"}]}}`))
+		return
+	}
 	if g.busy > 0 {
 		g.busy--
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -185,6 +198,8 @@ func (g *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.serveDrafts(w, r, path)
 	case r.Method == "GET" && path == "/labels":
 		reply(map[string]any{"labels": g.labels})
+	case r.Method == "GET" && path == "/profile" && g.profileStatus != 0:
+		w.WriteHeader(g.profileStatus)
 	case r.Method == "GET" && path == "/profile":
 		reply(map[string]any{"historyId": strconv.Itoa(g.history), "messagesTotal": len(g.msgs)})
 	case r.Method == "GET" && path == "/messages":
@@ -233,6 +248,11 @@ func (g *fakeGmail) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(map[string]any{"messages": list[offset:end], "nextPageToken": next, "resultSizeEstimate": total})
 	case r.Method == "GET" && strings.HasPrefix(path, "/messages/"):
 		m := g.msgs[strings.TrimPrefix(path, "/messages/")]
+		if m != nil && g.unreadable[m.id] {
+			w.WriteHeader(500)
+			_, _ = w.Write([]byte(`{"error":{"code":500,"message":"Internal error encountered.","status":"INTERNAL"}}`))
+			return
+		}
 		if q.Get("format") == "minimal" {
 			g.minimalGets++
 			if g.failMinimalAfter > 0 && g.minimalGets > g.failMinimalAfter {
@@ -374,6 +394,13 @@ func (w *world) useGmail(g *fakeGmail) {
 	srv := httptest.NewServer(g)
 	w.t.Cleanup(srv.Close)
 	w.s.gmailBase = srv.URL
+}
+
+// fork is another server's service for the same world: its own paces, the same providers.
+func (w *world) fork() *service {
+	s := newService(w.d)
+	s.busyWaits, s.paceLimits, s.gmailBase = w.s.busyWaits, w.s.paceLimits, w.s.gmailBase
+	return s
 }
 
 // threadByRemote loads a synced conversation by provider thread id.
@@ -650,22 +677,105 @@ func TestGmailSyncLabelChangesNeedNoReads(t *testing.T) {
 	}
 }
 
-// TestFetchEachStopsWhileBusy: once the provider stays busy, the rest of a batch is not asked.
+// TestFetchEachStopsWhileBusy: once the provider refuses as a whole (a rate limit), the rest
+// of a batch is not asked; a 5xx to one read leaves the others asked.
 func TestFetchEachStopsWhileBusy(t *testing.T) {
 	ids := make([]string, 40)
 	var calls atomic.Int32
-	busy := &providerError{msg: "Gmail is busy. We will try again.", busy: true}
+	limited := &providerError{msg: "Gmail is busy. We will try again.", busy: true, limited: true}
 	_, errs := fetchEach(context.Background(), 4, ids, func() int { return 0 }, func(context.Context, int, string) (int, error) {
 		calls.Add(1)
-		return 0, busy
+		return 0, limited
 	})
 	if c := calls.Load(); c > 4 {
 		t.Fatalf("%d calls after the provider was busy", c)
 	}
 	for i, err := range errs {
-		if err != busy {
+		if err != limited {
 			t.Fatalf("id %d: %v", i, err)
 		}
+	}
+
+	ids = []string{"a", "bad", "c", "d", "e", "f"}
+	failed := &providerError{msg: "Gmail is busy. We will try again.", busy: true, status: 500}
+	_, errs = fetchEach(context.Background(), 2, ids, func() int { return 0 }, func(_ context.Context, _ int, id string) (int, error) {
+		if id == "bad" {
+			return 0, failed
+		}
+		return 1, nil
+	})
+	for i, err := range errs {
+		if (ids[i] == "bad") != (err != nil) {
+			t.Fatalf("%s: %v", ids[i], err)
+		}
+	}
+}
+
+// TestGmailSyncGoesOnPastAnUnreadableMessage: a message Gmail answers 500 for, however often
+// it is asked, waits at the old end of the backlog while the rest of the mail arrives, and
+// the account stays active.
+func TestGmailSyncGoesOnPastAnUnreadableMessage(t *testing.T) {
+	w := newWorld(t)
+	g := newFakeGmail(t)
+	w.useGmail(g)
+	a := w.account(w.agent, ProviderGoogle, VisibilityPrivate, Audience{})
+	if err := w.s.syncAccount(w.ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	g.burst("burst", 30, a.Email)
+	g.unreadable = map[string]bool{"burst-0007": true}
+	for pass := 1; pass <= quietFailures+1; pass++ {
+		if err := w.s.syncAccount(w.ctx, a.ID); err != nil {
+			t.Fatal(err)
+		}
+		if a = w.reload(a); a.Status != "active" || a.SyncFailures != 0 || a.LastError != "" {
+			t.Fatalf("pass %d: %s %d %q", pass, a.Status, a.SyncFailures, a.LastError)
+		}
+		if got := w.count(`SELECT count(*) FROM collab_messages WHERE account_id = $1 AND remote_id LIKE 'burst-%'`, a.ID); got != 29 {
+			t.Fatalf("pass %d: %d of the readable messages", pass, got)
+		}
+		if st := gmailStateOf(t, a); !slices.Equal(st.Backlog, []string{"burst-0007"}) || st.HistoryID != strconv.Itoa(g.history) {
+			t.Fatalf("pass %d: state %+v", pass, st)
+		}
+	}
+	// Mail behind it is not held up, and it arrives once Gmail hands it over.
+	g.add("fresh", "fresh", []string{"INBOX", "UNREAD"}, testMail{from: "[EMAIL]", to: a.Email, subject: "Fresh",
+		msgID: "[EMAIL]", body: "Just now", date: time.Now()})
+	g.record("messagesAdded", "fresh")
+	delete(g.unreadable, "burst-0007")
+	if err := w.s.syncAccount(w.ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.count(`SELECT count(*) FROM collab_messages WHERE account_id = $1 AND remote_id IN ('fresh', 'burst-0007')`, a.ID); got != 2 {
+		t.Fatalf("%d of the late messages", got)
+	}
+	if st := gmailStateOf(t, w.reload(a)); len(st.Backlog) != 0 {
+		t.Fatalf("backlog: %v", st.Backlog)
+	}
+}
+
+// TestGmailSyncStopsWhenGmailIsDown: reads that all fail while Gmail answers nothing else
+// either end the pass, and nothing is moved to the backlog.
+func TestGmailSyncStopsWhenGmailIsDown(t *testing.T) {
+	w := newWorld(t)
+	g := newFakeGmail(t)
+	w.useGmail(g)
+	a := w.account(w.agent, ProviderGoogle, VisibilityPrivate, Audience{})
+	if err := w.s.syncAccount(w.ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	before := gmailStateOf(t, w.reload(a))
+	g.burst("burst", 3, a.Email)
+	g.failRawAfter, g.gets = 1, 1
+	g.profileStatus = http.StatusServiceUnavailable
+	if err := w.s.syncAccount(w.ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if a = w.reload(a); a.SyncFailures != 1 {
+		t.Fatalf("failures: %d", a.SyncFailures)
+	}
+	if st := gmailStateOf(t, a); st.HistoryID != before.HistoryID || len(st.Backlog) != 0 {
+		t.Fatalf("state moved while Gmail was down: %+v", st)
 	}
 }
 
@@ -1056,6 +1166,121 @@ func TestGmailBusy(t *testing.T) {
 	}
 }
 
+// TestGmailRateLimitHoldsTheAccount: a rate limit that asks for a longer wait than a call
+// sits out holds the account until then, on every server: no call is made, Sync now
+// included, and the account says when it goes on.
+func TestGmailRateLimitHoldsTheAccount(t *testing.T) {
+	w := newWorld(t)
+	g := newFakeGmail(t)
+	w.useGmail(g)
+	a := w.account(w.agent, ProviderGoogle, VisibilityPrivate, Audience{})
+	until := time.Now().Add(time.Hour).Truncate(time.Second)
+	g.limitedUntil = until
+	if err := w.s.syncAccount(w.ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	a = w.reload(a)
+	if a.Status != "error" || !strings.Contains(a.LastError, "asked us to wait until") || a.WaitUntil == nil || a.WaitUntil.Before(until) {
+		t.Fatalf("held: %s %q %v", a.Status, a.LastError, a.WaitUntil)
+	}
+	if a.NextSyncAt == nil || a.NextSyncAt.Before(until) {
+		t.Fatalf("next sync %v, before the hold ends", a.NextSyncAt)
+	}
+	g.mu.Lock()
+	g.limitedUntil, g.requests = time.Time{}, 0
+	g.mu.Unlock()
+	for _, s := range []*service{w.s, w.fork()} { // this server, and another one
+		if err := s.syncAccount(w.ctx, a.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.call(w.ctx, w.reload(a), "Gmail", restRequest{method: http.MethodGet, url: s.gmailBase + "/gmail/v1/users/me/profile"}); !isRefusing(err) {
+			t.Fatalf("a call while held: %v", err)
+		}
+	}
+	if g.requests != 0 {
+		t.Fatalf("%d calls while held", g.requests)
+	}
+	mustExec(t, w.d, `UPDATE collab_accounts SET provider_wait_until = now() - interval '1 second' WHERE id = $1`, a.ID)
+	s := w.fork()
+	if err := s.syncAccount(w.ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if a = w.reload(a); a.Status != "active" || a.LastError != "" {
+		t.Fatalf("after the hold: %s %q", a.Status, a.LastError)
+	}
+}
+
+func TestProviderWait(t *testing.T) {
+	now := time.Date(2026, 11, 6, 17, 0, 0, 0, time.UTC)
+	h := func(v string) http.Header { return http.Header{"Retry-After": {v}} }
+	gmail := []byte(`{"error":{"code":429,"message":"User-rate limit exceeded.  Retry after 2026-11-06T17:30:00.000Z"}}`)
+	for _, tt := range []struct {
+		name  string
+		h     http.Header
+		body  []byte
+		want  time.Duration
+		asked bool
+	}{
+		{"seconds", h("120"), nil, 2 * time.Minute, true},
+		{"date", h("Fri, 06 Nov 2026 17:05:00 GMT"), nil, 5 * time.Minute, true},
+		{"gmail's words", nil, gmail, 30 * time.Minute, true},
+		{"header first", h("3"), gmail, 3 * time.Second, true},
+		{"none", nil, []byte(`{"error":{"code":500,"message":"Backend Error"}}`), 0, false},
+	} {
+		if got, asked := providerWait(tt.h, tt.body, now); got != tt.want || asked != tt.asked {
+			t.Errorf("%s: %v %v", tt.name, got, asked)
+		}
+	}
+}
+
+func TestEndpointOf(t *testing.T) {
+	base := "https://gmail.googleapis.com"
+	for _, tt := range []struct {
+		method, url, name string
+		units             int
+	}{
+		{"GET", base + "/gmail/v1/users/me/messages/abc?format=raw", "messages.get", 5},
+		{"GET", base + "/gmail/v1/users/me/messages?q=after%3A1", "messages.list", 5},
+		{"GET", base + "/gmail/v1/users/me/history?startHistoryId=1", "history.list", 2},
+		{"GET", base + "/gmail/v1/users/me/profile", "profile", 1},
+		{"GET", base + "/gmail/v1/users/me/labels", "labels.list", 1},
+		{"POST", base + "/gmail/v1/users/me/messages/batchModify", "messages.batchModify", 50},
+		{"POST", base + "/gmail/v1/users/me/messages/abc/modify", "messages.modify", 5},
+		{"POST", base + "/gmail/v1/users/me/messages/abc/trash", "messages.trash", 5},
+		{"POST", base + "/upload/gmail/v1/users/me/messages/send?uploadType=multipart", "messages.send", 100},
+		{"POST", base + "/upload/gmail/v1/users/me/drafts?uploadType=multipart", "drafts.create", 10},
+		{"PUT", base + "/upload/gmail/v1/users/me/drafts/d1?uploadType=multipart", "drafts.update", 15},
+		{"POST", base + "/gmail/v1/users/me/drafts/send", "drafts.send", 100},
+		{"GET", base + "/gmail/v1/users/me/threads/t1", "threads.get", 10},
+		{"PATCH", base + "/gmail/v1/users/me/settings/sendAs/a%40b.c", "settings.sendAs.patch", 100},
+		{"PUT", base + "/gmail/v1/users/me/settings/vacation", "settings.vacation.update", 5},
+	} {
+		if got := endpointOf(ProviderGoogle, tt.method, tt.url); got.name != tt.name || got.units != tt.units {
+			t.Errorf("%s %s: %+v", tt.method, tt.url, got)
+		}
+	}
+	if got := endpointOf(ProviderMicrosoft, "GET", "https://graph.microsoft.com/v1.0/me/messages/x"); got != (endpoint{"graph.get", 1}) {
+		t.Errorf("graph: %+v", got)
+	}
+}
+
+// TestPaceCountsUnits: a call takes its quota units from the account's turns.
+func TestPaceCountsUnits(t *testing.T) {
+	s := &service{paceLimits: map[string]paceLimit{ProviderGoogle: {perSecond: 10, burst: 100, atOnce: 8}}, paced: map[uuid.UUID]*pace{}}
+	a := &accountRow{ID: uuid.New(), Provider: ProviderGoogle}
+	ctx := context.Background()
+	r, err := s.pace(a).wait(ctx, 100) // a send takes the whole burst
+	if err != nil {
+		t.Fatal(err)
+	}
+	r()
+	short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	if _, err := s.pace(a).wait(short, 5); err == nil {
+		t.Fatal("a read did not wait for the units a send took")
+	}
+}
+
 // TestPace: an account's calls wait for a place while its provider's are taken, and for
 // their turn at its rate.
 func TestPace(t *testing.T) {
@@ -1065,21 +1290,21 @@ func TestPace(t *testing.T) {
 		t.Fatal("one pace per account, none for IMAP")
 	}
 	ctx := context.Background()
-	r1, err1 := s.pace(a).wait(ctx)
-	r2, err2 := s.pace(a).wait(ctx)
+	r1, err1 := s.pace(a).wait(ctx, 1)
+	r2, err2 := s.pace(a).wait(ctx, 1)
 	if err1 != nil || err2 != nil {
 		t.Fatal(err1, err2)
 	}
 	short, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 	defer cancel()
-	if _, err := s.pace(a).wait(short); err == nil {
+	if _, err := s.pace(a).wait(short, 1); err == nil {
 		t.Fatal("a third call at once did not wait for a place")
 	}
 	r1()
 	r2()
 	start := time.Now()
 	for range 3 {
-		r, err := s.pace(a).wait(ctx)
+		r, err := s.pace(a).wait(ctx, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1088,7 +1313,7 @@ func TestPace(t *testing.T) {
 	if d := time.Since(start); d < 80*time.Millisecond {
 		t.Fatalf("three calls at 20 a second took %s", d)
 	}
-	if r, err := (*pace)(nil).wait(ctx); err != nil || r == nil {
+	if r, err := (*pace)(nil).wait(ctx, 1); err != nil || r == nil {
 		t.Fatal("no pace")
 	}
 }

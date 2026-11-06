@@ -1015,7 +1015,8 @@
     "discountCodes_one": "Rabattcode",
     "discountCodes_other": "Rabattcodes",
     "refunded": "{{amount}} erstattet",
-    "openLink": "{{name}} öffnen"
+    "openLink": "{{name}} öffnen",
+    "copyValue": "{{name}} kopieren"
   },
   "print": {
     "action": "Drucken oder als PDF speichern",

@@ -21,6 +21,7 @@ import { storeAccount } from "@/lib/collab/hooks";
 import { outOfOfficeBody, outOfOfficeForm, outOfOfficeProblem, type OutOfOfficeForm } from "@/lib/collab/outOfOffice";
 import { cn } from "@/lib/cn";
 import { relLong } from "@/lib/format";
+import { sameJSON } from "@/lib/sameJSON";
 
 const syncIcon: Record<MailIdentitySync, ReactNode> = {
   two_way: <ArrowLeftRight />,
@@ -97,7 +98,7 @@ export function FromNameHint({ account }: { account: MailAccount }) {
 }
 
 /** The sidebar's pill while an account's automatic reply is on. */
-const sameForm = (a: OutOfOfficeForm, b: OutOfOfficeForm) => JSON.stringify(a) === JSON.stringify(b);
+const sameForm = (a: OutOfOfficeForm, b: OutOfOfficeForm) => sameJSON(a, b);
 
 /**
  * Whether a rich editor has the focus: an editor's change without it is the editor writing

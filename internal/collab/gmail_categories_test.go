@@ -309,6 +309,26 @@ func legacyGmailCategoryWorld(t *testing.T, n int) (*world, *fakeGmail, *account
 	return w, g, w.reload(a)
 }
 
+// TestGmailCategorySweepGoesOnPastAnUnreadableMessage: a stored message Gmail answers 500
+// for keeps its labels, and the sweep and the sync go on.
+func TestGmailCategorySweepGoesOnPastAnUnreadableMessage(t *testing.T) {
+	w, g, a := legacyGmailCategoryWorld(t, 12)
+	w.gmailMode(a, modeGmail)
+	g.unreadable = map[string]bool{g.order[3]: true}
+	if err := w.s.syncAccount(w.ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if a = w.reload(a); a.Status != "active" || a.SyncFailures != 0 {
+		t.Fatalf("%s %d %q", a.Status, a.SyncFailures, a.LastError)
+	}
+	if n := w.count(`SELECT count(*) FROM collab_accounts WHERE id=$1 AND category_refresh IS NOT NULL`, a.ID); n != 0 {
+		t.Fatal("refresh not complete")
+	}
+	if n := w.count(`SELECT count(*) FROM collab_messages WHERE account_id=$1 AND gmail_category_mask IS NOT NULL`, a.ID); n != 11 {
+		t.Fatalf("observation coverage %d", n)
+	}
+}
+
 func TestGmailCategoriesActivationResumesAndReplays(t *testing.T) {
 	w, g, a := legacyGmailCategoryWorld(t, 105)
 	baseline := historyOf(a)
@@ -335,8 +355,9 @@ func TestGmailCategoriesActivationResumesAndReplays(t *testing.T) {
 	g.record("labelsAdded", first)
 	g.add("new", "new-thread", []string{"INBOX", "CATEGORY_SOCIAL"}, testMail{from: "new@example.com", to: a.Email, msgID: "new@example.com", date: time.Now()})
 	g.record("messagesAdded", "new")
-	// Fail the next metadata page. The cursor and old live baseline survive.
+	// Gmail is down for the next metadata page. The cursor and old live baseline survive.
 	g.failMinimalAfter = g.minimalGets
+	g.profileStatus = http.StatusServiceUnavailable
 	if err := w.s.runSync(w.ctx, w.reload(a)); err == nil {
 		t.Fatal("expected provider failure")
 	}
@@ -346,7 +367,7 @@ func TestGmailCategoriesActivationResumesAndReplays(t *testing.T) {
 	if historyOf(w.reload(a)) != baseline {
 		t.Fatal("failure advanced baseline")
 	}
-	g.failMinimalAfter = 0
+	g.failMinimalAfter, g.profileStatus = 0, 0
 	if err := w.s.runSync(w.ctx, w.reload(a)); err != nil {
 		t.Fatal(err)
 	}

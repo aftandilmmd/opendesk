@@ -232,6 +232,9 @@ func (h *handler) registerConversations(api huma.API) {
 				if contact.Email != nil {
 					fromEmail = *contact.Email
 				}
+				if g.Settings.RequireEmail && !widgetEmailCollected(contact) {
+					return httpx.E(http.StatusUnprocessableEntity, "email_required", "Enter your email address to start a chat.")
+				}
 				subject := hd.Excerpt(body, 80)
 				if subject == "" {
 					// Only files: the first one names the conversation.

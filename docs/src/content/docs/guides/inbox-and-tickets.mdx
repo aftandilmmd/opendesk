@@ -62,7 +62,8 @@ On an open ticket you see who else is viewing or replying, and on chat tickets t
 <Callout>
 
 - <kbd>mod</kbd> is <kbd>⌘</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere. Press <kbd>?</kbd> anywhere for every shortcut, or see [Keyboard shortcuts](/guides/keyboard-shortcuts/).
-- Attachments upload once and are linked to the message when it is sent.
+- Attachments upload once and are linked to the message when it is sent. Click a file's name to open it in a new tab and check it before sending.
+- In the reply box, <kbd>mod</kbd> click a link, or use the button beside its address in the link box, to open it in a new tab.
 - A new reply from the customer reopens a solved ticket.
 
 </Callout>
@@ -89,7 +90,7 @@ To keep these in view and the customer at the top of the details panel, set **Ti
 | `pending` | Waiting on the customer. |
 | `on_hold` | Waiting on something else, such as another team or a third party. |
 | `solved` | Resolved. A new reply from the customer reopens the conversation. |
-| `closed` | Finished and kept for the record. |
+| `closed` | Finished and kept for the record. The customer cannot reopen it: an email that answers it opens a new ticket, a help center reply leaves it closed, and the chat widget asks them to start a new conversation. |
 
 An admin can rename, recolour or hide statuses in **Settings**, under **Workspace**, **Statuses and priorities**. A hidden status leaves the menus agents pick from; a ticket already in it keeps it, and **Snooze** still works when **on hold** is hidden. **Open** and **Solved** always stay available. To call the finish action **Close**, rename **Solved** to **Closed** and hide the terminal **Closed** status. Finishing still sends satisfaction surveys when enabled, and a customer reply reopens the same ticket.
 
@@ -106,6 +107,8 @@ An admin can change the times the menu offers in **Settings → Workspace**, und
 <Screenshot src="/guides/inbox/snooze" alt="The Snooze button ringed as 1 and its menu ringed as 2: In 1 hour, In 4 hours, Tomorrow, Next week, or a date" />
 
 The **⋯** menu holds the rest: **Merge into another ticket**, **Copy link**, **Hide ticket history** (or **Show**), **Print or save as PDF**, **Mark as spam** and **Delete ticket**.
+
+**Merge into another ticket** first offers the customer's other tickets, closed ones included, and leaves out those already merged elsewhere; type to search every ticket. Merging into a solved or closed ticket reopens it when the ticket you merge is still open, pending or on hold, so the customer's new message is not left in a finished conversation. Apart from changing its status, this is the only way a closed ticket opens again. If the ticket you pick was itself merged, the merge goes into the ticket it went into, and that is the ticket that opens.
 
 <Screenshot src="/guides/inbox/more-actions" alt="The More actions button ringed as 1 and its menu ringed as 2: Merge into another ticket, Copy link, Mark as spam and Delete ticket" />
 
@@ -185,6 +188,8 @@ On a busy ticket, **⋯ → Hide ticket history** keeps the messages and calls o
 To read a ticket like a chat, turn on **Conversation layout** in **Settings → Profile → Appearance**: the customer's messages sit on the left, and your team's replies and internal notes, Ollie's and automations' included, on the right. Activity stays full width, and on a narrow screen every message does. It applies to the browser you set it in.
 
 On a wide screen the conversation and the reply box keep to a width that reads easily, centred in the ticket. To give them the whole width, set **Conversation width** to **Full width** in the same place; in the conversation layout the messages then grow with it, each side keeping its offset. Designed emails keep their own width, and on a narrow screen nothing changes.
+
+A web address written as plain text in a message or a note, like one an integration posts through the API, opens as a link in a new tab. Only how it shows changes: the message keeps its text as it was sent.
 
 An email you receive keeps its remote images hidden until you click **Load images**, so opening it tells the sender nothing. To show them at once in every email, turn on **Always show images** in **Settings → Profile → Appearance**. The sender's server can then tell when the email was opened. It applies to the browser you set it in.
 

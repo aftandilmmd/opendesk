@@ -124,19 +124,35 @@ after a connect, a reconnect, `POST .../sync` or an action. One runs per account
   a batch of 25 in one transaction. One that is gone by then, or too large, frees its place for the
   next new message.
 - Each account's calls are paced within its provider's limits, across the sync, actions and people's
-  own reads in the process: Gmail 40 calls a second and 8 at once (its limit is 250 quota units a
-  second per user; reading a message costs 5), Microsoft 15 a second and 4 at once (10,000 requests in
-  10 minutes and 4 at once per mailbox; the sync takes 3 of them, so a person's own action never waits
-  for a place).
+  own reads in the process, in the units the provider counts: Gmail 200 quota units a second (a burst
+  of 250) and 8 calls at once, each call priced as Gmail prices its method (reading or listing
+  messages 5, history 2, a bulk label change 50, a send 100; its limit is 250 a second per user, so
+  another server's calls for the account have room), Microsoft 15 requests a second and 4 at once
+  (10,000 requests in 10 minutes and 4 at once per mailbox; the sync takes 3 of them, so a person's own
+  action never waits for a place).
 - A provider that is busy (a rate limit, or a 5xx to a read) is asked again within the call after
-  1 and 4 seconds, or after its `Retry-After` when that is at most 15 seconds. A request that
+  1 and 4 seconds, or after the wait it asks for when that is at most 15 seconds. A longer wait
+  (`Retry-After` in seconds or as a date, or the time in Gmail's "Retry after" for a rate limit, at
+  most a day) holds the account: until it ends no server calls its provider for it
+  (`collab_accounts.provider_wait_until`), the sync and Sync now wait for it, an action answers the
+  same error, and the account shows "Gmail asked us to wait until Nov 6 17:30 UTC" at once when the
+  wait outlasts the quiet failures. A request that
   changes something is asked again only after a rate limit, which refused it before it ran. A
-  provider still busy (or unreachable) after that ends the pass: the messages its batch has not
-  read yet are not asked for.
+  rate limit or no answer at all after that ends the pass: the messages its batch has not read
+  yet are not asked for. A 5xx can be one message's own (Gmail answers some messages that way
+  however often it is asked), so it leaves the rest of the batch asked. When every read of a
+  batch failed, Gmail's profile is asked: no answer there ends the pass. Otherwise the pass goes
+  on: new mail Gmail would not hand over waits at the old end of the backlog and is asked for
+  again after newer mail, and a stored message keeps its labels (and its tab) until its next
+  change. Such a message never stops the rest of the account's mail.
 - Failures are stored on the account (`status: "error"`, a safe `last_error`), retried with
   backoff (1 minute doubling to 1 hour). A passing failure (a busy or unreachable provider) waits
   with the backoff without changing the status for the first three in a row (about seven minutes), so a
-  short outage never shows; the fourth shows. A refused grant (`invalid_grant`, an IMAP login refused) needs a reconnect
+  short outage never shows; the fourth shows. Each failed pass sends PostHog `collab_sync_failed`
+  (`provider`, `kind`, the call's Gmail method or Graph verb as `endpoint`, the provider's `status`
+  and error `code`, `failures`, `wait_seconds`, `shown`), and a pass that left messages for later
+  `collab_messages_deferred` (`provider`, `count`), with the workspace as the group; never an
+  address, a subject or the provider's words. A refused grant (`invalid_grant`, an IMAP login refused) needs a reconnect
   at once: `status: "error"`, `reconnect: true`.
 - Each message is parsed with the email area's parser. Its HTML is sanitized with bluemonday before
   storage (the same policy as inbound email), and it renders in the sandboxed frame without scripts
@@ -831,7 +847,7 @@ interface CollabStatus {
 
 interface SidebarPrefs {
   order: string[]              // section ids, top to bottom: "favorites", "inbox", "mail", "teams", "views", "workspace" (the default)
-  hidden: string[]             // "section:<id>", "box:<box>", "account:<id>", "folder:<id>", "folder:<inbox|starred|...>", "view:<id>", "team:<id>", "ticket_folder:<id>"
+  hidden: string[]             // "section:<id>", "box:<box>", "account:<id>", "folder:<id>", "folder:<inbox|starred|...>", "view:<id>", "team:<id>", "ticket_folder:<id>", "row:waiting_chats"
   pinned: { kind: "box" | "folder" | "account" | "view" | "team" | "ticket_folder" | "view_section"; id: string }[]  // shown under Favorites, in order, at most 30
   expanded_accounts: string[]  // account ids whose folders show in the sidebar; folded by default (the mail page has every folder)
   mark_read_on_open: boolean   // default true
@@ -847,7 +863,8 @@ its own rows instead; a whole section in a Space follows these preferences.
 
 Every member has them, with or without Collab. Without Collab they arrange the ticket side: the
 order of Favorites, Inbox, Teams, Views and Workspace, hidden rows and sections, favorites of inbox
-folders, teams, views and view sections, and their numbers. The Mail section, mail rows and favorites, `unified_inbox`,
+folders, teams, views and view sections, and their numbers. `row:waiting_chats` hides the red row on top of
+Inbox that shows while visitors wait in live chat with nobody on it. The Mail section, mail rows and favorites, `unified_inbox`,
 `mark_read_on_open`, `mail_tabs` and `auto_pins` are Collab's: kept as saved, used once it is on.
 
 **View sections in Favorites.** A `view_section` favorite names a view section (contracts/api.md,

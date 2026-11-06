@@ -21,7 +21,7 @@
 
 import { render } from "preact";
 import { Controller, type EventName } from "./controller";
-import { applyHostVars } from "./config";
+import { applyHostVars, DEFAULT_Z_INDEX } from "./config";
 import { phoenixFactory } from "./realtime";
 import { browserLanguages, matchLocale, pickLocale, setLocale } from "./i18n";
 import { css } from "./styles";
@@ -79,7 +79,7 @@ function start(key: string, base: string, fetcher: (u: string, i: RequestInit) =
 
   const host = document.createElement("div");
   host.setAttribute("data-opendesk-widget", "");
-  host.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;z-index:2147483000;";
+  host.style.cssText = `position:fixed;right:0;bottom:0;width:0;height:0;z-index:var(--oz,${DEFAULT_Z_INDEX});`;
   const root = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
   style.textContent = css;
@@ -88,7 +88,7 @@ function start(key: string, base: string, fetcher: (u: string, i: RequestInit) =
   root.appendChild(mount);
   document.body.appendChild(host);
 
-  // Colour, corners and offsets follow the config as CSS variables on the host.
+  // Colour, corners, offsets and stacking order follow the config as CSS variables on the host.
   let applied: unknown = null;
   c.store.subscribe(() => {
     const cfg = get().config;

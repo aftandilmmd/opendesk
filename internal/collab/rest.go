@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -17,8 +19,8 @@ import (
 
 // Provider HTTPS calls (Gmail and Microsoft Graph): the account's access token, one
 // refresh on 401, each account's calls paced within the provider's limits, a short wait
-// and another try while the provider is busy, and provider errors reduced to safe,
-// classified messages.
+// and another try while the provider is busy, no call at all while it asked for a longer
+// one, and provider errors reduced to safe, classified messages.
 
 // restRequest is one provider call.
 type restRequest struct {
@@ -37,14 +39,19 @@ var errTooLarge = errors.New("the message is too large to import")
 
 // call runs a provider request and returns the response body of a 2xx answer. A busy
 // provider (a rate limit, or a 5xx to a read) is asked again after each of s.busyWaits, or
-// after its Retry-After when that is no longer than maxBusyWait.
+// after the wait it asks for when that is no longer than maxBusyWait. A longer one holds
+// the account (holdAccount): until it ends, no call for it is made.
 func (s *service) call(ctx context.Context, a *accountRow, label string, r restRequest) ([]byte, error) {
 	limit := r.limit
 	if limit == 0 {
 		limit = 1 << 20
 	}
+	ep := endpointOf(a.Provider, r.method, r.url)
 	refreshed, waited := false, 0
 	for {
+		if until := s.heldUntil(a); time.Now().Before(until) {
+			return nil, heldError(label, ep, until)
+		}
 		token, err := s.accessToken(ctx, a)
 		if err != nil {
 			return nil, err
@@ -70,7 +77,7 @@ func (s *service) call(ctx context.Context, a *accountRow, label string, r restR
 		for k, v := range r.headers {
 			req.Header.Add(k, v)
 		}
-		release, err := s.pace(a).wait(ctx)
+		release, err := s.pace(a).wait(ctx, ep.units)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -110,19 +117,32 @@ func (s *service) call(ctx context.Context, a *accountRow, label string, r restR
 		if resp.StatusCode/100 != 2 {
 			err := httpFailure(label, resp.StatusCode, body)
 			var pe *providerError
-			if waited < len(s.busyWaits) && errors.As(err, &pe) && pe.busy && (pe.limited || r.method == http.MethodGet) {
-				wait, ok := retryAfter(resp.Header, s.busyWaits[waited])
-				if ok {
-					waited++
-					t := time.NewTimer(wait)
-					select {
-					case <-ctx.Done():
-						t.Stop()
-						return nil, ctx.Err()
-					case <-t.C:
-					}
-					continue
+			if !errors.As(err, &pe) {
+				return nil, err
+			}
+			pe.endpoint = ep.name
+			if !pe.busy {
+				return nil, err
+			}
+			wait, asked := providerWait(resp.Header, body, time.Now())
+			if asked && wait > maxBusyWait {
+				pe.retryAt = s.holdAccount(ctx, a, time.Now().Add(wait))
+				pe.msg = heldMessage(label, pe.retryAt)
+				return nil, err
+			}
+			if waited < len(s.busyWaits) && (pe.limited || r.method == http.MethodGet) {
+				if !asked {
+					wait = s.busyWaits[waited]
 				}
+				waited++
+				t := time.NewTimer(wait)
+				select {
+				case <-ctx.Done():
+					t.Stop()
+					return nil, ctx.Err()
+				case <-t.C:
+				}
+				continue
 			}
 			return nil, err
 		}
@@ -140,13 +160,14 @@ type paceLimit struct {
 	atOnce    int
 }
 
-// providerPaces keep each account inside its provider's limits: Gmail allows 250 quota
-// units a second per user (reading a message costs 5, so 40 calls a second leave room),
-// Microsoft 10,000 requests in 10 minutes and 4 at once per mailbox. The sync reads
-// gmailFetchers or graphFetchers messages at once and leaves the other places to people's
-// own actions.
+// providerPaces keep each account inside its provider's limits, in the units the provider
+// counts (endpointOf): Gmail allows 250 quota units a second per user and prices each method
+// (reading a message costs 5, a send 100), so 200 a second leave room for another process's
+// calls for the account; Microsoft allows 10,000 requests in 10 minutes and 4 at once per
+// mailbox. The sync reads gmailFetchers or graphFetchers messages at once and leaves the
+// other places to people's own actions.
 var providerPaces = map[string]paceLimit{
-	ProviderGoogle:    {perSecond: 40, burst: 20, atOnce: 8},
+	ProviderGoogle:    {perSecond: 200, burst: 250, atOnce: 8},
 	ProviderMicrosoft: {perSecond: 15, burst: 15, atOnce: 4},
 }
 
@@ -155,6 +176,9 @@ var providerPaces = map[string]paceLimit{
 type pace struct {
 	rate  *rate.Limiter
 	slots chan struct{}
+	// until is the end of the account's hold, as this process last saw it.
+	mu    sync.Mutex
+	until time.Time
 }
 
 // pace returns the account's pace, nil for a provider without one.
@@ -173,8 +197,9 @@ func (s *service) pace(a *accountRow) *pace {
 	return p
 }
 
-// wait takes one of the account's places and its next turn; release gives the place back.
-func (p *pace) wait(ctx context.Context) (release func(), err error) {
+// wait takes one of the account's places and its turn for a call of units; release gives
+// the place back.
+func (p *pace) wait(ctx context.Context, units int) (release func(), err error) {
 	if p == nil {
 		return func() {}, nil
 	}
@@ -184,30 +209,98 @@ func (p *pace) wait(ctx context.Context) (release func(), err error) {
 		return nil, ctx.Err()
 	}
 	release = func() { <-p.slots }
-	if err := p.rate.Wait(ctx); err != nil {
+	if err := p.rate.WaitN(ctx, min(max(units, 1), p.rate.Burst())); err != nil {
 		release()
 		return nil, err
 	}
 	return release, nil
 }
 
-// maxBusyWait is the longest Retry-After a call waits out; a longer one is left to the
-// next sync pass.
+// maxBusyWait is the longest wait a call sits out itself; a longer one holds the account.
 const maxBusyWait = 15 * time.Second
 
-// retryAfter is the wait before asking again: the provider's Retry-After in seconds when
-// it gives one (false past maxBusyWait), else def.
-func retryAfter(h http.Header, def time.Duration) (time.Duration, bool) {
-	v := strings.TrimSpace(h.Get("Retry-After"))
-	if v == "" {
-		return def, true
+// maxHold bounds a hold, whatever the provider asks for.
+const maxHold = 24 * time.Hour
+
+// gmailRetryAt is the time in Gmail's own words for a rate limit ("User-rate limit
+// exceeded.  Retry after 2026-11-06T17:03:00.000Z"). Only the time is read from them.
+var gmailRetryAt = regexp.MustCompile(`Retry after (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)`)
+
+// providerWait is the wait the provider asked for, if it asked: Retry-After in seconds or as
+// a date, or the time in Gmail's message for a rate limit.
+func providerWait(h http.Header, body []byte, now time.Time) (time.Duration, bool) {
+	if v := strings.TrimSpace(h.Get("Retry-After")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return time.Duration(n) * time.Second, true
+		}
+		if t, err := http.ParseTime(v); err == nil {
+			return max(t.Sub(now), 0), true
+		}
 	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 {
-		return def, true
+	var e struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	d := time.Duration(n) * time.Second
-	return d, d <= maxBusyWait
+	if json.Unmarshal(body, &e) == nil {
+		if m := gmailRetryAt.FindStringSubmatch(e.Error.Message); m != nil {
+			if t, err := time.Parse(time.RFC3339Nano, m[1]); err == nil {
+				return max(t.Sub(now), 0), true
+			}
+		}
+	}
+	return 0, false
+}
+
+// holdAccount keeps every call for the account from its provider until until (at most
+// maxHold away): in this process at once, in the others through
+// collab_accounts.provider_wait_until. It returns the end of the hold.
+func (s *service) holdAccount(ctx context.Context, a *accountRow, until time.Time) time.Time {
+	if longest := time.Now().Add(maxHold); until.After(longest) {
+		until = longest
+	}
+	until = until.Truncate(time.Second).Add(time.Second)
+	if p := s.pace(a); p != nil {
+		p.mu.Lock()
+		if until.After(p.until) {
+			p.until = until
+		}
+		p.mu.Unlock()
+	}
+	if a.WaitUntil == nil || a.WaitUntil.Before(until) {
+		a.WaitUntil = &until
+	}
+	if _, err := s.d.DB.Pool.Exec(context.WithoutCancel(ctx), `UPDATE collab_accounts
+		SET provider_wait_until = GREATEST(provider_wait_until, $2) WHERE id = $1`, a.ID, until); err != nil {
+		s.log.Warn("collab provider hold", "account_id", a.ID, "err", err)
+	}
+	s.log.Info("collab provider asked to wait", "account_id", a.ID, "provider", a.Provider, "until", until)
+	return until
+}
+
+// heldUntil is the end of the account's hold, zero when there is none.
+func (s *service) heldUntil(a *accountRow) time.Time {
+	var until time.Time
+	if a.WaitUntil != nil {
+		until = *a.WaitUntil
+	}
+	if p := s.pace(a); p != nil {
+		p.mu.Lock()
+		if p.until.After(until) {
+			until = p.until
+		}
+		p.mu.Unlock()
+	}
+	return until
+}
+
+func heldMessage(label string, until time.Time) string {
+	return label + " asked us to wait until " + until.UTC().Format("Jan 2 15:04 UTC") + ". We will try again then."
+}
+
+// heldError is a call left unmade while the account is held.
+func heldError(label string, ep endpoint, until time.Time) error {
+	return &providerError{msg: heldMessage(label, until), status: http.StatusTooManyRequests, busy: true, limited: true, endpoint: ep.name, retryAt: until}
 }
 
 // callJSON sends in as JSON (when not nil) and decodes the answer into out (when not nil).
@@ -286,9 +379,9 @@ func httpFailure(label string, status int, body []byte) error {
 	msg += ")."
 	switch {
 	case status == http.StatusTooManyRequests || has("rateLimitExceeded", "userRateLimitExceeded", "ApplicationThrottled"):
-		return &providerError{msg: label + " is busy. We will try again.", status: status, busy: true, limited: true}
+		return &providerError{msg: label + " is busy. We will try again.", status: status, busy: true, limited: true, code: shown}
 	case status >= 500:
-		return &providerError{msg: label + " is busy. We will try again.", status: status, busy: true}
+		return &providerError{msg: label + " is busy. We will try again.", status: status, busy: true, code: shown}
 	case status == http.StatusNotFound || has("ErrorItemNotFound"):
 		return &providerError{msg: msg, status: status, permanent: true, notFound: true}
 	case status == http.StatusForbidden && has("insufficientPermissions", "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "ErrorAccessDenied", "authError"):
@@ -298,7 +391,7 @@ func httpFailure(label string, status int, body []byte) error {
 		return &providerError{msg: label + " refused to send from this address. Its organization has to allow sending from aliases, " +
 			"or the address is not one of the account's (ErrorSendAsDenied).", status: status, permanent: true}
 	}
-	return &providerError{msg: msg, status: status, permanent: status >= 400 && status < 500}
+	return &providerError{msg: msg, status: status, permanent: status >= 400 && status < 500, code: shown}
 }
 
 // isNotFound reports a provider 404.
@@ -312,6 +405,13 @@ func isNotFound(err error) bool {
 func isPassing(err error) bool {
 	var pe *providerError
 	return errors.Is(err, errProviderUnavailable) || errors.As(err, &pe) && pe.busy
+}
+
+// isRefusing reports a provider that refuses every call for now: a rate limit, or no answer
+// at all. A 5xx can be one request's own, so it is not.
+func isRefusing(err error) bool {
+	var pe *providerError
+	return errors.Is(err, errProviderUnavailable) || errors.As(err, &pe) && pe.limited
 }
 
 // isPermanent reports a failure that retrying will not fix.

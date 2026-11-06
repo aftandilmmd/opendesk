@@ -151,6 +151,20 @@ var eventSchemas = map[string]map[string]propertyValidator{
 		"interval": enumProperty("month", "year"),
 		"seats":    nonNegativeCountProperty,
 	},
+	"collab_sync_failed": {
+		"provider":     enumProperty("google", "microsoft", "imap"),
+		"kind":         enumProperty("reconnect", "unreachable", "rate_limited", "busy", "not_found", "refused", "provider", "imap", "internal"),
+		"endpoint":     codeProperty,
+		"code":         codeProperty,
+		"status":       nonNegativeCountProperty,
+		"failures":     nonNegativeCountProperty,
+		"wait_seconds": nonNegativeCountProperty,
+		"shown":        boolProperty,
+	},
+	"collab_messages_deferred": {
+		"provider": enumProperty("google", "microsoft", "imap"),
+		"count":    nonNegativeCountProperty,
+	},
 	"$exception": {
 		"$exception_type": enumProperty("server_error"),
 	},
@@ -216,6 +230,21 @@ func enumProperty(allowed ...string) propertyValidator {
 		_, ok := values[text]
 		return text, ok
 	}
+}
+
+// codeProperty is a machine code (a provider's error reason, an API method name): a short
+// run of letters, digits and "._-", which leaves no room for an address or a sentence.
+func codeProperty(value any) (any, bool) {
+	text, ok := value.(string)
+	if !ok || text == "" || len(text) > 64 {
+		return nil, false
+	}
+	for _, r := range text {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-') {
+			return nil, false
+		}
+	}
+	return text, true
 }
 
 func boolProperty(value any) (any, bool) {

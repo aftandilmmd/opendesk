@@ -35,11 +35,12 @@ import { dur, springs } from "@/lib/motion";
 import { q, qk } from "@/lib/queries";
 import { atLeast, useRole } from "@/lib/session";
 import { AI_TONE, tone } from "@/lib/tones";
+import { sameJSON } from "@/lib/sameJSON";
 
 type TeamSet = MailCategorySettings["teams"][number];
 type Draft = { enabled: boolean; categories: MailCategory[] };
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a: unknown, b: unknown) => sameJSON(a, b);
 
 export default function MailCategories() {
   const { t } = useTranslation("mailCategories");

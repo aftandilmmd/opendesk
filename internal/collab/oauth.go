@@ -504,6 +504,12 @@ type providerError struct {
 	notFound  bool
 	busy      bool // a rate limit or a 5xx: it passes
 	limited   bool // a rate limit: the request was refused before it was carried out
+	// code is the provider's own error code (safeCode), endpoint the call (endpointOf), and
+	// retryAt the time the provider asked to be left alone until, when that is longer than a
+	// call waits out.
+	code     string
+	endpoint string
+	retryAt  time.Time
 }
 
 func (e *providerError) Error() string { return e.msg }

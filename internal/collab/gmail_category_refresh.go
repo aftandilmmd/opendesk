@@ -104,8 +104,11 @@ func (s *service) refreshGmailCategories(ctx context.Context, p *pass, g *gmailP
 			err := g.do(ctx, http.MethodGet, "/messages/"+url.PathEscape(id)+"?format=minimal", nil, &m)
 			return &m, err
 		})
+		if err := g.checkReads(ctx, errs); err != nil {
+			return true, err
+		}
 		for _, err := range errs {
-			if err != nil && !isNotFound(err) {
+			if err != nil && !isNotFound(err) && !isPassing(err) {
 				return true, err
 			}
 		}
@@ -130,6 +133,9 @@ func (s *service) refreshGmailCategories(ctx context.Context, p *pass, g *gmailP
 						return err
 					}
 					continue
+				}
+				if errs[j] != nil {
+					continue // Gmail would not give its labels: it keeps the ones it has
 				}
 				ob, err := gmailObservation(res[j])
 				if err != nil {

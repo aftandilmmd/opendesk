@@ -3,6 +3,7 @@ package collab
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -112,6 +113,11 @@ func (s *service) syncAccount(ctx context.Context, id uuid.UUID) error {
 	}
 	if a.Config.Demo {
 		return s.recordSyncOK(ctx, a)
+	}
+	if until := s.heldUntil(a); time.Now().Before(until) {
+		// Its provider asked to be left alone until then: the sync waits, asked for or not.
+		_, err := s.d.DB.Pool.Exec(ctx, `UPDATE collab_accounts SET next_sync_at = GREATEST(next_sync_at, $2) WHERE id = $1`, a.ID, until)
+		return err
 	}
 
 	if err := s.runSync(ctx, a); err != nil {
@@ -224,10 +230,24 @@ const quietFailures = 4
 func (s *service) recordSyncError(ctx context.Context, a *accountRow, cause error) error {
 	msg := safeError(cause)
 	reconnect := isReconnect(cause)
-	s.log.Info("collab sync failed", "account_id", a.ID, "workspace_id", a.WorkspaceID, "reason", msg, "reconnect", reconnect)
 	failures := a.SyncFailures + 1
 	next := time.Now().Add(syncBackoff(failures))
-	if !reconnect && !isPermanent(cause) && failures < quietFailures && a.Status != "error" {
+	var pe *providerError
+	retryAt := time.Time{}
+	if errors.As(cause, &pe) {
+		retryAt = pe.retryAt
+	}
+	if retryAt.After(next) {
+		next = retryAt
+	}
+	// A wait the provider asked for that outlasts the quiet failures shows at once.
+	quiet := !reconnect && !isPermanent(cause) && failures < quietFailures && a.Status != "error" &&
+		!retryAt.After(time.Now().Add(syncBackoff(quietFailures)))
+	attrs := syncFailure(a, cause, failures, !quiet)
+	s.log.Info("collab sync failed", "account_id", a.ID, "workspace_id", a.WorkspaceID, "reason", msg, "reconnect", reconnect,
+		"kind", attrs["kind"], "endpoint", attrs["endpoint"], "status", attrs["status"], "code", attrs["code"])
+	s.d.Analytics.Capture("workspace:"+a.WorkspaceID.String(), a.WorkspaceID.String(), "collab_sync_failed", attrs)
+	if quiet {
 		_, err := s.d.DB.Pool.Exec(ctx, `UPDATE collab_accounts SET sync_failures = $2, next_sync_at = $3, updated_at = now() WHERE id = $1`,
 			a.ID, failures, next)
 		return err
@@ -243,6 +263,53 @@ func (s *service) recordSyncError(ctx context.Context, a *accountRow, cause erro
 		}
 		return s.publishAccounts(ctx, tx, a.WorkspaceID, a.ID, nil)
 	})
+}
+
+// syncFailure is what PostHog and the log are told about a failed pass: its kind, the call
+// and the provider's status and code, never its words or an address.
+func syncFailure(a *accountRow, cause error, failures int, shown bool) map[string]any {
+	props := map[string]any{"provider": a.Provider, "kind": failureKind(cause), "failures": failures, "shown": shown}
+	var pe *providerError
+	if errors.As(cause, &pe) {
+		if pe.endpoint != "" {
+			props["endpoint"] = pe.endpoint
+		}
+		if pe.code != "" {
+			props["code"] = pe.code
+		}
+		if pe.status > 0 {
+			props["status"] = pe.status
+		}
+		if !pe.retryAt.IsZero() {
+			props["wait_seconds"] = max(int(time.Until(pe.retryAt).Seconds()), 0)
+		}
+	}
+	return props
+}
+
+// failureKind sorts a failure for syncFailure.
+func failureKind(err error) string {
+	var pe *providerError
+	var ie *imapError
+	switch {
+	case isReconnect(err):
+		return "reconnect"
+	case errors.Is(err, errProviderUnavailable):
+		return "unreachable"
+	case errors.As(err, &pe) && pe.limited:
+		return "rate_limited"
+	case errors.As(err, &pe) && pe.busy:
+		return "busy"
+	case errors.As(err, &pe) && pe.notFound:
+		return "not_found"
+	case errors.As(err, &pe) && pe.permanent:
+		return "refused"
+	case errors.As(err, &pe):
+		return "provider"
+	case errors.As(err, &ie):
+		return "imap"
+	}
+	return "internal"
 }
 
 // specialOrder is the order of special folders: they come first, then the rest by path.

@@ -399,7 +399,7 @@ export class Controller {
 
   needsEmail(): boolean {
     const { config, session } = this.s;
-    return !!config?.require_email && !!session && !session.contact.email;
+    return !!config?.require_email && !!session && !(session.email_collected ?? !!session.contact.email);
   }
 
   typing() {

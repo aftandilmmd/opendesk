@@ -36,6 +36,7 @@ import { q, qk, removeFromList, upsertInList } from "@/lib/queries";
 import { atLeast, useRole, useWorkspace } from "@/lib/session";
 import { AI_TONE, tone } from "@/lib/tones";
 import { cn } from "@/lib/cn";
+import { sameJSON } from "@/lib/sameJSON";
 
 export type BotTab = "look" | "personality" | "test";
 type Draft = {
@@ -52,7 +53,7 @@ const toDraft = (b: Bot): Draft => ({
   look: b.look,
   personality: b.personality,
 });
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a: unknown, b: unknown) => sameJSON(a, b);
 
 export default function BotDetail() {
   const { t } = useTranslation("bots");

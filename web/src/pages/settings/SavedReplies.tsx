@@ -22,6 +22,7 @@ import { atLeast, useRole } from "@/lib/session";
 import { relShort } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { tone } from "@/lib/tones";
+import { sameJSON } from "@/lib/sameJSON";
 
 type Draft = { title: string; shortcut: string; body_html: string; team_id: string | null };
 const empty: Draft = { title: "", shortcut: "", body_html: "", team_id: null };
@@ -58,7 +59,7 @@ export default function SavedReplies() {
 
   const current = replies?.find((r) => r.id === selected) ?? null;
   const base: Draft = current ? toDraft(current) : empty;
-  const dirty = selected !== null && JSON.stringify(draft) !== JSON.stringify(base);
+  const dirty = selected !== null && !sameJSON(draft, base);
   const { teams } = useTeams();
   const { t: tt } = useTranslation("settingsTeams");
   const teamById = new Map(teams.map((x) => [x.id, x]));

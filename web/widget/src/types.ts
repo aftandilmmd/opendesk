@@ -49,6 +49,8 @@ export type WidgetConfig = {
   offset_x?: number;
   /** 0..200 px from the bottom. */
   offset_y?: number;
+  /** The host's stacking order on the page; 0 = DEFAULT_Z_INDEX. */
+  z_index?: number;
   launcher?: WidgetLauncher;
   /** "" = the translated "Chat with us". */
   launcher_label?: string;
@@ -94,6 +96,8 @@ export type WidgetConfig = {
 export type WidgetTopic = { id: string; label: string };
 
 export type WidgetSession = {
+  /** Supplied address, even when another contact owns it. Older servers omit this. */
+  email_collected?: boolean;
   visitor_token: string;
   contact: ContactRef;
   ws_token: string;

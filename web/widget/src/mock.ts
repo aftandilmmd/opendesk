@@ -402,7 +402,7 @@ export function createMock(o: MockOptions = {}): Mock {
     if (path === "/v1/widget/session") {
       if (typeof body.email === "string") contact.email = body.email;
       if (typeof body.name === "string") contact.name = body.name;
-      return json({ visitor_token: "od_vis_mock", contact: { ...contact }, ws_token: wsToken(), gateway_url: "wss://mock.invalid/socket/widget" });
+      return json({ email_collected: !!contact.email, visitor_token: "od_vis_mock", contact: { ...contact }, ws_token: wsToken(), gateway_url: "wss://mock.invalid/socket/widget" });
     }
     if (path === "/v1/widget/conversations" && method === "GET") return json({ data: conversations, next_cursor: null });
     if (path === "/v1/widget/conversations" && method === "POST") {

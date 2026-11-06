@@ -1718,6 +1718,8 @@ export type WidgetSettings = {
   offset_x: number;
   /** 0..200 px from the bottom. */
   offset_y: number;
+  /** The widget's stacking order on the page; 0 = the default, above the page. */
+  z_index: number;
   launcher: "icon" | "label";
   /** Up to 24 chars; "" is the translated "Chat with us". */
   launcher_label: string;
@@ -1759,6 +1761,7 @@ export type WidgetConfig = {
   position: "right" | "left";
   offset_x: number;
   offset_y: number;
+  z_index: number;
   launcher: "icon" | "label";
   launcher_label: string;
   radius: WidgetRadius;
